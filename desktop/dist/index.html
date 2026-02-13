@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GamersGuild</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background-color: #0d0b1a;
+      color: #f0e8d8;
+      -webkit-font-smoothing: antialiased;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background-color: #16132b;
+      border-radius: 12px;
+      padding: 40px;
+      width: 420px;
+      max-width: 90vw;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .crest {
+      text-align: center;
+      font-size: 48px;
+      margin-bottom: 8px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #c9a84c;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 14px;
+      color: #b8a88a;
+      margin-bottom: 28px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #b8a88a;
+      margin-bottom: 8px;
+    }
+    input[type="url"] {
+      width: 100%;
+      padding: 12px;
+      background-color: #0d0b1a;
+      border: 1px solid #1f1b38;
+      border-radius: 6px;
+      color: #f0e8d8;
+      font-size: 15px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="url"]:focus {
+      border-color: #c9a84c;
+    }
+    input[type="url"]::placeholder {
+      color: #6b6080;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      margin-top: 20px;
+      background-color: #c9a84c;
+      color: #0d0b1a;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .btn:hover {
+      background-color: #a8882e;
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .error {
+      margin-top: 12px;
+      padding: 10px;
+      background-color: rgba(201, 55, 75, 0.1);
+      color: #c9374b;
+      border-radius: 6px;
+      font-size: 13px;
+      display: none;
+    }
+    .recent {
+      margin-top: 20px;
+      border-top: 1px solid #1f1b38;
+      padding-top: 16px;
+    }
+    .recent-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #6b6080;
+      margin-bottom: 8px;
+    }
+    .recent-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+    .recent-item:hover {
+      background-color: rgba(100, 80, 140, 0.3);
+    }
+    .recent-item span {
+      font-size: 14px;
+      color: #f0e8d8;
+    }
+    .recent-item .remove {
+      font-size: 12px;
+      color: #6b6080;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .recent-item .remove:hover {
+      color: #c9374b;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="crest">&#9876;</div>
+    <h1>GamersGuild</h1>
+    <p class="subtitle">Enter your server address to connect</p>
+
+    <form id="connect-form">
+      <label for="server-url">Server URL</label>
+      <input
+        type="url"
+        id="server-url"
+        placeholder="https://example.com"
+        required
+        autofocus
+      />
+      <div class="error" id="error"></div>
+      <button type="submit" class="btn" id="connect-btn">Connect</button>
+    </form>
+
+    <div class="recent" id="recent-section" style="display:none">
+      <div class="recent-label">Recent Servers</div>
+      <div id="recent-list"></div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'gamersguild_servers';
+    const LAST_KEY = 'gamersguild_last_server';
+
+    function getSavedServers() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+      catch { return []; }
+    }
+
+    function saveServer(url) {
+      let servers = getSavedServers().filter(s => s !== url);
+      servers.unshift(url);
+      if (servers.length > 5) servers = servers.slice(0, 5);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
+      localStorage.setItem(LAST_KEY, url);
+    }
+
+    function removeServer(url) {
+      const servers = getSavedServers().filter(s => s !== url);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
+      if (localStorage.getItem(LAST_KEY) === url) {
+        localStorage.removeItem(LAST_KEY);
+      }
+      renderRecent();
+    }
+
+    function connectTo(url) {
+      saveServer(url);
+      window.location.href = url;
+    }
+
+    function renderRecent() {
+      const servers = getSavedServers();
+      const section = document.getElementById('recent-section');
+      const list = document.getElementById('recent-list');
+
+      if (servers.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+
+      section.style.display = 'block';
+      list.innerHTML = '';
+
+      servers.forEach(url => {
+        const item = document.createElement('div');
+        item.className = 'recent-item';
+
+        const label = document.createElement('span');
+        label.textContent = url;
+        label.addEventListener('click', () => connectTo(url));
+
+        const remove = document.createElement('span');
+        remove.className = 'remove';
+        remove.textContent = '\u00d7';
+        remove.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeServer(url);
+        });
+
+        item.appendChild(label);
+        item.appendChild(remove);
+        list.appendChild(item);
+      });
+    }
+
+    // Auto-connect to last server
+    const lastServer = localStorage.getItem(LAST_KEY);
+    if (lastServer) {
+      connectTo(lastServer);
+    }
+
+    // Pre-fill with last used URL
+    const servers = getSavedServers();
+    if (servers.length > 0) {
+      document.getElementById('server-url').value = servers[0];
+    }
+
+    document.getElementById('connect-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('server-url');
+      const errorEl = document.getElementById('error');
+      let url = input.value.trim();
+
+      if (!url) return;
+
+      // Add https:// if no protocol
+      if (!/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+      }
+
+      // Remove trailing slash
+      url = url.replace(/\/+$/, '');
+
+      try {
+        new URL(url);
+      } catch {
+        errorEl.textContent = 'Please enter a valid URL';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      errorEl.style.display = 'none';
+      connectTo(url);
+    });
+
+    renderRecent();
+  </script>
+</body>
+</html>

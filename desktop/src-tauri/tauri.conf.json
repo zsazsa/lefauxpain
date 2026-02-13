@@ -1,0 +1,36 @@
+{
+  "productName": "GamersGuild",
+  "version": "1.0.0",
+  "identifier": "com.gamersguild.voicechat",
+  "build": {
+    "beforeBuildCommand": "",
+    "beforeDevCommand": "",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "GamersGuild",
+        "width": 1200,
+        "height": 800,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["icons/icon.png"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
+    "macOS": {
+      "entitlements": "./Entitlements.plist"
+    }
+  }
+}

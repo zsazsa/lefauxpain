@@ -1,0 +1,111 @@
+package api
+
+import (
+	"io/fs"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/kalman/voicechat/config"
+	"github.com/kalman/voicechat/db"
+	"github.com/kalman/voicechat/storage"
+	"github.com/kalman/voicechat/ws"
+)
+
+func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.FileStore, staticFS fs.FS) http.Handler {
+	mux := http.NewServeMux()
+
+	authHandler := &AuthHandler{DB: database}
+	authMW := &AuthMiddleware{DB: database}
+	channelHandler := &ChannelHandler{DB: database}
+	messageHandler := &MessageHandler{DB: database}
+	uploadHandler := &UploadHandler{DB: database, Store: store, MaxSize: cfg.MaxUploadSize}
+	uploadRL := NewIPRateLimiter(3, 30*time.Second)
+
+	registerRL := NewIPRateLimiter(3, time.Minute)
+	loginRL := NewIPRateLimiter(5, time.Minute)
+
+	// Auth routes
+	mux.HandleFunc("/api/v1/auth/register", registerRL.Wrap(authHandler.Register))
+	mux.HandleFunc("/api/v1/auth/login", loginRL.Wrap(authHandler.Login))
+
+	// Channel routes (authenticated)
+	mux.HandleFunc("/api/v1/channels", authMW.Wrap(channelHandler.List))
+
+	// Message history (authenticated) — matches /api/v1/channels/{id}/messages
+	mux.HandleFunc("/api/v1/channels/", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/messages") {
+			messageHandler.GetHistory(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+
+	// Upload (authenticated + rate limited)
+	mux.HandleFunc("/api/v1/upload", uploadRL.Wrap(authMW.Wrap(uploadHandler.Upload)))
+
+	// Audio device management (authenticated)
+	audioHandler := &AudioHandler{}
+	mux.HandleFunc("/api/v1/audio/devices", authMW.Wrap(audioHandler.ListDevices))
+	mux.HandleFunc("/api/v1/audio/device", authMW.Wrap(audioHandler.SetDevice))
+
+	// WebSocket
+	mux.HandleFunc("/ws", hub.HandleWebSocket)
+
+	// Static file serving for uploads/thumbs/avatars
+	uploadsDir := filepath.Join(cfg.DataDir, "uploads")
+	thumbsDir := filepath.Join(cfg.DataDir, "thumbs")
+	avatarsDir := filepath.Join(cfg.DataDir, "avatars")
+
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadsDir))))
+	mux.Handle("/thumbs/", http.StripPrefix("/thumbs/", http.FileServer(http.Dir(thumbsDir))))
+	mux.Handle("/avatars/", http.StripPrefix("/avatars/", http.FileServer(http.Dir(avatarsDir))))
+
+	// SPA serving
+	if cfg.DevMode {
+		viteURL, _ := url.Parse("http://localhost:5173")
+		proxy := httputil.NewSingleHostReverseProxy(viteURL)
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/ws" {
+				http.NotFound(w, r)
+				return
+			}
+			proxy.ServeHTTP(w, r)
+		})
+	} else {
+		mux.HandleFunc("/", spaHandler(staticFS))
+	}
+
+	return mux
+}
+
+func spaHandler(staticFS fs.FS) http.HandlerFunc {
+	// Read index.html once at startup
+	indexHTML, _ := fs.ReadFile(staticFS, "index.html")
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+
+		// Serve root as index.html
+		if path == "" || path == "index.html" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(indexHTML)
+			return
+		}
+
+		// Try serving static file
+		f, err := staticFS.Open(path)
+		if err == nil {
+			f.Close()
+			http.FileServer(http.FS(staticFS)).ServeHTTP(w, r)
+			return
+		}
+
+		// SPA fallback — serve index.html for client-side routing
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(indexHTML)
+	}
+}

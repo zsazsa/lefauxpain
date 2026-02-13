@@ -1,0 +1,33 @@
+# Go
+server/voicechat
+server/voicechat-*
+server/static/
+!server/static/.gitkeep
+
+# Frontend
+client/node_modules/
+client/dist/
+
+# Desktop (Tauri)
+desktop/node_modules/
+desktop/src-tauri/target/
+
+# Data
+data/
+server/data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docs (private deployment notes)
+docs/
+
+# Env
+.env
