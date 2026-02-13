@@ -9,12 +9,21 @@ export type VoiceState = {
   speaking: boolean;
 };
 
+export type VoiceStats = {
+  rtt: number;       // round-trip time in ms (peer ↔ SFU)
+  jitter: number;    // jitter in ms
+  packetLoss: number; // percentage 0-100
+  bitrate: number;   // send bitrate in kbps
+  codec: string;     // codec name
+};
+
 const [voiceStates, setVoiceStates] = createSignal<VoiceState[]>([]);
 const [currentVoiceChannelId, setCurrentVoiceChannelId] = createSignal<
   string | null
 >(null);
 const [selfMute, setSelfMute] = createSignal(false);
 const [selfDeafen, setSelfDeafen] = createSignal(false);
+const [voiceStats, setVoiceStats] = createSignal<VoiceStats | null>(null);
 
 export {
   voiceStates,
@@ -23,6 +32,8 @@ export {
   selfDeafen,
   setSelfMute,
   setSelfDeafen,
+  voiceStats,
+  setVoiceStats,
 };
 
 export function setVoiceStateList(states: VoiceState[]) {

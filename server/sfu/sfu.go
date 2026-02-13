@@ -30,7 +30,7 @@ func New(stunServer string, publicIP string) *SFU {
 			MimeType:    webrtc.MimeTypeOpus,
 			ClockRate:   48000,
 			Channels:    2,
-			SDPFmtpLine: "minptime=10;useinbandfec=1;usedtx=1",
+			SDPFmtpLine: "minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=128000",
 		},
 		PayloadType: 111,
 	}, webrtc.RTPCodecTypeAudio); err != nil {

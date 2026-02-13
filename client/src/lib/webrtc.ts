@@ -1,5 +1,5 @@
 import { send } from "./ws";
-import { setJoinedVoiceChannel } from "../stores/voice";
+import { setJoinedVoiceChannel, setVoiceStats } from "../stores/voice";
 import { setupAudioPipeline, cleanupAudioPipeline, setAllIncomingGain } from "./audio";
 import { startSpeakingDetection, stopSpeakingDetection } from "./devices";
 import { playJoinSound, playLeaveSound } from "./sounds";
@@ -7,6 +7,69 @@ import { settings } from "../stores/settings";
 
 let peerConnection: RTCPeerConnection | null = null;
 let localStream: MediaStream | null = null;
+let statsInterval: number | null = null;
+let prevBytesSent = 0;
+let prevTimestamp = 0;
+
+function startStatsPolling() {
+  stopStatsPolling();
+  prevBytesSent = 0;
+  prevTimestamp = 0;
+  statsInterval = window.setInterval(async () => {
+    if (!peerConnection) return;
+    const stats = await peerConnection.getStats();
+    let rtt = 0;
+    let jitter = 0;
+    let packetsLost = 0;
+    let packetsSent = 0;
+    let bytesSent = 0;
+    let timestamp = 0;
+    let codec = "opus";
+
+    stats.forEach((report) => {
+      if (report.type === "remote-inbound-rtp" && report.kind === "audio") {
+        rtt = (report.roundTripTime || 0) * 1000;
+        jitter = (report.jitter || 0) * 1000;
+        packetsLost = report.packetsLost || 0;
+      }
+      if (report.type === "outbound-rtp" && report.kind === "audio") {
+        bytesSent = report.bytesSent || 0;
+        timestamp = report.timestamp || 0;
+        packetsSent = report.packetsSent || 0;
+      }
+    });
+
+    let bitrate = 0;
+    if (prevTimestamp > 0 && timestamp > prevTimestamp) {
+      const deltaBits = (bytesSent - prevBytesSent) * 8;
+      const deltaSec = (timestamp - prevTimestamp) / 1000;
+      bitrate = Math.round(deltaBits / deltaSec / 1000); // kbps
+    }
+    prevBytesSent = bytesSent;
+    prevTimestamp = timestamp;
+
+    const lossPercent =
+      packetsSent > 0
+        ? Math.round((packetsLost / (packetsSent + packetsLost)) * 100)
+        : 0;
+
+    setVoiceStats({
+      rtt: Math.round(rtt),
+      jitter: Math.round(jitter * 10) / 10,
+      packetLoss: Math.max(0, lossPercent),
+      bitrate,
+      codec,
+    });
+  }, 2000);
+}
+
+function stopStatsPolling() {
+  if (statsInterval !== null) {
+    clearInterval(statsInterval);
+    statsInterval = null;
+  }
+  setVoiceStats(null);
+}
 
 export async function joinVoice(channelId: string) {
   // Leave current voice first
@@ -48,6 +111,8 @@ export function leaveVoice() {
   send("leave_voice", {});
   setJoinedVoiceChannel(null);
 
+  stopStatsPolling();
+
   if (peerConnection) {
     peerConnection.close();
     peerConnection = null;
@@ -71,9 +136,16 @@ export function handleWebRTCOffer(sdp: string) {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
-    // Add local audio track
+    // Add local audio track with 128kbps bitrate
     localStream.getAudioTracks().forEach((track) => {
-      peerConnection!.addTrack(track, localStream!);
+      const sender = peerConnection!.addTrack(track, localStream!);
+      // Set max bitrate to 128kbps
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
+      }
+      params.encodings[0].maxBitrate = 128000;
+      sender.setParameters(params).catch(() => {});
     });
 
     // Handle incoming tracks from other users
@@ -89,6 +161,8 @@ export function handleWebRTCOffer(sdp: string) {
         send("webrtc_ice", { candidate: event.candidate.toJSON() });
       }
     };
+
+    startStatsPolling();
   }
 
   peerConnection

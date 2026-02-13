@@ -5,6 +5,7 @@ import {
   setSelfMute,
   selfDeafen,
   setSelfDeafen,
+  voiceStats,
 } from "../../stores/voice";
 import { leaveVoice, toggleMute, toggleDeafen } from "../../lib/webrtc";
 import { enumerateDevices } from "../../lib/devices";
@@ -35,6 +36,14 @@ export default function VoiceControls() {
     leaveVoice();
   };
 
+  const qualityColor = () => {
+    const s = voiceStats();
+    if (!s) return "var(--text-muted)";
+    if (s.rtt > 200 || s.packetLoss > 5) return "var(--danger)";
+    if (s.rtt > 100 || s.packetLoss > 2) return "var(--accent)";
+    return "var(--success)";
+  };
+
   return (
     <Show when={currentVoiceChannelId()}>
       <div
@@ -55,6 +64,32 @@ export default function VoiceControls() {
         >
           Voice Connected — {channelName()}
         </div>
+
+        {/* Stats overlay */}
+        <Show when={voiceStats()}>
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              "margin-bottom": "6px",
+              "padding-left": "4px",
+              "font-size": "10px",
+              "font-family": "monospace",
+              color: "var(--text-muted)",
+            }}
+          >
+            <span style={{ color: qualityColor() }}>
+              {voiceStats()!.rtt}ms
+            </span>
+            <span>{voiceStats()!.bitrate}kbps</span>
+            <span>{voiceStats()!.codec}</span>
+            <Show when={voiceStats()!.packetLoss > 0}>
+              <span style={{ color: "var(--danger)" }}>
+                {voiceStats()!.packetLoss}% loss
+              </span>
+            </Show>
+          </div>
+        </Show>
 
         <div style={{ display: "flex", gap: "4px" }}>
           <button
