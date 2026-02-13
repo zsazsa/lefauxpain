@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, onCleanup, onMount } from "solid-js";
-import { getChannelMessages, setMessages, prependMessages } from "../../stores/messages";
-import { getMessages } from "../../lib/api";
+import { getChannelMessages, setMessages, prependMessages, scrollToMessageId, setScrollToMessageId } from "../../stores/messages";
+import { getMessages, getMessagesAround } from "../../lib/api";
+import { mergeKnownUsers } from "../../stores/users";
 import MessageItem from "./Message";
 
 interface MessageListProps {
@@ -12,6 +13,7 @@ export default function MessageList(props: MessageListProps) {
   const [loading, setLoading] = createSignal(false);
   const [hasMore, setHasMore] = createSignal(true);
   const [initialLoad, setInitialLoad] = createSignal(true);
+  const [highlightId, setHighlightId] = createSignal<string | null>(null);
 
   const messages = () => getChannelMessages(props.channelId);
 
@@ -30,6 +32,7 @@ export default function MessageList(props: MessageListProps) {
       if (msgs.length < 50) setHasMore(false);
       // API returns newest first, reverse for display
       const reversed = [...msgs].reverse();
+      mergeKnownUsers(reversed.map((m: any) => m.author));
       if (before) {
         prependMessages(channelId, reversed);
       } else {
@@ -41,6 +44,54 @@ export default function MessageList(props: MessageListProps) {
       setLoading(false);
       setInitialLoad(false);
     }
+  }
+
+  // Handle scroll-to-message
+  createEffect(() => {
+    const targetId = scrollToMessageId();
+    if (!targetId) return;
+
+    // Clear the signal so it doesn't retrigger
+    setScrollToMessageId(null);
+
+    const currentMessages = messages();
+    const alreadyLoaded = currentMessages.some((m) => m.id === targetId);
+
+    if (alreadyLoaded) {
+      scrollAndHighlight(targetId);
+    } else {
+      // Load messages around the target
+      loadMessagesAround(props.channelId, targetId);
+    }
+  });
+
+  async function loadMessagesAround(channelId: string, messageId: string) {
+    setLoading(true);
+    try {
+      const msgs = await getMessagesAround(channelId, messageId);
+      // API returns newest first, reverse for display
+      const reversed = [...msgs].reverse();
+      mergeKnownUsers(reversed.map((m: any) => m.author));
+      setMessages(channelId, reversed);
+      setHasMore(true); // There may be more messages above/below
+      // Wait for DOM to update, then scroll
+      requestAnimationFrame(() => scrollAndHighlight(messageId));
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function scrollAndHighlight(messageId: string) {
+    requestAnimationFrame(() => {
+      const el = containerRef?.querySelector(`[data-message-id="${messageId}"]`);
+      if (el) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        setHighlightId(messageId);
+        setTimeout(() => setHighlightId(null), 2000);
+      }
+    });
   }
 
   // Auto-scroll to bottom on new messages
@@ -108,7 +159,12 @@ export default function MessageList(props: MessageListProps) {
       )}
       <div style={{ "margin-top": "auto" }}>
         <For each={messages()}>
-          {(msg) => <MessageItem message={msg} />}
+          {(msg) => (
+            <MessageItem
+              message={msg}
+              highlighted={highlightId() === msg.id}
+            />
+          )}
         </For>
       </div>
     </div>

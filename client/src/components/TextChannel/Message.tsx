@@ -2,12 +2,14 @@ import { Show, For, createSignal } from "solid-js";
 import type { Message } from "../../stores/messages";
 import { setReplyingTo } from "../../stores/messages";
 import { currentUser } from "../../stores/auth";
-import { onlineUsers } from "../../stores/users";
+import { lookupUsername } from "../../stores/users";
 import { send } from "../../lib/ws";
+import { isMobile } from "../../stores/responsive";
 import ReactionBar from "./ReactionBar";
 
 interface MessageProps {
   message: Message;
+  highlighted?: boolean;
 }
 
 function formatTime(dateStr: string): string {
@@ -18,28 +20,38 @@ function formatTime(dateStr: string): string {
 
 // Render content with mention highlighting
 function renderContent(content: string): any {
-  const parts = content.split(/(<@[a-f0-9-]{36}>)/g);
-  return parts.map((part) => {
-    const match = part.match(/^<@([a-f0-9-]{36})>$/);
-    if (match) {
-      const userId = match[1];
-      const user = onlineUsers().find((u) => u.id === userId);
-      return (
-        <span
-          style={{
-            "background-color": "var(--mention-bg)",
-            color: "var(--mention-text)",
-            padding: "0 2px",
-            "border-radius": "3px",
-          }}
-        >
-          @{user?.username || "unknown"}
-        </span>
-      );
+  const mentionRe = /<@([0-9a-fA-F-]{36})>/g;
+  const result: any[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = mentionRe.exec(content)) !== null) {
+    if (m.index > lastIndex) {
+      result.push(content.slice(lastIndex, m.index));
     }
-    return part;
-  });
+    const userId = m[1];
+    const name = lookupUsername(userId) || "unknown";
+    result.push(
+      <span
+        style={{
+          "background-color": "var(--mention-bg)",
+          color: "var(--mention-text)",
+          padding: "0 2px",
+          "border-radius": "3px",
+        }}
+      >
+        @{name}
+      </span>
+    );
+    lastIndex = mentionRe.lastIndex;
+  }
+  if (lastIndex < content.length) {
+    result.push(content.slice(lastIndex));
+  }
+  return result.length > 0 ? result : content;
 }
+
+// Module-level signal: only one message shows actions at a time on mobile
+const [activeMessageId, setActiveMessageId] = createSignal<string | null>(null);
 
 export default function MessageItem(props: MessageProps) {
   const [hovered, setHovered] = createSignal(false);
@@ -54,14 +66,41 @@ export default function MessageItem(props: MessageProps) {
     return props.message.author.id === user.id;
   };
 
+  const showActions = () => {
+    if (isMobile()) {
+      return activeMessageId() === props.message.id;
+    }
+    return hovered();
+  };
+
+  const handleTap = () => {
+    if (!isMobile()) return;
+    setActiveMessageId((prev) =>
+      prev === props.message.id ? null : props.message.id
+    );
+  };
+
+  const handleActionClick = (e: MouseEvent, action: () => void) => {
+    e.stopPropagation();
+    action();
+    if (isMobile()) setActiveMessageId(null);
+  };
+
   return (
     <div
-      onMouseOver={() => setHovered(true)}
-      onMouseOut={() => setHovered(false)}
+      data-message-id={props.message.id}
+      onMouseOver={() => { if (!isMobile()) setHovered(true); }}
+      onMouseOut={() => { if (!isMobile()) setHovered(false); }}
+      onClick={handleTap}
       style={{
-        padding: "4px 16px",
+        padding: isMobile() ? "4px 10px" : "4px 16px",
         position: "relative",
-        "background-color": hovered() ? "rgba(201,168,76,0.04)" : "transparent",
+        "background-color": props.highlighted
+          ? "rgba(201,168,76,0.15)"
+          : hovered()
+            ? "rgba(201,168,76,0.04)"
+            : "transparent",
+        transition: "background-color 0.5s ease",
       }}
     >
       {/* Reply preview */}
@@ -165,11 +204,70 @@ export default function MessageItem(props: MessageProps) {
           <Show when={props.message.reactions.length > 0}>
             <ReactionBar message={props.message} />
           </Show>
+
+          {/* Mobile inline actions */}
+          <Show when={isMobile() && showActions()}>
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                "margin-top": "6px",
+                "padding-top": "4px",
+                "border-top": "1px solid var(--bg-tertiary)",
+              }}
+            >
+              <button
+                onClick={(e) => handleActionClick(e, () => setReplyingTo(props.message))}
+                style={{
+                  padding: "6px 12px",
+                  "font-size": "13px",
+                  "border-radius": "4px",
+                  color: "var(--text-secondary)",
+                  "background-color": "var(--bg-secondary)",
+                }}
+              >
+                Reply
+              </button>
+              <button
+                onClick={(e) =>
+                  handleActionClick(e, () =>
+                    send("add_reaction", {
+                      message_id: props.message.id,
+                      emoji: "\u{1F44D}",
+                    })
+                  )
+                }
+                style={{
+                  padding: "6px 12px",
+                  "font-size": "13px",
+                  "border-radius": "4px",
+                  color: "var(--text-secondary)",
+                  "background-color": "var(--bg-secondary)",
+                }}
+              >
+                +
+              </button>
+              <Show when={canDelete()}>
+                <button
+                  onClick={(e) => handleActionClick(e, handleDelete)}
+                  style={{
+                    padding: "6px 12px",
+                    "font-size": "13px",
+                    "border-radius": "4px",
+                    color: "var(--danger)",
+                    "background-color": "var(--bg-secondary)",
+                  }}
+                >
+                  Del
+                </button>
+              </Show>
+            </div>
+          </Show>
         </div>
       </div>
 
-      {/* Action buttons on hover */}
-      <Show when={hovered()}>
+      {/* Desktop hover action buttons */}
+      <Show when={!isMobile() && showActions()}>
         <div
           style={{
             position: "absolute",

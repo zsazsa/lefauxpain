@@ -1,4 +1,5 @@
 import type { VoiceState } from "../../stores/voice";
+import { isMobile } from "../../stores/responsive";
 
 interface VoiceUserProps {
   username: string;
@@ -14,12 +15,12 @@ export default function VoiceUser(props: VoiceUserProps) {
   return (
     <div
       style={{
-        width: "120px",
+        width: isMobile() ? "100px" : "120px",
         display: "flex",
         "flex-direction": "column",
         "align-items": "center",
         gap: "8px",
-        padding: "16px",
+        padding: isMobile() ? "12px" : "16px",
         "border-radius": "8px",
         "background-color": "var(--bg-secondary)",
       }}
@@ -27,14 +28,14 @@ export default function VoiceUser(props: VoiceUserProps) {
       {/* Avatar with speaking ring */}
       <div
         style={{
-          width: "64px",
-          height: "64px",
+          width: isMobile() ? "48px" : "64px",
+          height: isMobile() ? "48px" : "64px",
           "border-radius": "50%",
           "background-color": "var(--accent)",
           display: "flex",
           "align-items": "center",
           "justify-content": "center",
-          "font-size": "24px",
+          "font-size": isMobile() ? "18px" : "24px",
           "font-weight": "700",
           color: "white",
           border: isSpeaking()
@@ -49,7 +50,7 @@ export default function VoiceUser(props: VoiceUserProps) {
       {/* Username */}
       <span
         style={{
-          "font-size": "13px",
+          "font-size": isMobile() ? "12px" : "13px",
           color: "var(--text-primary)",
           "text-align": "center",
           "max-width": "100%",

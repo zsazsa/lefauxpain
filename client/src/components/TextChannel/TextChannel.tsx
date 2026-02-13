@@ -1,4 +1,6 @@
+import { Show } from "solid-js";
 import { channels } from "../../stores/channels";
+import { isMobile, setSidebarOpen } from "../../stores/responsive";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 
@@ -20,7 +22,7 @@ export default function TextChannel(props: TextChannelProps) {
       {/* Channel header */}
       <div
         style={{
-          padding: "12px 16px",
+          padding: isMobile() ? "10px 12px" : "12px 16px",
           "border-bottom": "1px solid var(--bg-primary)",
           display: "flex",
           "align-items": "center",
@@ -28,6 +30,18 @@ export default function TextChannel(props: TextChannelProps) {
           "font-weight": "600",
         }}
       >
+        <Show when={isMobile()}>
+          <button
+            onClick={() => setSidebarOpen(true)}
+            style={{
+              "font-size": "20px",
+              color: "var(--text-secondary)",
+              padding: "0 4px",
+            }}
+          >
+            {"\u2630"}
+          </button>
+        </Show>
         <span style={{ color: "var(--text-muted)", "font-size": "20px" }}>#</span>
         <span>{channel()?.name}</span>
       </div>

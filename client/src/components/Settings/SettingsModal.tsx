@@ -8,6 +8,7 @@ import {
 import { microphones, speakers, enumerateDevices } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
 import { getAudioDevices, setAudioDevice } from "../../lib/api";
+import { isMobile } from "../../stores/responsive";
 
 type PwDevice = { id: string; name: string; default: boolean };
 
@@ -133,11 +134,12 @@ export default function SettingsModal() {
         <div
           style={{
             "background-color": "var(--bg-secondary)",
-            "border-radius": "8px",
-            width: "460px",
-            "max-height": "80vh",
+            "border-radius": isMobile() ? "0" : "8px",
+            width: isMobile() ? "100%" : "460px",
+            height: isMobile() ? "100%" : "auto",
+            "max-height": isMobile() ? "100%" : "80vh",
             overflow: "auto",
-            "box-shadow": "0 8px 32px rgba(0,0,0,0.5)",
+            "box-shadow": isMobile() ? "none" : "0 8px 32px rgba(0,0,0,0.5)",
           }}
         >
           {/* Header */}

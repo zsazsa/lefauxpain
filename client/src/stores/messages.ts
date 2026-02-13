@@ -40,8 +40,9 @@ const [messagesByChannel, setMessagesByChannel] = createSignal<
   Record<string, Message[]>
 >({});
 const [replyingTo, setReplyingTo] = createSignal<Message | null>(null);
+const [scrollToMessageId, setScrollToMessageId] = createSignal<string | null>(null);
 
-export { messagesByChannel, replyingTo, setReplyingTo };
+export { messagesByChannel, replyingTo, setReplyingTo, scrollToMessageId, setScrollToMessageId };
 
 export function setMessages(channelId: string, msgs: Message[]) {
   setMessagesByChannel((prev) => ({ ...prev, [channelId]: msgs }));

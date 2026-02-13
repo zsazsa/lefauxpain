@@ -1,7 +1,10 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, For } from "solid-js";
 import { send } from "../../lib/ws";
-import { replyingTo, setReplyingTo } from "../../stores/messages";
+import { replyingTo, setReplyingTo, getChannelMessages } from "../../stores/messages";
 import { uploadFile } from "../../lib/api";
+import { onlineUsers } from "../../stores/users";
+import { currentUser } from "../../stores/auth";
+import { isMobile } from "../../stores/responsive";
 
 interface MessageInputProps {
   channelId: string;
@@ -13,14 +16,80 @@ export default function MessageInput(props: MessageInputProps) {
   const [attachmentIds, setAttachmentIds] = createSignal<string[]>([]);
   const [uploading, setUploading] = createSignal(false);
   const [dragActive, setDragActive] = createSignal(false);
+  const [mentionQuery, setMentionQuery] = createSignal<string | null>(null);
+  const [mentionIndex, setMentionIndex] = createSignal(0);
   let fileInputRef: HTMLInputElement | undefined;
+  let inputRef: HTMLInputElement | undefined;
   let typingTimeout: number | null = null;
+  // Maps display name → userId for mentions inserted in the current message
+  const pendingMentions = new Map<string, string>();
+
+  // Build a de-duplicated user list from online users + message authors
+  const mentionableUsers = () => {
+    const map = new Map<string, { id: string; username: string }>();
+    for (const u of onlineUsers()) {
+      map.set(u.id, u);
+    }
+    for (const m of getChannelMessages(props.channelId)) {
+      if (!map.has(m.author.id)) {
+        map.set(m.author.id, m.author);
+      }
+    }
+    return Array.from(map.values());
+  };
+
+  const filteredUsers = () => {
+    const q = mentionQuery();
+    if (q === null) return [];
+    const me = currentUser();
+    const users = mentionableUsers().filter((u) => u.id !== me?.id);
+    if (q === "") return users.slice(0, 10);
+    const lower = q.toLowerCase();
+    return users.filter((u) => u.username.toLowerCase().includes(lower)).slice(0, 10);
+  };
+
+  // Find @query from cursor position
+  function updateMentionQuery(value: string, cursorPos: number) {
+    const before = value.slice(0, cursorPos);
+    const match = before.match(/@(\w*)$/);
+    if (match) {
+      setMentionQuery(match[1]);
+      setMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+    }
+  }
+
+  function selectMention(userId: string, username: string) {
+    const value = text();
+    const cursorPos = inputRef?.selectionStart || value.length;
+    const before = value.slice(0, cursorPos);
+    const after = value.slice(cursorPos);
+    const atIndex = before.lastIndexOf("@");
+    if (atIndex === -1) return;
+    pendingMentions.set(username, userId);
+    const newText = before.slice(0, atIndex) + `@${username} ` + after;
+    setText(newText);
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      if (inputRef) {
+        inputRef.focus();
+        const pos = atIndex + username.length + 2; // @username + space
+        inputRef.setSelectionRange(pos, pos);
+      }
+    });
+  }
 
   const handleSend = () => {
-    const content = text().trim();
+    let content = text().trim();
     const attIds = attachmentIds();
 
     if (!content && attIds.length === 0) return;
+
+    // Replace @username with <@userId> for all pending mentions
+    for (const [username, userId] of pendingMentions) {
+      content = content.replaceAll(`@${username}`, `<@${userId}>`);
+    }
 
     send("send_message", {
       channel_id: props.channelId,
@@ -32,9 +101,36 @@ export default function MessageInput(props: MessageInputProps) {
     setText("");
     setAttachmentIds([]);
     setReplyingTo(null);
+    setMentionQuery(null);
+    pendingMentions.clear();
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    // Mention autocomplete navigation
+    if (mentionQuery() !== null && filteredUsers().length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => Math.min(i + 1, filteredUsers().length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const user = filteredUsers()[mentionIndex()];
+        if (user) selectMention(user.id, user.username);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -48,6 +144,12 @@ export default function MessageInput(props: MessageInputProps) {
         typingTimeout = null;
       }, 3000);
     }
+  };
+
+  const handleInput = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
+    const value = e.currentTarget.value;
+    setText(value);
+    updateMentionQuery(value, e.currentTarget.selectionStart || value.length);
   };
 
   const handleFiles = async (files: File[]) => {
@@ -77,7 +179,7 @@ export default function MessageInput(props: MessageInputProps) {
 
   return (
     <div
-      style={{ padding: "0 16px 16px" }}
+      style={{ padding: isMobile() ? "0 8px 8px" : "0 16px 16px", position: "relative" }}
       onDragOver={(e) => {
         e.preventDefault();
         setDragActive(true);
@@ -85,6 +187,65 @@ export default function MessageInput(props: MessageInputProps) {
       onDragLeave={() => setDragActive(false)}
       onDrop={handleDrop}
     >
+      {/* Mention autocomplete dropdown */}
+      <Show when={mentionQuery() !== null && filteredUsers().length > 0}>
+        <div
+          style={{
+            position: "absolute",
+            bottom: "100%",
+            left: isMobile() ? "8px" : "16px",
+            right: isMobile() ? "8px" : "16px",
+            "background-color": "var(--bg-secondary)",
+            "border-radius": "4px",
+            padding: "4px 0",
+            "box-shadow": "0 -4px 12px rgba(0,0,0,0.3)",
+            "max-height": "200px",
+            overflow: "auto",
+            "z-index": "10",
+          }}
+        >
+          <For each={filteredUsers()}>
+            {(user, i) => (
+              <div
+                onClick={() => selectMention(user.id, user.username)}
+                style={{
+                  padding: "6px 12px",
+                  cursor: "pointer",
+                  display: "flex",
+                  "align-items": "center",
+                  gap: "8px",
+                  "background-color": i() === mentionIndex()
+                    ? "var(--bg-tertiary)"
+                    : "transparent",
+                  "font-size": "14px",
+                  color: "var(--text-primary)",
+                }}
+                onMouseOver={() => setMentionIndex(i())}
+              >
+                <div
+                  style={{
+                    width: "24px",
+                    height: "24px",
+                    "border-radius": "50%",
+                    "background-color": "var(--accent)",
+                    display: "flex",
+                    "align-items": "center",
+                    "justify-content": "center",
+                    "font-size": "12px",
+                    "font-weight": "700",
+                    "flex-shrink": "0",
+                    color: "white",
+                  }}
+                >
+                  {user.username[0].toUpperCase()}
+                </div>
+                <span>{user.username}</span>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+
       {/* Reply indicator */}
       <Show when={replyingTo()}>
         <div
@@ -173,9 +334,10 @@ export default function MessageInput(props: MessageInputProps) {
         />
         <input
           type="text"
+          ref={inputRef}
           placeholder={`Message #${props.channelName}`}
           value={text()}
-          onInput={(e) => setText(e.currentTarget.value)}
+          onInput={handleInput}
           onKeyDown={handleKeyDown}
           disabled={uploading()}
           style={{

@@ -17,8 +17,10 @@ import {
   setOnlineUserList,
   addOnlineUser,
   removeOnlineUser,
+  mergeKnownUsers,
 } from "../stores/users";
 import { setVoiceStateList, updateVoiceState, currentVoiceChannelId, voiceStates } from "../stores/voice";
+import { setNotificationList, addNotification } from "../stores/notifications";
 import { handleWebRTCOffer, handleWebRTCICE } from "./webrtc";
 import { playJoinSound, playLeaveSound } from "./sounds";
 
@@ -50,7 +52,9 @@ export function initEventHandlers() {
         setUser(msg.d.user);
         setChannelList(msg.d.channels);
         setOnlineUserList(msg.d.online_users);
+        mergeKnownUsers([msg.d.user]);
         setVoiceStateList(msg.d.voice_states || []);
+        setNotificationList(msg.d.notifications || []);
         break;
 
       case "message_create":
@@ -61,6 +65,7 @@ export function initEventHandlers() {
           attachments: msg.d.attachments || [],
           edited_at: null,
         });
+        mergeKnownUsers([msg.d.author]);
         break;
 
       case "message_update":
@@ -141,6 +146,10 @@ export function initEventHandlers() {
 
       case "webrtc_ice":
         handleWebRTCICE(msg.d.candidate);
+        break;
+
+      case "notification_create":
+        addNotification(msg.d);
         break;
     }
   });

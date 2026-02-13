@@ -1,13 +1,16 @@
-import { For, Show } from "solid-js";
+import { createSignal, createEffect, on, For, Show, onCleanup } from "solid-js";
 import { channels, selectedChannelId, setSelectedChannelId } from "../../stores/channels";
 import { getUsersInVoiceChannel, currentVoiceChannelId } from "../../stores/voice";
 import { onlineUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { joinVoice } from "../../lib/webrtc";
 import { setSettingsOpen } from "../../stores/settings";
+import { unreadCount } from "../../stores/notifications";
+import { isMobile, setSidebarOpen } from "../../stores/responsive";
 import ChannelItem from "./ChannelItem";
 import CreateChannel from "./CreateChannel";
 import VoiceControls from "../VoiceChannel/VoiceControls";
+import NotificationDropdown from "../Notifications/NotificationDropdown";
 
 interface SidebarProps {
   onLogout: () => void;
@@ -17,12 +20,29 @@ interface SidebarProps {
 export default function Sidebar(props: SidebarProps) {
   const voiceChannels = () => channels().filter((c) => c.type === "voice");
   const textChannels = () => channels().filter((c) => c.type === "text");
+  const [notifOpen, setNotifOpen] = createSignal(false);
+  const [shaking, setShaking] = createSignal(false);
+  let headerRef: HTMLDivElement | undefined;
+
+  // Shake for 20s when unread count increases
+  let shakeTimer: number | undefined;
+  createEffect(on(unreadCount, (count, prev) => {
+    if (count > 0 && (prev === undefined || count > prev)) {
+      setShaking(true);
+      clearTimeout(shakeTimer);
+      shakeTimer = window.setTimeout(() => setShaking(false), 20000);
+    }
+    if (count === 0) {
+      setShaking(false);
+      clearTimeout(shakeTimer);
+    }
+  }));
+  onCleanup(() => clearTimeout(shakeTimer));
 
   return (
     <div
       style={{
-        width: "240px",
-        "min-width": "240px",
+        width: "100%",
         "background-color": "var(--bg-secondary)",
         display: "flex",
         "flex-direction": "column",
@@ -31,14 +51,57 @@ export default function Sidebar(props: SidebarProps) {
     >
       {/* Header */}
       <div
+        ref={headerRef}
         style={{
           padding: "12px 16px",
           "font-weight": "700",
           "font-size": "16px",
           "border-bottom": "1px solid var(--bg-primary)",
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "space-between",
         }}
       >
-        Le Faux Pain
+        <span>Le Faux Pain</span>
+        <button
+          onClick={() => setNotifOpen((v) => !v)}
+          style={{
+            position: "relative",
+            padding: "2px 6px",
+            "font-size": "18px",
+            "line-height": "1",
+            filter: unreadCount() > 0 ? "none" : "grayscale(1) brightness(0.7)",
+            animation: shaking() ? "bread-shake 0.4s ease-in-out infinite" : "none",
+          }}
+          title="Notifications"
+        >
+          {"\u{1F956}"}
+          <Show when={unreadCount() > 0}>
+            <span
+              style={{
+                position: "absolute",
+                top: "-2px",
+                right: "0",
+                "background-color": "var(--accent)",
+                color: "var(--bg-primary)",
+                "font-size": "10px",
+                "font-weight": "700",
+                "min-width": "16px",
+                height: "16px",
+                "border-radius": "8px",
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                padding: "0 4px",
+              }}
+            >
+              {unreadCount()}
+            </span>
+          </Show>
+        </button>
+        <Show when={notifOpen()}>
+          <NotificationDropdown anchorRef={headerRef!} onClose={() => setNotifOpen(false)} />
+        </Show>
       </div>
 
       {/* Channel list */}
@@ -66,6 +129,7 @@ export default function Sidebar(props: SidebarProps) {
                     if (currentVoiceChannelId() !== ch.id) {
                       joinVoice(ch.id);
                     }
+                    if (isMobile()) setSidebarOpen(false);
                   }}
                 />
                 {/* Users in this voice channel */}
@@ -136,7 +200,10 @@ export default function Sidebar(props: SidebarProps) {
               <ChannelItem
                 channel={ch}
                 selected={selectedChannelId() === ch.id}
-                onClick={() => setSelectedChannelId(ch.id)}
+                onClick={() => {
+                  setSelectedChannelId(ch.id);
+                  if (isMobile()) setSidebarOpen(false);
+                }}
               />
             )}
           </For>

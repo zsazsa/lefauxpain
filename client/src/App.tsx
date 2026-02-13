@@ -12,6 +12,7 @@ import {
   selectedChannelId,
   selectedChannel,
 } from "./stores/channels";
+import { isMobile, sidebarOpen, setSidebarOpen, initResponsive } from "./stores/responsive";
 
 function App() {
   const [ready, setReady] = createSignal(false);
@@ -28,6 +29,9 @@ function App() {
 
   // Connect WS when we have a token
   onMount(() => {
+    const cleanupResponsive = initResponsive();
+    onCleanup(cleanupResponsive);
+
     const t = token();
     if (t) {
       const cleanup = initEventHandlers();
@@ -70,20 +74,65 @@ function App() {
         }}
       >
         <SettingsModal />
-        <Sidebar
-          onLogout={handleLogout}
-          username={
-            currentUser()?.username ||
-            localStorage.getItem("username") ||
-            ""
-          }
-        />
 
-        <div style={{ flex: "1", display: "flex", "flex-direction": "column" }}>
-          {/* Reactive function child — SolidJS re-evaluates this whenever
-              selectedChannelId() or channels() change, swapping the
-              rendered component entirely. This avoids Show/Switch
-              truthiness-memoization pitfalls. */}
+        {/* Sidebar wrapper */}
+        {() => {
+          if (isMobile()) {
+            return (
+              <>
+                {/* Backdrop */}
+                <Show when={sidebarOpen()}>
+                  <div
+                    onClick={() => setSidebarOpen(false)}
+                    style={{
+                      position: "fixed",
+                      inset: "0",
+                      "background-color": "rgba(0,0,0,0.5)",
+                      "z-index": "99",
+                    }}
+                  />
+                </Show>
+                {/* Drawer */}
+                <div
+                  style={{
+                    position: "fixed",
+                    top: "0",
+                    left: "0",
+                    bottom: "0",
+                    width: "280px",
+                    "z-index": "100",
+                    transform: sidebarOpen() ? "translateX(0)" : "translateX(-100%)",
+                    transition: "transform 0.2s ease",
+                  }}
+                >
+                  <Sidebar
+                    onLogout={handleLogout}
+                    username={
+                      currentUser()?.username ||
+                      localStorage.getItem("username") ||
+                      ""
+                    }
+                  />
+                </div>
+              </>
+            );
+          } else {
+            return (
+              <div style={{ width: "240px", "min-width": "240px" }}>
+                <Sidebar
+                  onLogout={handleLogout}
+                  username={
+                    currentUser()?.username ||
+                    localStorage.getItem("username") ||
+                    ""
+                  }
+                />
+              </div>
+            );
+          }
+        }}
+
+        <div style={{ flex: "1", display: "flex", "flex-direction": "column", "min-width": "0" }}>
           {() => {
             const id = selectedChannelId();
             if (!id) {
@@ -91,14 +140,32 @@ function App() {
                 <div
                   style={{
                     display: "flex",
+                    "flex-direction": "column",
                     "align-items": "center",
                     "justify-content": "center",
                     height: "100%",
                     color: "var(--text-muted)",
                     "font-size": "16px",
+                    gap: "16px",
                   }}
                 >
-                  Select a channel to get started
+                  <Show when={isMobile()}>
+                    <button
+                      onClick={() => setSidebarOpen(true)}
+                      style={{
+                        "font-size": "24px",
+                        color: "var(--text-secondary)",
+                        padding: "8px 16px",
+                        "border-radius": "4px",
+                        "background-color": "var(--bg-secondary)",
+                      }}
+                    >
+                      {"\u2630"} Open Channels
+                    </button>
+                  </Show>
+                  <Show when={!isMobile()}>
+                    <span>Select a channel to get started</span>
+                  </Show>
                 </div>
               );
             }

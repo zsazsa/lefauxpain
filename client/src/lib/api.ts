@@ -34,6 +34,11 @@ export function getMessages(channelId: string, before?: string) {
   return request(`/channels/${channelId}/messages?${params}`);
 }
 
+export function getMessagesAround(channelId: string, messageId: string) {
+  const params = new URLSearchParams({ limit: "50", around: messageId });
+  return request(`/channels/${channelId}/messages?${params}`);
+}
+
 export function getAudioDevices(): Promise<{
   inputs: { id: string; name: string; default: boolean }[];
   outputs: { id: string; name: string; default: boolean }[];

@@ -109,6 +109,71 @@ func (d *DB) GetMessages(channelID string, limit int, before *string) ([]Message
 	return messages, rows.Err()
 }
 
+func (d *DB) GetMessagesAround(channelID string, messageID string, limit int) ([]MessageWithAuthor, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	half := limit / 2
+
+	rows, err := d.Query(
+		`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at,
+		        u.username, u.avatar_path
+		 FROM messages m
+		 JOIN users u ON u.id = m.author_id
+		 WHERE m.channel_id = ? AND (
+		   m.created_at < (SELECT created_at FROM messages WHERE id = ?)
+		   OR m.id = ?
+		   OR m.created_at > (SELECT created_at FROM messages WHERE id = ?)
+		 )
+		 ORDER BY m.created_at ASC`,
+		channelID, messageID, messageID, messageID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get messages around: %w", err)
+	}
+	defer rows.Close()
+
+	var all []MessageWithAuthor
+	targetIdx := -1
+	for rows.Next() {
+		var m MessageWithAuthor
+		if err := rows.Scan(
+			&m.ID, &m.ChannelID, &m.AuthorID, &m.Content, &m.ReplyToID,
+			&m.CreatedAt, &m.EditedAt, &m.AuthorUsername, &m.AuthorAvatarURL,
+		); err != nil {
+			return nil, fmt.Errorf("scan message: %w", err)
+		}
+		if m.ID == messageID {
+			targetIdx = len(all)
+		}
+		all = append(all, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if targetIdx == -1 {
+		return []MessageWithAuthor{}, nil
+	}
+
+	// Window around the target
+	start := targetIdx - half
+	if start < 0 {
+		start = 0
+	}
+	end := targetIdx + half + 1
+	if end > len(all) {
+		end = len(all)
+	}
+
+	// Return in DESC order (newest first) to match GetMessages convention
+	result := all[start:end]
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+	return result, nil
+}
+
 func (d *DB) EditMessage(id, content string) error {
 	_, err := d.Exec(
 		`UPDATE messages SET content = ?, edited_at = datetime('now') WHERE id = ?`,

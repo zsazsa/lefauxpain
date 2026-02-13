@@ -68,6 +68,54 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// ?around=<messageID> — fetch messages around a target
+	if around := r.URL.Query().Get("around"); around != "" {
+		messages, err := h.DB.GetMessagesAround(channelID, around, limit)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		result := make([]messageResponse, len(messages))
+		for i, m := range messages {
+			attachments, _ := h.DB.GetAttachmentsByMessage(m.ID)
+			attachPayloads := make([]attachPayload, len(attachments))
+			for j, a := range attachments {
+				ap := attachPayload{
+					ID: a.ID, Filename: a.Filename,
+					URL: "/" + strings.ReplaceAll(a.Path, "\\", "/"),
+					MimeType: a.MimeType, Width: a.Width, Height: a.Height,
+				}
+				if a.ThumbPath != nil {
+					t := "/" + strings.ReplaceAll(*a.ThumbPath, "\\", "/")
+					ap.ThumbURL = &t
+				}
+				attachPayloads[j] = ap
+			}
+			reactions, _ := h.DB.GetReactionsByMessage(m.ID)
+			mentions, _ := h.DB.GetMentionsByMessage(m.ID)
+			var reply *replyPayload
+			if m.ReplyToID != nil {
+				rc, _ := h.DB.GetReplyContext(*m.ReplyToID)
+				if rc != nil {
+					reply = &replyPayload{
+						ID:      rc.ID,
+						Author:  authorPayload{ID: rc.AuthorID, Username: rc.AuthorUsername},
+						Content: rc.Content,
+					}
+				}
+			}
+			result[i] = messageResponse{
+				ID: m.ID, ChannelID: m.ChannelID,
+				Author:      authorPayload{ID: m.AuthorID, Username: m.AuthorUsername, AvatarURL: m.AuthorAvatarURL},
+				Content:     m.Content, ReplyTo: reply,
+				Attachments: attachPayloads, Reactions: reactions,
+				Mentions: mentions, CreatedAt: m.CreatedAt, EditedAt: m.EditedAt,
+			}
+		}
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+
 	var before *string
 	if b := r.URL.Query().Get("before"); b != "" {
 		before = &b

@@ -142,14 +142,34 @@ func (c *Client) sendReady() error {
 		voiceStates = []VoiceStatePayload{}
 	}
 
+	// Get unread notifications
+	dbNotifs, _ := c.hub.DB.GetUnreadNotifications(c.UserID, 50)
+	notifPayloads := make([]NotificationPayload, len(dbNotifs))
+	for i, n := range dbNotifs {
+		notifPayloads[i] = NotificationPayload{
+			ID:        n.ID,
+			MessageID: n.MessageID,
+			ChannelID: n.ChannelID,
+			ChannelName: n.ChannelName,
+			Author: UserPayload{
+				ID:       n.AuthorID,
+				Username: n.AuthorUsername,
+			},
+			ContentPreview: n.ContentPreview,
+			Read:           n.Read,
+			CreatedAt:      n.CreatedAt,
+		}
+	}
+
 	msg, err := NewMessage("ready", ReadyData{
 		User: &UserPayload{
 			ID:       c.User.ID,
 			Username: c.User.Username,
 		},
-		Channels:    channelPayloads,
-		VoiceStates: voiceStates,
-		OnlineUsers: onlineUsers,
+		Channels:      channelPayloads,
+		VoiceStates:   voiceStates,
+		OnlineUsers:   onlineUsers,
+		Notifications: notifPayloads,
 	})
 	if err != nil {
 		return err

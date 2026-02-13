@@ -160,6 +160,46 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		}
 		if len(mentionIDs) > 0 {
 			h.DB.CreateMentions(msgID, mentionIDs)
+
+			// Create notifications for mentioned users (exclude self)
+			for _, mentionedID := range mentionIDs {
+				if mentionedID == c.UserID {
+					continue
+				}
+				notifID := uuid.New().String()
+				if err := h.DB.CreateNotification(notifID, mentionedID, msgID, d.ChannelID, c.UserID); err != nil {
+					log.Printf("create notification: %v", err)
+					continue
+				}
+				// Get channel name for the payload
+				chName := ""
+				if ch != nil {
+					chName = ch.Name
+				}
+				// Build content preview
+				var preview *string
+				if d.Content != nil {
+					p := *d.Content
+					if len(p) > 80 {
+						p = p[:80] + "..."
+					}
+					preview = &p
+				}
+				notifMsg, _ := NewMessage("notification_create", NotificationPayload{
+					ID:        notifID,
+					MessageID: msgID,
+					ChannelID: d.ChannelID,
+					ChannelName: chName,
+					Author: UserPayload{
+						ID:       c.User.ID,
+						Username: c.User.Username,
+					},
+					ContentPreview: preview,
+					Read:           false,
+					CreatedAt:      msg.CreatedAt,
+				})
+				h.SendTo(mentionedID, notifMsg)
+			}
 		}
 	}
 	if mentionIDs == nil {
@@ -632,6 +672,28 @@ func (h *Hub) handleVoiceSpeaking(c *Client, data json.RawMessage) {
 		Speaking:   vs.Speaking,
 	})
 	h.BroadcastAll(msg)
+}
+
+// --- Notification handlers ---
+
+type MarkNotificationReadData struct {
+	ID string `json:"id"`
+}
+
+func (h *Hub) handleMarkNotificationRead(c *Client, data json.RawMessage) {
+	var d MarkNotificationReadData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+	if err := h.DB.MarkNotificationRead(d.ID, c.UserID); err != nil {
+		log.Printf("mark notification read: %v", err)
+	}
+}
+
+func (h *Hub) handleMarkAllNotificationsRead(c *Client) {
+	if err := h.DB.MarkAllNotificationsRead(c.UserID); err != nil {
+		log.Printf("mark all notifications read: %v", err)
+	}
 }
 
 func (h *Hub) handleVoiceServerMute(c *Client, data json.RawMessage) {

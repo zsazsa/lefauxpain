@@ -83,6 +83,18 @@ var migrations = []string{
 		updated_at  DATETIME DEFAULT (datetime('now')),
 		PRIMARY KEY (user_id, channel_id)
 	);`,
+
+	// Version 2: Notifications
+	`CREATE TABLE IF NOT EXISTS notifications (
+		id          TEXT PRIMARY KEY,
+		user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		message_id  TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+		channel_id  TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+		author_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		read        BOOLEAN NOT NULL DEFAULT FALSE,
+		created_at  DATETIME DEFAULT (datetime('now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at DESC);`,
 }
 
 func (d *DB) migrate() error {

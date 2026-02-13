@@ -27,8 +27,11 @@ function startStatsPolling() {
     let codec = "opus";
 
     stats.forEach((report) => {
+      // ICE candidate pair gives the most reliable RTT (STUN keepalives)
+      if (report.type === "candidate-pair" && report.state === "succeeded") {
+        rtt = (report.currentRoundTripTime || 0) * 1000;
+      }
       if (report.type === "remote-inbound-rtp" && report.kind === "audio") {
-        rtt = (report.roundTripTime || 0) * 1000;
         jitter = (report.jitter || 0) * 1000;
         packetsLost = report.packetsLost || 0;
       }

@@ -14,10 +14,22 @@ type AuthenticateData struct {
 
 // Server → Client ready event
 type ReadyData struct {
-	User         *UserPayload       `json:"user"`
-	Channels     []ChannelPayload   `json:"channels"`
-	VoiceStates  []VoiceStatePayload `json:"voice_states"`
-	OnlineUsers  []UserPayload      `json:"online_users"`
+	User          *UserPayload          `json:"user"`
+	Channels      []ChannelPayload      `json:"channels"`
+	VoiceStates   []VoiceStatePayload   `json:"voice_states"`
+	OnlineUsers   []UserPayload         `json:"online_users"`
+	Notifications []NotificationPayload `json:"notifications"`
+}
+
+type NotificationPayload struct {
+	ID             string  `json:"id"`
+	MessageID      string  `json:"message_id"`
+	ChannelID      string  `json:"channel_id"`
+	ChannelName    string  `json:"channel_name"`
+	Author         UserPayload `json:"author"`
+	ContentPreview *string `json:"content_preview"`
+	Read           bool    `json:"read"`
+	CreatedAt      string  `json:"created_at"`
 }
 
 type UserPayload struct {

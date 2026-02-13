@@ -190,6 +190,10 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleVoiceSpeaking(client, msg.Data)
 	case "voice_server_mute":
 		h.handleVoiceServerMute(client, msg.Data)
+	case "mark_notification_read":
+		h.handleMarkNotificationRead(client, msg.Data)
+	case "mark_all_notifications_read":
+		h.handleMarkAllNotificationsRead(client)
 	default:
 		log.Printf("unhandled op: %s from user %s", msg.Op, client.UserID)
 	}

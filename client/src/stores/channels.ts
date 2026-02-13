@@ -8,9 +8,18 @@ export type Channel = {
 };
 
 const [channels, setChannels] = createSignal<Channel[]>([]);
-const [selectedChannelId, setSelectedChannelId] = createSignal<string | null>(
-  null
+const [selectedChannelId, _setSelectedChannelId] = createSignal<string | null>(
+  localStorage.getItem("selectedChannelId")
 );
+
+function setSelectedChannelId(id: string | null) {
+  _setSelectedChannelId(id);
+  if (id) {
+    localStorage.setItem("selectedChannelId", id);
+  } else {
+    localStorage.removeItem("selectedChannelId");
+  }
+}
 
 export { channels, selectedChannelId, setSelectedChannelId };
 

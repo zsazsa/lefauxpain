@@ -3,6 +3,7 @@ import { channels } from "../../stores/channels";
 import { getUsersInVoiceChannel, currentVoiceChannelId } from "../../stores/voice";
 import { onlineUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
+import { isMobile, setSidebarOpen } from "../../stores/responsive";
 import VoiceUser from "./VoiceUser";
 import { joinVoice } from "../../lib/webrtc";
 
@@ -32,7 +33,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
       {/* Channel header */}
       <div
         style={{
-          padding: "12px 16px",
+          padding: isMobile() ? "10px 12px" : "12px 16px",
           "border-bottom": "1px solid var(--bg-primary)",
           display: "flex",
           "align-items": "center",
@@ -40,6 +41,18 @@ export default function VoiceChannel(props: VoiceChannelProps) {
         }}
       >
         <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+          <Show when={isMobile()}>
+            <button
+              onClick={() => setSidebarOpen(true)}
+              style={{
+                "font-size": "20px",
+                color: "var(--text-secondary)",
+                padding: "0 4px",
+              }}
+            >
+              {"\u2630"}
+            </button>
+          </Show>
           <span style={{ "font-size": "18px" }}>{"\u{1F50A}"}</span>
           <span style={{ "font-weight": "600" }}>{channel()?.name}</span>
         </div>
@@ -65,10 +78,10 @@ export default function VoiceChannel(props: VoiceChannelProps) {
       <div
         style={{
           flex: "1",
-          padding: "24px",
+          padding: isMobile() ? "12px" : "24px",
           display: "flex",
           "flex-wrap": "wrap",
-          gap: "16px",
+          gap: isMobile() ? "10px" : "16px",
           "align-content": "flex-start",
           overflow: "auto",
         }}
