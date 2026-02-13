@@ -54,10 +54,26 @@ func (c *Client) readPump() {
 	// Register with hub
 	c.hub.register <- c
 
-	// Message loop
+	// Message loop with per-user rate limiting (30 msgs/sec)
+	const wsRateLimit = 30
+	const wsRateWindow = time.Second
+	msgCount := 0
+	windowStart := time.Now()
+
 	for {
 		_, data, err := c.conn.Read(c.ctx)
 		if err != nil {
+			return
+		}
+
+		now := time.Now()
+		if now.Sub(windowStart) >= wsRateWindow {
+			msgCount = 0
+			windowStart = now
+		}
+		msgCount++
+		if msgCount > wsRateLimit {
+			log.Printf("ws rate limit exceeded: user %s", c.UserID)
 			return
 		}
 

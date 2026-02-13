@@ -55,14 +55,14 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	// WebSocket
 	mux.HandleFunc("/ws", hub.HandleWebSocket)
 
-	// Static file serving for uploads/thumbs/avatars
+	// Static file serving for uploads/thumbs/avatars (no directory listing)
 	uploadsDir := filepath.Join(cfg.DataDir, "uploads")
 	thumbsDir := filepath.Join(cfg.DataDir, "thumbs")
 	avatarsDir := filepath.Join(cfg.DataDir, "avatars")
 
-	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadsDir))))
-	mux.Handle("/thumbs/", http.StripPrefix("/thumbs/", http.FileServer(http.Dir(thumbsDir))))
-	mux.Handle("/avatars/", http.StripPrefix("/avatars/", http.FileServer(http.Dir(avatarsDir))))
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", noDirectoryListing(http.FileServer(http.Dir(uploadsDir)))))
+	mux.Handle("/thumbs/", http.StripPrefix("/thumbs/", noDirectoryListing(http.FileServer(http.Dir(thumbsDir)))))
+	mux.Handle("/avatars/", http.StripPrefix("/avatars/", noDirectoryListing(http.FileServer(http.Dir(avatarsDir)))))
 
 	// SPA serving
 	if cfg.DevMode {
@@ -80,6 +80,16 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	}
 
 	return mux
+}
+
+func noDirectoryListing(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func spaHandler(staticFS fs.FS) http.HandlerFunc {

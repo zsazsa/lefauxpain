@@ -46,7 +46,7 @@ func main() {
 
 	sfuInstance := sfu.New(cfg.STUNServer, cfg.PublicIP)
 
-	hub := ws.NewHub(database, sfuInstance)
+	hub := ws.NewHub(database, sfuInstance, cfg.DevMode)
 
 	// Wire SFU signaling back through the hub
 	sfuInstance.Signal = func(userID string, op string, data any) {
@@ -102,8 +102,10 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := &http.Server{
-		Addr:    addr,
-		Handler: router,
+		Addr:              addr,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	shutdown := func() {

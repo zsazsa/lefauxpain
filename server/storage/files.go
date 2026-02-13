@@ -9,6 +9,7 @@ import (
 	_ "image/png"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -161,10 +162,18 @@ func generateThumbnail(r io.ReadSeeker, destPath string, maxWidth int) error {
 	return jpeg.Encode(f, thumb, &jpeg.Options{Quality: 80})
 }
 
-func DetectMIME(header *multipart.FileHeader) string {
-	ct := header.Header.Get("Content-Type")
+func DetectMIME(file multipart.File) (string, error) {
+	buf := make([]byte, 512)
+	n, err := file.Read(buf)
+	if err != nil {
+		return "", err
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		return "", err
+	}
+	ct := http.DetectContentType(buf[:n])
 	ct = strings.Split(ct, ";")[0]
-	return strings.TrimSpace(ct)
+	return strings.TrimSpace(ct), nil
 }
 
 func (fs *FileStore) RemoveFile(relPath string) error {

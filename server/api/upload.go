@@ -44,7 +44,11 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	mimeType := storage.DetectMIME(header)
+	mimeType, err2 := storage.DetectMIME(file)
+	if err2 != nil {
+		writeError(w, http.StatusBadRequest, "cannot read file")
+		return
+	}
 	if !h.Store.IsAllowedMIME(mimeType) {
 		writeError(w, http.StatusBadRequest, "unsupported file type")
 		return

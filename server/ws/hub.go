@@ -14,6 +14,7 @@ import (
 type Hub struct {
 	DB         *db.DB
 	SFU        *sfu.SFU
+	DevMode    bool
 	clients    map[string]*Client // userID → client
 	mu         sync.RWMutex
 	register   chan *Client
@@ -21,10 +22,11 @@ type Hub struct {
 	broadcast  chan []byte
 }
 
-func NewHub(database *db.DB, sfuInstance *sfu.SFU) *Hub {
+func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
 	return &Hub{
 		DB:         database,
 		SFU:        sfuInstance,
+		DevMode:    devMode,
 		clients:    make(map[string]*Client),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
@@ -134,7 +136,7 @@ func (h *Hub) SendTo(userID string, msg []byte) {
 
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // Allow all origins in dev
+		InsecureSkipVerify: h.DevMode,
 	})
 	if err != nil {
 		log.Printf("ws accept: %v", err)

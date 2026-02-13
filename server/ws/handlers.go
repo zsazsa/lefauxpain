@@ -323,9 +323,18 @@ func (h *Hub) handleDeleteMessage(c *Client, data json.RawMessage) {
 	h.BroadcastAll(broadcast)
 }
 
+func isValidEmoji(s string) bool {
+	r := []rune(s)
+	return len(r) >= 1 && len(r) <= 10 && len(s) <= 32
+}
+
 func (h *Hub) handleAddReaction(c *Client, data json.RawMessage) {
 	var d ReactionData
 	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	if !isValidEmoji(d.Emoji) {
 		return
 	}
 
