@@ -300,8 +300,10 @@ export default function MessageInput(props: MessageInputProps) {
           "box-shadow": "0 0 6px rgba(201,168,76,0.08)",
         }}
       >
-        <span style={{ color: "var(--accent)", "font-size": "13px", "flex-shrink": "0", "white-space": "nowrap" }}>
-          {prompt()} {">"}{" "}
+        <span style={{ "font-size": "13px", "flex-shrink": "0", "white-space": "nowrap" }}>
+          <span style={{ color: "var(--accent)" }}>{currentUser()?.username || "anon"}</span>
+          <span style={{ color: "var(--cyan)" }}>@{props.channelName}</span>
+          <span style={{ color: "var(--border-gold)" }}> {">"} </span>
         </span>
         <input
           type="text"
