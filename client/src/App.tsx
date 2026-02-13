@@ -70,7 +70,7 @@ function App() {
         style={{
           display: "flex",
           height: "100%",
-          "background-color": "var(--bg-tertiary)",
+          "background-color": "var(--bg-primary)",
         }}
       >
         <SettingsModal />
@@ -87,7 +87,7 @@ function App() {
                     style={{
                       position: "fixed",
                       inset: "0",
-                      "background-color": "rgba(0,0,0,0.5)",
+                      "background-color": "rgba(0,0,0,0.6)",
                       "z-index": "99",
                     }}
                   />
@@ -138,6 +138,7 @@ function App() {
             if (!id) {
               return (
                 <div
+                  class="crt-vignette"
                   style={{
                     display: "flex",
                     "flex-direction": "column",
@@ -145,7 +146,7 @@ function App() {
                     "justify-content": "center",
                     height: "100%",
                     color: "var(--text-muted)",
-                    "font-size": "16px",
+                    "font-size": "13px",
                     gap: "16px",
                   }}
                 >
@@ -153,18 +154,29 @@ function App() {
                     <button
                       onClick={() => setSidebarOpen(true)}
                       style={{
-                        "font-size": "24px",
-                        color: "var(--text-secondary)",
+                        "font-size": "14px",
+                        color: "var(--accent)",
                         padding: "8px 16px",
-                        "border-radius": "4px",
-                        "background-color": "var(--bg-secondary)",
+                        border: "1px solid var(--border-gold)",
+                        "background-color": "transparent",
                       }}
                     >
-                      {"\u2630"} Open Channels
+                      [{"\u2261"} open canaux]
                     </button>
                   </Show>
                   <Show when={!isMobile()}>
-                    <span>Select a channel to get started</span>
+                    <div style={{ "text-align": "center" }}>
+                      <div style={{
+                        "font-family": "var(--font-display)",
+                        "font-size": "18px",
+                        color: "var(--accent)",
+                        "margin-bottom": "8px",
+                        "letter-spacing": "2px",
+                      }}>
+                        Le Faux Pain
+                      </div>
+                      <span style={{ color: "var(--text-muted)" }}>// select a channel to begin</span>
+                    </div>
                   </Show>
                 </div>
               );

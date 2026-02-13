@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Show, onMount, onCleanup } from "solid-js";
 import { channels } from "../../stores/channels";
 import { getUsersInVoiceChannel, currentVoiceChannelId } from "../../stores/voice";
 import { onlineUsers } from "../../stores/users";
@@ -15,6 +15,22 @@ export default function VoiceChannel(props: VoiceChannelProps) {
   const channel = () => channels().find((c) => c.id === props.channelId);
   const usersInChannel = () => getUsersInVoiceChannel(props.channelId);
   const isConnected = () => currentVoiceChannelId() === props.channelId;
+  let glitchRef: HTMLSpanElement | undefined;
+  let glitchTimer: number | undefined;
+
+  function scheduleGlitch() {
+    const delay = (3 + Math.random() * 4) * 60 * 1000;
+    glitchTimer = window.setTimeout(() => {
+      if (glitchRef) {
+        glitchRef.classList.add("glitching");
+        setTimeout(() => glitchRef?.classList.remove("glitching"), 350);
+      }
+      scheduleGlitch();
+    }, delay);
+  }
+
+  onMount(() => scheduleGlitch());
+  onCleanup(() => clearTimeout(glitchTimer));
 
   const handleJoin = () => {
     if (!isConnected()) {
@@ -33,8 +49,8 @@ export default function VoiceChannel(props: VoiceChannelProps) {
       {/* Channel header */}
       <div
         style={{
-          padding: isMobile() ? "10px 12px" : "12px 16px",
-          "border-bottom": "1px solid var(--bg-primary)",
+          padding: isMobile() ? "8px 12px" : "10px 16px",
+          "border-bottom": "1px solid var(--border-gold)",
           display: "flex",
           "align-items": "center",
           "justify-content": "space-between",
@@ -45,31 +61,43 @@ export default function VoiceChannel(props: VoiceChannelProps) {
             <button
               onClick={() => setSidebarOpen(true)}
               style={{
-                "font-size": "20px",
-                color: "var(--text-secondary)",
+                "font-size": "18px",
+                color: "var(--accent)",
                 padding: "0 4px",
               }}
             >
-              {"\u2630"}
+              {"\u2261"}
             </button>
           </Show>
-          <span style={{ "font-size": "18px" }}>{"\u{1F50A}"}</span>
-          <span style={{ "font-weight": "600" }}>{channel()?.name}</span>
+          <span style={{ color: "var(--border-gold)", "font-size": "14px" }}>{"\u2666"}</span>
+          <span
+            ref={glitchRef}
+            class="glitch-text"
+            style={{
+              "font-family": "var(--font-display)",
+              "font-weight": "600",
+              "font-size": "14px",
+              color: "var(--text-primary)",
+              display: "inline-block",
+            }}
+          >
+            {channel()?.name}
+          </span>
         </div>
 
         <Show when={!isConnected()}>
           <button
             onClick={handleJoin}
             style={{
-              padding: "6px 16px",
-              "background-color": "var(--success)",
-              color: "#000",
-              "border-radius": "4px",
-              "font-size": "13px",
+              padding: "4px 12px",
+              "background-color": "transparent",
+              border: "1px solid var(--success)",
+              color: "var(--success)",
+              "font-size": "12px",
               "font-weight": "600",
             }}
           >
-            Join Voice
+            [join voice]
           </button>
         </Show>
       </div>
@@ -97,11 +125,11 @@ export default function VoiceChannel(props: VoiceChannelProps) {
                 "margin-top": "60px",
               }}
             >
-              <p style={{ "font-size": "16px", "margin-bottom": "8px" }}>
+              <p style={{ "font-size": "14px", "margin-bottom": "8px" }}>
                 No one is here yet
               </p>
-              <p style={{ "font-size": "14px" }}>
-                Click "Join Voice" to start a conversation
+              <p style={{ "font-size": "12px" }}>
+                Click [join voice] to start
               </p>
             </div>
           }

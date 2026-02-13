@@ -75,8 +75,7 @@ export default function NotificationDropdown(props: NotificationDropdownProps) {
         left: getPosition().left,
         width: "360px",
         "background-color": "var(--bg-secondary)",
-        "border-radius": "0 0 4px 4px",
-        "box-shadow": "0 4px 12px rgba(0,0,0,0.4)",
+        border: "1px solid var(--border-gold)",
         "z-index": "1000",
         "max-height": "400px",
         overflow: "auto",
@@ -89,9 +88,7 @@ export default function NotificationDropdown(props: NotificationDropdownProps) {
           "align-items": "center",
           "justify-content": "space-between",
           padding: isMobile() ? "12px 16px" : "8px 12px",
-          "border-bottom": "1px solid var(--bg-primary)",
-          "font-size": isMobile() ? "16px" : "13px",
-          "font-weight": "600",
+          "border-bottom": "1px solid var(--border-gold)",
         }}
       >
         <div style={{ display: "flex", "align-items": "center", gap: "12px" }}>
@@ -99,26 +96,34 @@ export default function NotificationDropdown(props: NotificationDropdownProps) {
             <button
               onClick={props.onClose}
               style={{
-                "font-size": "20px",
-                color: "var(--text-secondary)",
+                "font-size": "14px",
+                color: "var(--accent)",
                 padding: "0 4px",
               }}
             >
-              {"\u2190"}
+              [{"\u2190"}]
             </button>
           </Show>
-          <span style={{ color: "var(--text-primary)" }}>Notifications</span>
+          <span style={{
+            "font-family": "var(--font-display)",
+            "font-size": isMobile() ? "14px" : "12px",
+            "font-weight": "600",
+            color: "var(--accent)",
+            "letter-spacing": "1px",
+          }}>
+            Avis
+          </span>
         </div>
         <Show when={unreadCount() > 0}>
           <button
             onClick={handleMarkAllRead}
             style={{
-              "font-size": "12px",
-              color: "var(--accent)",
+              "font-size": "11px",
+              color: "var(--cyan)",
               padding: "2px 6px",
             }}
           >
-            Mark all read
+            [mark all read]
           </button>
         </Show>
       </div>
@@ -131,7 +136,7 @@ export default function NotificationDropdown(props: NotificationDropdownProps) {
             style={{
               padding: "20px 12px",
               "text-align": "center",
-              "font-size": "13px",
+              "font-size": "12px",
               color: "var(--text-muted)",
             }}
           >
@@ -146,78 +151,53 @@ export default function NotificationDropdown(props: NotificationDropdownProps) {
               style={{
                 padding: "8px 12px",
                 cursor: "pointer",
-                display: "flex",
-                gap: "8px",
-                "align-items": "flex-start",
                 "border-left": notif.read
-                  ? "3px solid transparent"
-                  : "3px solid var(--accent)",
+                  ? "2px solid transparent"
+                  : "2px solid var(--cyan)",
                 "background-color": "transparent",
               }}
               onMouseOver={(e) =>
-                (e.currentTarget.style.backgroundColor = "var(--bg-tertiary)")
+                (e.currentTarget.style.backgroundColor = "var(--accent-glow)")
               }
               onMouseOut={(e) =>
                 (e.currentTarget.style.backgroundColor = "transparent")
               }
             >
-              {/* Author avatar */}
               <div
                 style={{
-                  width: "24px",
-                  height: "24px",
-                  "border-radius": "50%",
-                  "background-color": "var(--accent)",
-                  display: "flex",
-                  "align-items": "center",
-                  "justify-content": "center",
-                  "font-size": "11px",
-                  "font-weight": "700",
-                  "flex-shrink": "0",
-                  color: "white",
-                  "margin-top": "2px",
+                  "font-size": "12px",
+                  color: "var(--text-primary)",
+                  "line-height": "1.4",
                 }}
               >
-                {notif.author.username[0].toUpperCase()}
+                <span style={{ color: "var(--cyan)" }}>@{notif.author.username}</span>{" "}
+                <span style={{ color: "var(--text-muted)" }}>
+                  mentioned you in{" "}
+                </span>
+                <span style={{ color: "var(--accent)" }}>#{notif.channel_name}</span>
               </div>
-
-              <div style={{ "min-width": "0", flex: "1" }}>
-                <div
-                  style={{
-                    "font-size": "13px",
-                    color: "var(--text-primary)",
-                    "line-height": "1.3",
-                  }}
-                >
-                  <strong>{notif.author.username}</strong>{" "}
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    mentioned you in{" "}
-                  </span>
-                  <strong>#{notif.channel_name}</strong>
-                </div>
-                <Show when={notif.content_preview}>
-                  <div
-                    style={{
-                      "font-size": "12px",
-                      color: "var(--text-muted)",
-                      "margin-top": "2px",
-                      overflow: "hidden",
-                      "text-overflow": "ellipsis",
-                      "white-space": "nowrap",
-                    }}
-                  >
-                    {notif.content_preview}
-                  </div>
-                </Show>
+              <Show when={notif.content_preview}>
                 <div
                   style={{
                     "font-size": "11px",
                     color: "var(--text-muted)",
                     "margin-top": "2px",
+                    overflow: "hidden",
+                    "text-overflow": "ellipsis",
+                    "white-space": "nowrap",
                   }}
                 >
-                  {formatRelativeTime(notif.created_at)}
+                  {notif.content_preview}
                 </div>
+              </Show>
+              <div
+                style={{
+                  "font-size": "10px",
+                  color: "var(--text-muted)",
+                  "margin-top": "2px",
+                }}
+              >
+                {formatRelativeTime(notif.created_at)}
               </div>
             </div>
           )}

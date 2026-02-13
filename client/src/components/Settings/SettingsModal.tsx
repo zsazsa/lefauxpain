@@ -124,7 +124,7 @@ export default function SettingsModal() {
         style={{
           position: "fixed",
           inset: "0",
-          "background-color": "rgba(0,0,0,0.6)",
+          "background-color": "rgba(0,0,0,0.7)",
           display: "flex",
           "align-items": "center",
           "justify-content": "center",
@@ -134,12 +134,11 @@ export default function SettingsModal() {
         <div
           style={{
             "background-color": "var(--bg-secondary)",
-            "border-radius": isMobile() ? "0" : "8px",
+            border: isMobile() ? "none" : "1px solid var(--border-gold)",
             width: isMobile() ? "100%" : "460px",
             height: isMobile() ? "100%" : "auto",
             "max-height": isMobile() ? "100%" : "80vh",
             overflow: "auto",
-            "box-shadow": isMobile() ? "none" : "0 8px 32px rgba(0,0,0,0.5)",
           }}
         >
           {/* Header */}
@@ -148,23 +147,28 @@ export default function SettingsModal() {
               display: "flex",
               "align-items": "center",
               "justify-content": "space-between",
-              padding: "16px 20px",
-              "border-bottom": "1px solid var(--bg-primary)",
+              padding: "14px 20px",
+              "border-bottom": "1px solid var(--border-gold)",
             }}
           >
-            <span style={{ "font-size": "18px", "font-weight": "700" }}>
-              Settings
+            <span style={{
+              "font-family": "var(--font-display)",
+              "font-size": "16px",
+              "font-weight": "600",
+              color: "var(--accent)",
+              "letter-spacing": "1px",
+            }}>
+              {"\u2699"} Param\u00e8tres
             </span>
             <button
               onClick={close}
               style={{
-                "font-size": "20px",
+                "font-size": "12px",
                 color: "var(--text-muted)",
-                padding: "4px 8px",
-                "border-radius": "4px",
+                padding: "2px 6px",
               }}
             >
-              ×
+              [x]
             </button>
           </div>
 
@@ -173,9 +177,11 @@ export default function SettingsModal() {
             {/* Audio section */}
             <div
               style={{
-                "font-size": "12px",
-                "font-weight": "700",
+                "font-family": "var(--font-display)",
+                "font-size": "11px",
+                "font-weight": "600",
                 "text-transform": "uppercase",
+                "letter-spacing": "2px",
                 color: "var(--text-muted)",
                 "margin-bottom": "12px",
               }}
@@ -310,26 +316,28 @@ export default function SettingsModal() {
               <button
                 onClick={() => (testActive() ? stopTest() : startTest())}
                 style={{
-                  padding: "8px 16px",
-                  "font-size": "13px",
-                  "border-radius": "4px",
+                  padding: "6px 16px",
+                  "font-size": "12px",
+                  border: testActive()
+                    ? "1px solid var(--danger)"
+                    : "1px solid var(--accent)",
                   "background-color": testActive()
-                    ? "var(--danger)"
-                    : "var(--accent)",
-                  color: "white",
+                    ? "rgba(232,64,64,0.15)"
+                    : "var(--accent-glow)",
+                  color: testActive() ? "var(--danger)" : "var(--accent)",
                   "font-weight": "600",
                   width: "100%",
                 }}
               >
-                {testActive() ? "Stop Mic Test" : "Test Microphone"}
+                {testActive() ? "[stop mic test]" : "[test microphone]"}
               </button>
               <Show when={testActive()}>
                 <div
                   style={{
                     "margin-top": "8px",
-                    height: "8px",
+                    height: "6px",
                     "background-color": "var(--bg-primary)",
-                    "border-radius": "4px",
+                    border: "1px solid var(--border-gold)",
                     overflow: "hidden",
                   }}
                 >
@@ -343,7 +351,6 @@ export default function SettingsModal() {
                           : micLevel() > 0.3
                             ? "var(--accent)"
                             : "var(--success)",
-                      "border-radius": "4px",
                       transition: "width 0.05s",
                     }}
                   />
@@ -370,7 +377,7 @@ const labelStyle = {
   display: "flex",
   "justify-content": "space-between",
   "align-items": "center",
-  "font-size": "13px",
+  "font-size": "12px",
   color: "var(--text-primary)",
   "margin-bottom": "6px",
 } as const;
@@ -383,10 +390,9 @@ const sliderStyle = {
 
 const selectStyle = {
   width: "100%",
-  padding: "8px 10px",
+  padding: "6px 10px",
   "background-color": "var(--bg-primary)",
   color: "var(--text-primary)",
-  border: "1px solid var(--bg-tertiary)",
-  "border-radius": "4px",
-  "font-size": "13px",
+  border: "1px solid var(--border-gold)",
+  "font-size": "12px",
 } as const;

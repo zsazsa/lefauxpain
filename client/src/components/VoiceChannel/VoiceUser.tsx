@@ -19,63 +19,49 @@ export default function VoiceUser(props: VoiceUserProps) {
         display: "flex",
         "flex-direction": "column",
         "align-items": "center",
-        gap: "8px",
-        padding: isMobile() ? "12px" : "16px",
-        "border-radius": "8px",
+        gap: "6px",
+        padding: isMobile() ? "10px" : "14px",
+        border: isSpeaking()
+          ? "1px solid var(--success)"
+          : "1px solid var(--border-gold)",
         "background-color": "var(--bg-secondary)",
       }}
     >
-      {/* Avatar with speaking ring */}
-      <div
-        style={{
-          width: isMobile() ? "48px" : "64px",
-          height: isMobile() ? "48px" : "64px",
-          "border-radius": "50%",
-          "background-color": "var(--accent)",
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "center",
-          "font-size": isMobile() ? "18px" : "24px",
-          "font-weight": "700",
-          color: "white",
-          border: isSpeaking()
-            ? "3px solid var(--success)"
-            : "3px solid transparent",
-          transition: "border-color 0.15s",
-        }}
-      >
-        {props.username[0].toUpperCase()}
-      </div>
-
       {/* Username */}
       <span
         style={{
           "font-size": isMobile() ? "12px" : "13px",
-          color: "var(--text-primary)",
+          color: "var(--accent)",
           "text-align": "center",
           "max-width": "100%",
           overflow: "hidden",
           "text-overflow": "ellipsis",
           "white-space": "nowrap",
+          "font-weight": "600",
         }}
       >
         {props.username}
       </span>
 
-      {/* Status icons */}
+      {/* Status line */}
       <div
         style={{
           display: "flex",
-          gap: "4px",
-          "font-size": "14px",
+          gap: "6px",
+          "align-items": "center",
+          "font-size": "11px",
+          color: "var(--text-muted)",
         }}
       >
+        <span style={{ color: isSpeaking() ? "var(--success)" : "var(--text-muted)" }}>
+          {isSpeaking() ? "[TX]" : "[--]"}
+        </span>
         {isMuted() && (
-          <span title={props.voiceState.server_mute ? "Server muted" : "Muted"}>
-            {props.voiceState.server_mute ? "\u{1F507}" : "\u{1F507}"}
+          <span style={{ color: "var(--danger)" }} title={props.voiceState.server_mute ? "Server muted" : "Muted"}>
+            [MUTE]
           </span>
         )}
-        {isDeafened() && <span title="Deafened">{"\u{1F508}"}</span>}
+        {isDeafened() && <span style={{ color: "var(--danger)" }} title="Deafened">[DEAF]</span>}
       </div>
     </div>
   );

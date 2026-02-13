@@ -24,20 +24,13 @@ export default function CreateChannel() {
             onClick={() => setOpen(true)}
             style={{
               width: "100%",
-              padding: "6px",
-              "font-size": "13px",
+              padding: "4px",
+              "font-size": "12px",
               color: "var(--text-muted)",
-              "border-radius": "4px",
               "text-align": "left",
             }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.color = "var(--text-primary)")
-            }
-            onMouseOut={(e) =>
-              (e.currentTarget.style.color = "var(--text-muted)")
-            }
           >
-            + Create Channel
+            [+ create channel]
           </button>
         }
       >
@@ -47,15 +40,15 @@ export default function CreateChannel() {
         >
           <input
             type="text"
-            placeholder="Channel name"
+            placeholder="channel name"
             value={name()}
             onInput={(e) => setName(e.currentTarget.value)}
             maxLength={32}
             style={{
-              padding: "6px 8px",
+              padding: "4px 8px",
               "background-color": "var(--bg-primary)",
-              "border-radius": "4px",
-              "font-size": "13px",
+              border: "1px solid var(--border-gold)",
+              "font-size": "12px",
               color: "var(--text-primary)",
             }}
           />
@@ -65,30 +58,34 @@ export default function CreateChannel() {
               onClick={() => setType("text")}
               style={{
                 flex: "1",
-                padding: "4px",
-                "font-size": "12px",
-                "border-radius": "3px",
+                padding: "3px",
+                "font-size": "11px",
+                border: type() === "text"
+                  ? "1px solid var(--accent)"
+                  : "1px solid var(--border-gold)",
                 "background-color":
-                  type() === "text" ? "var(--accent)" : "var(--bg-tertiary)",
-                color: "white",
+                  type() === "text" ? "var(--accent-glow)" : "transparent",
+                color: type() === "text" ? "var(--accent)" : "var(--text-muted)",
               }}
             >
-              # Text
+              # text
             </button>
             <button
               type="button"
               onClick={() => setType("voice")}
               style={{
                 flex: "1",
-                padding: "4px",
-                "font-size": "12px",
-                "border-radius": "3px",
+                padding: "3px",
+                "font-size": "11px",
+                border: type() === "voice"
+                  ? "1px solid var(--accent)"
+                  : "1px solid var(--border-gold)",
                 "background-color":
-                  type() === "voice" ? "var(--accent)" : "var(--bg-tertiary)",
-                color: "white",
+                  type() === "voice" ? "var(--accent-glow)" : "transparent",
+                color: type() === "voice" ? "var(--accent)" : "var(--text-muted)",
               }}
             >
-              Voice
+              {"\u2666"} voice
             </button>
           </div>
           <div style={{ display: "flex", gap: "4px" }}>
@@ -96,26 +93,25 @@ export default function CreateChannel() {
               type="submit"
               style={{
                 flex: "1",
-                padding: "4px 8px",
-                "font-size": "12px",
+                padding: "3px 8px",
+                "font-size": "11px",
                 "background-color": "var(--accent)",
-                color: "white",
-                "border-radius": "3px",
+                color: "var(--bg-primary)",
+                "font-weight": "600",
               }}
             >
-              Create
+              [create]
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
               style={{
-                padding: "4px 8px",
-                "font-size": "12px",
+                padding: "3px 8px",
+                "font-size": "11px",
                 color: "var(--text-muted)",
-                "border-radius": "3px",
               }}
             >
-              Cancel
+              [cancel]
             </button>
           </div>
         </form>

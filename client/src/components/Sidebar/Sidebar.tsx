@@ -47,6 +47,7 @@ export default function Sidebar(props: SidebarProps) {
         display: "flex",
         "flex-direction": "column",
         height: "100%",
+        "border-right": "1px solid var(--border-gold)",
       }}
     >
       {/* Header */}
@@ -54,15 +55,21 @@ export default function Sidebar(props: SidebarProps) {
         ref={headerRef}
         style={{
           padding: "12px 16px",
-          "font-weight": "700",
-          "font-size": "16px",
-          "border-bottom": "1px solid var(--bg-primary)",
+          "border-bottom": "1px solid var(--border-gold)",
           display: "flex",
           "align-items": "center",
           "justify-content": "space-between",
         }}
       >
-        <span>Le Faux Pain</span>
+        <span style={{
+          "font-family": "var(--font-display)",
+          "font-weight": "700",
+          "font-size": "15px",
+          color: "var(--accent)",
+          "letter-spacing": "1px",
+        }}>
+          Le Faux Pain
+        </span>
         <button
           onClick={() => setNotifOpen((v) => !v)}
           style={{
@@ -82,13 +89,12 @@ export default function Sidebar(props: SidebarProps) {
                 position: "absolute",
                 top: "-2px",
                 right: "0",
-                "background-color": "var(--accent)",
+                "background-color": "var(--cyan)",
                 color: "var(--bg-primary)",
                 "font-size": "10px",
                 "font-weight": "700",
                 "min-width": "16px",
                 height: "16px",
-                "border-radius": "8px",
                 display: "flex",
                 "align-items": "center",
                 "justify-content": "center",
@@ -109,14 +115,16 @@ export default function Sidebar(props: SidebarProps) {
         <Show when={voiceChannels().length > 0}>
           <div
             style={{
-              padding: "6px 16px",
+              padding: "8px 16px 4px",
+              "font-family": "var(--font-display)",
               "font-size": "11px",
-              "font-weight": "700",
+              "font-weight": "600",
               "text-transform": "uppercase",
+              "letter-spacing": "2px",
               color: "var(--text-muted)",
             }}
           >
-            Voice Channels
+            Canaux Vocaux
           </div>
           <For each={voiceChannels()}>
             {(ch) => (
@@ -142,25 +150,24 @@ export default function Sidebar(props: SidebarProps) {
                       <Show when={user()}>
                         <div
                           style={{
-                            padding: "2px 16px 2px 44px",
+                            padding: "1px 16px 1px 40px",
                             "font-size": "12px",
                             color: "var(--text-secondary)",
                             display: "flex",
                             "align-items": "center",
-                            gap: "4px",
+                            gap: "6px",
                           }}
                         >
                           <span
                             style={{
-                              width: "6px",
-                              height: "6px",
-                              "border-radius": "50%",
-                              "background-color": vs.speaking
+                              color: vs.speaking
                                 ? "var(--success)"
                                 : "var(--text-muted)",
-                              "flex-shrink": "0",
+                              "font-size": "8px",
                             }}
-                          />
+                          >
+                            {"\u25CF"}
+                          </span>
                           <span>{user()!.username}</span>
                           {vs.self_mute && (
                             <span style={{ "font-size": "10px" }}>
@@ -185,15 +192,17 @@ export default function Sidebar(props: SidebarProps) {
         <Show when={textChannels().length > 0}>
           <div
             style={{
-              padding: "6px 16px",
+              padding: "8px 16px 4px",
+              "font-family": "var(--font-display)",
               "font-size": "11px",
-              "font-weight": "700",
+              "font-weight": "600",
               "text-transform": "uppercase",
+              "letter-spacing": "2px",
               color: "var(--text-muted)",
               "margin-top": "8px",
             }}
           >
-            Text Channels
+            Canaux Texte
           </div>
           <For each={textChannels()}>
             {(ch) => (
@@ -220,30 +229,24 @@ export default function Sidebar(props: SidebarProps) {
         style={{
           padding: "8px 12px",
           "background-color": "var(--bg-primary)",
+          "border-top": "1px solid var(--border-gold)",
           display: "flex",
           "align-items": "center",
           "justify-content": "space-between",
-          "font-size": "14px",
+          "font-size": "13px",
         }}
       >
-        <span style={{ color: "var(--text-primary)", "font-weight": "600" }}>
+        <span style={{ color: "var(--accent)", "font-weight": "600" }}>
           {props.username}
         </span>
         <div style={{ display: "flex", gap: "4px" }}>
           <button
             onClick={() => setSettingsOpen(true)}
             style={{
-              padding: "4px 8px",
-              "font-size": "14px",
+              padding: "2px 6px",
+              "font-size": "18px",
               color: "var(--text-muted)",
-              "border-radius": "3px",
             }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.color = "var(--text-primary)")
-            }
-            onMouseOut={(e) =>
-              (e.currentTarget.style.color = "var(--text-muted)")
-            }
             title="Settings"
           >
             {"\u2699"}
@@ -251,19 +254,12 @@ export default function Sidebar(props: SidebarProps) {
           <button
             onClick={props.onLogout}
             style={{
-              padding: "4px 8px",
-              "font-size": "12px",
+              padding: "2px 6px",
+              "font-size": "11px",
               color: "var(--text-muted)",
-              "border-radius": "3px",
             }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.color = "var(--danger)")
-            }
-            onMouseOut={(e) =>
-              (e.currentTarget.style.color = "var(--text-muted)")
-            }
           >
-            Logout
+            [logout]
           </button>
         </div>
       </div>

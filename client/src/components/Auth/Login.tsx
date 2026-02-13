@@ -62,45 +62,49 @@ function Login(props: LoginProps) {
         style={{
           "background-color": "var(--bg-secondary)",
           padding: "32px",
-          "border-radius": "8px",
+          border: "1px solid var(--border-gold)",
           width: "400px",
           "max-width": "90vw",
+          "box-shadow": "0 0 30px rgba(201,168,76,0.08)",
         }}
       >
         <h2
           style={{
             "text-align": "center",
-            "margin-bottom": "8px",
-            color: "var(--text-primary)",
+            "margin-bottom": "4px",
+            color: "var(--accent)",
+            "font-family": "var(--font-display)",
+            "font-size": "22px",
+            "letter-spacing": "2px",
           }}
         >
-          {isRegister() ? "Create an account" : "Welcome back"}
+          Le Faux Pain
         </h2>
         <p
           style={{
             "text-align": "center",
             "margin-bottom": "24px",
-            color: "var(--text-secondary)",
-            "font-size": "14px",
+            color: "var(--text-muted)",
+            "font-size": "12px",
           }}
         >
           {isRegister()
-            ? "Choose a username to get started"
-            : "Log in with your username"}
+            ? "// create an account to connect"
+            : "// authenticate to continue"}
         </p>
 
         {error() && (
           <div
             style={{
-              "background-color": "rgba(201, 55, 75, 0.1)",
+              "background-color": "rgba(232, 64, 64, 0.1)",
+              border: "1px solid var(--danger)",
               color: "var(--danger)",
-              padding: "10px",
-              "border-radius": "4px",
+              padding: "8px",
               "margin-bottom": "16px",
-              "font-size": "14px",
+              "font-size": "12px",
             }}
           >
-            {error()}
+            ERR: {error()}
           </div>
         )}
 
@@ -108,14 +112,14 @@ function Login(props: LoginProps) {
           <label
             style={{
               display: "block",
-              "margin-bottom": "8px",
-              color: "var(--text-secondary)",
-              "font-size": "12px",
-              "font-weight": "700",
+              "margin-bottom": "6px",
+              color: "var(--text-muted)",
+              "font-size": "11px",
               "text-transform": "uppercase",
+              "letter-spacing": "1px",
             }}
           >
-            Username
+            username
           </label>
           <input
             type="text"
@@ -126,11 +130,12 @@ function Login(props: LoginProps) {
             pattern="[a-zA-Z0-9_]+"
             style={{
               width: "100%",
-              padding: "10px",
+              padding: "8px",
               "background-color": "var(--bg-primary)",
-              "border-radius": "4px",
+              border: "1px solid var(--border-gold)",
               color: "var(--text-primary)",
-              "font-size": "16px",
+              "font-size": "14px",
+              "caret-color": "var(--accent)",
             }}
           />
         </div>
@@ -139,15 +144,15 @@ function Login(props: LoginProps) {
           <label
             style={{
               display: "block",
-              "margin-bottom": "8px",
-              color: "var(--text-secondary)",
-              "font-size": "12px",
-              "font-weight": "700",
+              "margin-bottom": "6px",
+              color: "var(--text-muted)",
+              "font-size": "11px",
               "text-transform": "uppercase",
+              "letter-spacing": "1px",
             }}
           >
-            Password{" "}
-            <span style={{ color: "var(--text-muted)", "font-weight": "400" }}>
+            password{" "}
+            <span style={{ color: "var(--text-muted)", "letter-spacing": "0" }}>
               (optional)
             </span>
           </label>
@@ -157,11 +162,12 @@ function Login(props: LoginProps) {
             onInput={(e) => setPassword(e.currentTarget.value)}
             style={{
               width: "100%",
-              padding: "10px",
+              padding: "8px",
               "background-color": "var(--bg-primary)",
-              "border-radius": "4px",
+              border: "1px solid var(--border-gold)",
               color: "var(--text-primary)",
-              "font-size": "16px",
+              "font-size": "14px",
+              "caret-color": "var(--accent)",
             }}
           />
         </div>
@@ -171,28 +177,29 @@ function Login(props: LoginProps) {
           disabled={loading()}
           style={{
             width: "100%",
-            padding: "12px",
-            "background-color": "var(--accent)",
-            color: "white",
-            "border-radius": "4px",
-            "font-size": "16px",
+            padding: "10px",
+            "background-color": "transparent",
+            border: "1px solid var(--accent)",
+            color: "var(--accent)",
+            "font-size": "13px",
             "font-weight": "600",
+            "letter-spacing": "1px",
             opacity: loading() ? "0.7" : "1",
           }}
         >
           {loading()
             ? "..."
             : isRegister()
-              ? "Register"
-              : "Log In"}
+              ? "[REGISTER]"
+              : "[LOG IN]"}
         </button>
 
         <p
           style={{
             "text-align": "center",
             "margin-top": "16px",
-            color: "var(--text-secondary)",
-            "font-size": "14px",
+            color: "var(--text-muted)",
+            "font-size": "12px",
           }}
         >
           {isRegister() ? "Already have an account? " : "Need an account? "}
@@ -202,11 +209,11 @@ function Login(props: LoginProps) {
               setError("");
             }}
             style={{
-              color: "var(--accent)",
+              color: "var(--cyan)",
               cursor: "pointer",
             }}
           >
-            {isRegister() ? "Log In" : "Register"}
+            {isRegister() ? "[log in]" : "[register]"}
           </span>
         </p>
       </form>

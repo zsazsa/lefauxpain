@@ -21,7 +21,7 @@ export default function MessageInput(props: MessageInputProps) {
   let fileInputRef: HTMLInputElement | undefined;
   let inputRef: HTMLInputElement | undefined;
   let typingTimeout: number | null = null;
-  // Maps display name → userId for mentions inserted in the current message
+  // Maps display name -> userId for mentions inserted in the current message
   const pendingMentions = new Map<string, string>();
 
   // Build a de-duplicated user list from online users + message authors
@@ -177,6 +177,11 @@ export default function MessageInput(props: MessageInputProps) {
     }
   };
 
+  const prompt = () => {
+    const name = currentUser()?.username || "anon";
+    return `${name}@${props.channelName}`;
+  };
+
   return (
     <div
       style={{ padding: isMobile() ? "0 8px 8px" : "0 16px 16px", position: "relative" }}
@@ -196,9 +201,8 @@ export default function MessageInput(props: MessageInputProps) {
             left: isMobile() ? "8px" : "16px",
             right: isMobile() ? "8px" : "16px",
             "background-color": "var(--bg-secondary)",
-            "border-radius": "4px",
-            padding: "4px 0",
-            "box-shadow": "0 -4px 12px rgba(0,0,0,0.3)",
+            border: "1px solid var(--border-gold)",
+            padding: "2px 0",
             "max-height": "200px",
             overflow: "auto",
             "z-index": "10",
@@ -209,36 +213,20 @@ export default function MessageInput(props: MessageInputProps) {
               <div
                 onClick={() => selectMention(user.id, user.username)}
                 style={{
-                  padding: "6px 12px",
+                  padding: "4px 12px",
                   cursor: "pointer",
                   display: "flex",
                   "align-items": "center",
                   gap: "8px",
                   "background-color": i() === mentionIndex()
-                    ? "var(--bg-tertiary)"
+                    ? "var(--accent-glow)"
                     : "transparent",
-                  "font-size": "14px",
+                  "font-size": "13px",
                   color: "var(--text-primary)",
                 }}
                 onMouseOver={() => setMentionIndex(i())}
               >
-                <div
-                  style={{
-                    width: "24px",
-                    height: "24px",
-                    "border-radius": "50%",
-                    "background-color": "var(--accent)",
-                    display: "flex",
-                    "align-items": "center",
-                    "justify-content": "center",
-                    "font-size": "12px",
-                    "font-weight": "700",
-                    "flex-shrink": "0",
-                    color: "white",
-                  }}
-                >
-                  {user.username[0].toUpperCase()}
-                </div>
+                <span style={{ color: "var(--cyan)" }}>@</span>
                 <span>{user.username}</span>
               </div>
             )}
@@ -253,28 +241,30 @@ export default function MessageInput(props: MessageInputProps) {
             display: "flex",
             "align-items": "center",
             "justify-content": "space-between",
-            padding: "6px 12px",
+            padding: "4px 12px",
             "background-color": "var(--bg-secondary)",
-            "border-radius": "4px 4px 0 0",
-            "font-size": "13px",
-            color: "var(--text-secondary)",
+            "border-top": "1px solid var(--border-gold)",
+            "border-left": "1px solid var(--border-gold)",
+            "border-right": "1px solid var(--border-gold)",
+            "font-size": "12px",
+            color: "var(--text-muted)",
           }}
         >
           <span>
-            Replying to{" "}
-            <strong style={{ color: "var(--text-primary)" }}>
+            replying to{" "}
+            <span style={{ color: "var(--cyan)" }}>
               @{replyingTo()!.author.username}
-            </strong>
+            </span>
           </span>
           <button
             onClick={() => setReplyingTo(null)}
             style={{
               color: "var(--text-muted)",
-              "font-size": "14px",
+              "font-size": "12px",
               padding: "0 4px",
             }}
           >
-            x
+            [x]
           </button>
         </div>
       </Show>
@@ -283,41 +273,62 @@ export default function MessageInput(props: MessageInputProps) {
       <Show when={attachmentIds().length > 0}>
         <div
           style={{
-            padding: "6px 12px",
+            padding: "4px 12px",
             "background-color": "var(--bg-secondary)",
-            "font-size": "13px",
+            "font-size": "12px",
             color: "var(--text-muted)",
+            "border-left": "1px solid var(--border-gold)",
+            "border-right": "1px solid var(--border-gold)",
           }}
         >
-          {attachmentIds().length} file(s) attached
+          [{attachmentIds().length} file(s) attached]
         </div>
       </Show>
 
-      {/* Input area */}
+      {/* Terminal prompt input */}
       <div
         style={{
           display: "flex",
           "align-items": "center",
-          gap: "8px",
           "background-color": dragActive()
             ? "var(--bg-secondary)"
-            : "var(--bg-tertiary)",
-          "border-radius": replyingTo() || attachmentIds().length > 0
-            ? "0 0 4px 4px"
-            : "4px",
-          padding: "8px 12px",
-          border: dragActive() ? "2px dashed var(--accent)" : "2px solid transparent",
+            : "var(--bg-primary)",
+          border: dragActive()
+            ? "1px solid var(--cyan)"
+            : "1px solid var(--border-gold)",
+          padding: "6px 12px",
+          "box-shadow": "0 0 6px rgba(201,168,76,0.08)",
         }}
       >
+        <span style={{ color: "var(--accent)", "font-size": "13px", "flex-shrink": "0", "white-space": "nowrap" }}>
+          {prompt()} {">"}{" "}
+        </span>
+        <input
+          type="text"
+          ref={inputRef}
+          placeholder=""
+          value={text()}
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+          disabled={uploading()}
+          style={{
+            flex: "1",
+            "font-size": "13px",
+            color: "var(--text-primary)",
+            "background-color": "transparent",
+            "caret-color": "var(--accent)",
+          }}
+        />
         <button
           onClick={() => fileInputRef?.click()}
           style={{
-            "font-size": "18px",
+            "font-size": "12px",
             color: "var(--text-muted)",
-            padding: "0 4px",
+            padding: "0 6px",
+            "flex-shrink": "0",
           }}
         >
-          +
+          [ATT]
         </button>
         <input
           type="file"
@@ -332,33 +343,6 @@ export default function MessageInput(props: MessageInputProps) {
             }
           }}
         />
-        <input
-          type="text"
-          ref={inputRef}
-          placeholder={`Message #${props.channelName}`}
-          value={text()}
-          onInput={handleInput}
-          onKeyDown={handleKeyDown}
-          disabled={uploading()}
-          style={{
-            flex: "1",
-            "font-size": "14px",
-            color: "var(--text-primary)",
-            "background-color": "transparent",
-          }}
-        />
-        <button
-          onClick={handleSend}
-          disabled={uploading() && !text().trim() && attachmentIds().length === 0}
-          style={{
-            padding: "4px 12px",
-            "font-size": "13px",
-            color: "var(--text-muted)",
-            "border-radius": "3px",
-          }}
-        >
-          {uploading() ? "..." : "Send"}
-        </button>
       </div>
     </div>
   );

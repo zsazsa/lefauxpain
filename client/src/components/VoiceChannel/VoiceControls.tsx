@@ -50,19 +50,19 @@ export default function VoiceControls() {
         style={{
           padding: "8px",
           "background-color": "var(--bg-primary)",
-          "border-top": "1px solid var(--bg-tertiary)",
+          "border-top": "1px solid var(--border-gold)",
         }}
       >
         <div
           style={{
-            "font-size": "12px",
+            "font-size": "11px",
             color: "var(--success)",
             "font-weight": "600",
             "margin-bottom": "6px",
             "padding-left": "4px",
           }}
         >
-          Voice Connected — {channelName()}
+          VOICE CONNECTED — {channelName()}
         </div>
 
         {/* Stats overlay */}
@@ -74,7 +74,6 @@ export default function VoiceControls() {
               "margin-bottom": "6px",
               "padding-left": "4px",
               "font-size": "10px",
-              "font-family": "monospace",
               color: "var(--text-muted)",
             }}
           >
@@ -96,49 +95,53 @@ export default function VoiceControls() {
             onClick={handleMute}
             style={{
               flex: "1",
-              padding: "6px",
-              "font-size": "16px",
-              "border-radius": "4px",
+              padding: "5px",
+              "font-size": "11px",
+              border: selfMute()
+                ? "1px solid var(--danger)"
+                : "1px solid var(--border-gold)",
               "background-color": selfMute()
-                ? "var(--danger)"
-                : "var(--bg-tertiary)",
-              color: "white",
+                ? "rgba(232,64,64,0.15)"
+                : "transparent",
+              color: selfMute() ? "var(--danger)" : "var(--text-secondary)",
             }}
             title={selfMute() ? "Unmute" : "Mute"}
           >
-            {selfMute() ? "\u{1F507}" : "\u{1F3A4}"}
+            {selfMute() ? "[MUTED]" : "[MIC]"}
           </button>
 
           <button
             onClick={handleDeafen}
             style={{
               flex: "1",
-              padding: "6px",
-              "font-size": "16px",
-              "border-radius": "4px",
+              padding: "5px",
+              "font-size": "11px",
+              border: selfDeafen()
+                ? "1px solid var(--danger)"
+                : "1px solid var(--border-gold)",
               "background-color": selfDeafen()
-                ? "var(--danger)"
-                : "var(--bg-tertiary)",
-              color: "white",
+                ? "rgba(232,64,64,0.15)"
+                : "transparent",
+              color: selfDeafen() ? "var(--danger)" : "var(--text-secondary)",
             }}
             title={selfDeafen() ? "Undeafen" : "Deafen"}
           >
-            {selfDeafen() ? "\u{1F508}" : "\u{1F50A}"}
+            {selfDeafen() ? "[DEAF]" : "[SPK]"}
           </button>
 
           <button
             onClick={handleDisconnect}
             style={{
               flex: "1",
-              padding: "6px",
-              "font-size": "16px",
-              "border-radius": "4px",
-              "background-color": "var(--danger)",
-              color: "white",
+              padding: "5px",
+              "font-size": "11px",
+              border: "1px solid var(--danger)",
+              "background-color": "rgba(232,64,64,0.15)",
+              color: "var(--danger)",
             }}
             title="Disconnect"
           >
-            {"\u{1F4DE}"}
+            [QUIT]
           </button>
         </div>
       </div>

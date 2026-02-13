@@ -21,14 +21,7 @@ export default function ReactionBar(props: ReactionBarProps) {
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        "flex-wrap": "wrap",
-        gap: "4px",
-        "margin-top": "4px",
-      }}
-    >
+    <span style={{ display: "inline-flex", gap: "4px", "vertical-align": "baseline" }}>
       <For each={props.message.reactions}>
         {(reaction) => {
           const isActive = () =>
@@ -38,30 +31,30 @@ export default function ReactionBar(props: ReactionBarProps) {
 
           return (
             <button
-              onClick={() => toggleReaction(reaction.emoji)}
+              onClick={(e) => { e.stopPropagation(); toggleReaction(reaction.emoji); }}
               style={{
-                display: "flex",
+                display: "inline-flex",
                 "align-items": "center",
-                gap: "4px",
-                padding: "2px 6px",
-                "border-radius": "4px",
-                "font-size": "13px",
+                gap: "2px",
+                padding: "0 4px",
+                "font-size": "12px",
                 "background-color": isActive()
                   ? "var(--mention-bg)"
-                  : "var(--bg-tertiary)",
+                  : "transparent",
                 border: isActive()
-                  ? "1px solid var(--accent)"
-                  : "1px solid transparent",
+                  ? "1px solid var(--cyan)"
+                  : "1px solid var(--border-gold)",
                 color: "var(--text-secondary)",
                 cursor: "pointer",
+                "line-height": "1.4",
               }}
             >
               <span>{reaction.emoji}</span>
-              <span style={{ "font-size": "12px" }}>{reaction.count}</span>
+              <span style={{ "font-size": "11px" }}>{reaction.count}</span>
             </button>
           );
         }}
       </For>
-    </div>
+    </span>
   );
 }

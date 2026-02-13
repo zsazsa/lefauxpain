@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { Show, onMount, onCleanup } from "solid-js";
 import { channels } from "../../stores/channels";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
 import MessageList from "./MessageList";
@@ -10,9 +10,27 @@ interface TextChannelProps {
 
 export default function TextChannel(props: TextChannelProps) {
   const channel = () => channels().find((c) => c.id === props.channelId);
+  let glitchRef: HTMLSpanElement | undefined;
+  let glitchTimer: number | undefined;
+
+  function scheduleGlitch() {
+    // Random 3–7 minutes
+    const delay = (3 + Math.random() * 4) * 60 * 1000;
+    glitchTimer = window.setTimeout(() => {
+      if (glitchRef) {
+        glitchRef.classList.add("glitching");
+        setTimeout(() => glitchRef?.classList.remove("glitching"), 350);
+      }
+      scheduleGlitch();
+    }, delay);
+  }
+
+  onMount(() => scheduleGlitch());
+  onCleanup(() => clearTimeout(glitchTimer));
 
   return (
     <div
+      class="crt-vignette"
       style={{
         display: "flex",
         "flex-direction": "column",
@@ -22,28 +40,39 @@ export default function TextChannel(props: TextChannelProps) {
       {/* Channel header */}
       <div
         style={{
-          padding: isMobile() ? "10px 12px" : "12px 16px",
-          "border-bottom": "1px solid var(--bg-primary)",
+          padding: isMobile() ? "8px 12px" : "10px 16px",
+          "border-bottom": "1px solid var(--border-gold)",
           display: "flex",
           "align-items": "center",
           gap: "8px",
-          "font-weight": "600",
         }}
       >
         <Show when={isMobile()}>
           <button
             onClick={() => setSidebarOpen(true)}
             style={{
-              "font-size": "20px",
-              color: "var(--text-secondary)",
+              "font-size": "18px",
+              color: "var(--accent)",
               padding: "0 4px",
             }}
           >
-            {"\u2630"}
+            {"\u2261"}
           </button>
         </Show>
-        <span style={{ color: "var(--text-muted)", "font-size": "20px" }}>#</span>
-        <span>{channel()?.name}</span>
+        <span style={{ color: "var(--border-gold)", "font-size": "16px" }}>#</span>
+        <span
+          ref={glitchRef}
+          class="glitch-text"
+          style={{
+            "font-family": "var(--font-display)",
+            "font-weight": "600",
+            "font-size": "14px",
+            color: "var(--text-primary)",
+            display: "inline-block",
+          }}
+        >
+          {channel()?.name}
+        </span>
       </div>
 
       {/* Messages */}

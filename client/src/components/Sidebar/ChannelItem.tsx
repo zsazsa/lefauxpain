@@ -7,28 +7,30 @@ interface ChannelItemProps {
 }
 
 export default function ChannelItem(props: ChannelItemProps) {
-  const icon = () => (props.channel.type === "voice" ? "\u{1F50A}" : "#");
+  const icon = () => (props.channel.type === "voice" ? "\u2666" : "#");
 
   return (
     <div
       onClick={props.onClick}
       style={{
-        padding: "6px 16px",
+        padding: "4px 16px",
         cursor: "pointer",
         display: "flex",
         "align-items": "center",
         gap: "8px",
-        "border-radius": "4px",
         margin: "1px 8px",
+        "border-left": props.selected
+          ? "2px solid var(--accent)"
+          : "2px solid transparent",
         "background-color": props.selected
-          ? "var(--bg-tertiary)"
+          ? "var(--accent-glow)"
           : "transparent",
         color: props.selected ? "var(--text-primary)" : "var(--text-secondary)",
-        "font-size": "14px",
+        "font-size": "13px",
       }}
       onMouseOver={(e) => {
         if (!props.selected)
-          e.currentTarget.style.backgroundColor = "rgba(100,80,140,0.3)";
+          e.currentTarget.style.backgroundColor = "var(--accent-glow)";
       }}
       onMouseOut={(e) => {
         if (!props.selected)
@@ -37,10 +39,10 @@ export default function ChannelItem(props: ChannelItemProps) {
     >
       <span
         style={{
-          "font-size": props.channel.type === "text" ? "18px" : "14px",
-          "min-width": "20px",
+          "font-size": props.channel.type === "text" ? "16px" : "12px",
+          "min-width": "16px",
           "text-align": "center",
-          opacity: "0.7",
+          color: "var(--border-gold)",
         }}
       >
         {icon()}

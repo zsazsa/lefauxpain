@@ -18,6 +18,26 @@ function formatTime(dateStr: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+// Generate a consistent color for a username from a small royal palette
+const USERNAME_COLORS = [
+  "#c9a84c", // gold
+  "#4de8e0", // cyan
+  "#b48ade", // violet
+  "#e88a9a", // rose
+  "#6ecf8a", // emerald
+  "#e0a060", // amber
+  "#7ab8e0", // sky
+  "#d4a0d4", // mauve
+];
+
+function usernameColor(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash * 31 + userId.charCodeAt(i)) | 0;
+  }
+  return USERNAME_COLORS[Math.abs(hash) % USERNAME_COLORS.length];
+}
+
 // Render content with mention highlighting
 function renderContent(content: string): any {
   const mentionRe = /<@([0-9a-fA-F-]{36})>/g;
@@ -35,8 +55,7 @@ function renderContent(content: string): any {
         style={{
           "background-color": "var(--mention-bg)",
           color: "var(--mention-text)",
-          padding: "0 2px",
-          "border-radius": "3px",
+          padding: "0 3px",
         }}
       >
         @{name}
@@ -86,6 +105,8 @@ export default function MessageItem(props: MessageProps) {
     if (isMobile()) setActiveMessageId(null);
   };
 
+  const color = () => usernameColor(props.message.author.id);
+
   return (
     <div
       data-message-id={props.message.id}
@@ -93,205 +114,167 @@ export default function MessageItem(props: MessageProps) {
       onMouseOut={() => { if (!isMobile()) setHovered(false); }}
       onClick={handleTap}
       style={{
-        padding: isMobile() ? "4px 10px" : "4px 16px",
+        padding: isMobile() ? "1px 10px" : "1px 16px",
         position: "relative",
         "background-color": props.highlighted
-          ? "rgba(201,168,76,0.15)"
+          ? "rgba(201,168,76,0.1)"
           : hovered()
-            ? "rgba(201,168,76,0.04)"
+            ? "rgba(201,168,76,0.03)"
             : "transparent",
-        transition: "background-color 0.5s ease",
+        "font-size": "13px",
+        "line-height": "1.5",
       }}
     >
-      {/* Reply preview */}
+      {/* Reply connector */}
       <Show when={props.message.reply_to}>
         <div
           style={{
-            "font-size": "12px",
             color: "var(--text-muted)",
-            "margin-bottom": "2px",
-            "padding-left": "36px",
-            display: "flex",
-            "align-items": "center",
-            gap: "4px",
+            "padding-left": "7ch",
+            "font-size": "12px",
           }}
         >
+          <span style={{ color: "var(--border-gold)" }}>{"\u2570\u2500"} </span>
           <span style={{ color: "var(--text-secondary)" }}>
-            @{props.message.reply_to!.author.username}
-          </span>
-          <span>
-            {props.message.reply_to!.content?.slice(0, 60) || "[attachment]"}
-            {(props.message.reply_to!.content?.length || 0) > 60 ? "..." : ""}
-          </span>
+            {props.message.reply_to!.author.username}:
+          </span>{" "}
+          {props.message.reply_to!.content?.slice(0, 60) || "[attachment]"}
+          {(props.message.reply_to!.content?.length || 0) > 60 ? "..." : ""}
         </div>
       </Show>
 
-      {/* Message body */}
-      <div style={{ display: "flex", gap: "12px", "align-items": "flex-start" }}>
-        {/* Avatar placeholder */}
-        <div
-          style={{
-            width: "32px",
-            height: "32px",
-            "border-radius": "50%",
-            "background-color": "var(--accent)",
-            display: "flex",
-            "align-items": "center",
-            "justify-content": "center",
-            "font-size": "14px",
-            "font-weight": "700",
-            "flex-shrink": "0",
-            color: "white",
-          }}
-        >
-          {props.message.author.username[0].toUpperCase()}
-        </div>
-
-        <div style={{ "min-width": "0", flex: "1" }}>
-          <div style={{ display: "flex", "align-items": "baseline", gap: "8px" }}>
-            <span style={{ "font-weight": "600", "font-size": "14px" }}>
-              {props.message.author.username}
-            </span>
-            <span
-              style={{
-                "font-size": "11px",
-                color: "var(--text-muted)",
-              }}
-            >
-              {formatTime(props.message.created_at)}
-              <Show when={props.message.edited_at}>
-                <span> (edited)</span>
-              </Show>
-            </span>
-          </div>
-
+      {/* Main message line: [time] username > content */}
+      <div style={{ display: "flex", "align-items": "baseline", gap: "0" }}>
+        <span style={{ color: "var(--text-muted)", "flex-shrink": "0" }}>
+          [{formatTime(props.message.created_at)}]
+        </span>
+        <span style={{ color: color(), "font-weight": "600", "flex-shrink": "0", "margin-left": "6px" }}>
+          {props.message.author.username}
+        </span>
+        <span style={{ color: "var(--border-gold)", "flex-shrink": "0", margin: "0 6px" }}>
+          {">"}
+        </span>
+        <span style={{ color: "var(--text-primary)", "word-break": "break-word", "min-width": "0" }}>
           <Show when={props.message.content}>
-            <div
-              style={{
-                "font-size": "14px",
-                color: "var(--text-secondary)",
-                "line-height": "1.4",
-                "word-break": "break-word",
-              }}
-            >
-              {renderContent(props.message.content!)}
-            </div>
+            {renderContent(props.message.content!)}
           </Show>
-
-          {/* Attachments */}
-          <Show when={props.message.attachments.length > 0}>
-            <div style={{ "margin-top": "4px", display: "flex", "flex-wrap": "wrap", gap: "4px" }}>
-              <For each={props.message.attachments}>
-                {(att) => (
-                  <a href={att.url} target="_blank" rel="noopener">
-                    <img
-                      src={att.thumb_url || att.url}
-                      alt={att.filename}
-                      style={{
-                        "max-width": "400px",
-                        "max-height": "300px",
-                        "border-radius": "4px",
-                        cursor: "pointer",
-                      }}
-                    />
-                  </a>
-                )}
-              </For>
-            </div>
+          <Show when={props.message.edited_at}>
+            <span style={{ color: "var(--text-muted)", "font-size": "11px" }}> (edited)</span>
           </Show>
-
-          {/* Reactions */}
+          {/* Inline reactions */}
           <Show when={props.message.reactions.length > 0}>
-            <ReactionBar message={props.message} />
+            <span style={{ "margin-left": "6px" }}>
+              <ReactionBar message={props.message} />
+            </span>
           </Show>
-
-          {/* Mobile inline actions */}
-          <Show when={isMobile() && showActions()}>
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                "margin-top": "6px",
-                "padding-top": "4px",
-                "border-top": "1px solid var(--bg-tertiary)",
-              }}
-            >
-              <button
-                onClick={(e) => handleActionClick(e, () => setReplyingTo(props.message))}
-                style={{
-                  padding: "6px 12px",
-                  "font-size": "13px",
-                  "border-radius": "4px",
-                  color: "var(--text-secondary)",
-                  "background-color": "var(--bg-secondary)",
-                }}
-              >
-                Reply
-              </button>
-              <button
-                onClick={(e) =>
-                  handleActionClick(e, () =>
-                    send("add_reaction", {
-                      message_id: props.message.id,
-                      emoji: "\u{1F44D}",
-                    })
-                  )
-                }
-                style={{
-                  padding: "6px 12px",
-                  "font-size": "13px",
-                  "border-radius": "4px",
-                  color: "var(--text-secondary)",
-                  "background-color": "var(--bg-secondary)",
-                }}
-              >
-                +
-              </button>
-              <Show when={canDelete()}>
-                <button
-                  onClick={(e) => handleActionClick(e, handleDelete)}
-                  style={{
-                    padding: "6px 12px",
-                    "font-size": "13px",
-                    "border-radius": "4px",
-                    color: "var(--danger)",
-                    "background-color": "var(--bg-secondary)",
-                  }}
-                >
-                  Del
-                </button>
-              </Show>
-            </div>
-          </Show>
-        </div>
+        </span>
       </div>
 
-      {/* Desktop hover action buttons */}
+      {/* Attachments */}
+      <Show when={props.message.attachments.length > 0}>
+        <div style={{ "padding-left": "7ch", "margin-top": "2px", display: "flex", "flex-wrap": "wrap", gap: "4px" }}>
+          <For each={props.message.attachments}>
+            {(att) => (
+              <a href={att.url} target="_blank" rel="noopener">
+                <img
+                  src={att.thumb_url || att.url}
+                  alt={att.filename}
+                  style={{
+                    "max-width": "400px",
+                    "max-height": "300px",
+                    "border-radius": "2px",
+                    border: "1px solid var(--border-gold)",
+                    cursor: "pointer",
+                  }}
+                />
+              </a>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      {/* Mobile inline actions */}
+      <Show when={isMobile() && showActions()}>
+        <div
+          style={{
+            display: "flex",
+            gap: "4px",
+            "margin-top": "4px",
+            "padding-left": "7ch",
+          }}
+        >
+          <button
+            onClick={(e) => handleActionClick(e, () => setReplyingTo(props.message))}
+            style={{
+              padding: "3px 8px",
+              "font-size": "11px",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border-gold)",
+              "background-color": "var(--bg-secondary)",
+            }}
+          >
+            [reply]
+          </button>
+          <button
+            onClick={(e) =>
+              handleActionClick(e, () =>
+                send("add_reaction", {
+                  message_id: props.message.id,
+                  emoji: "\u{1F44D}",
+                })
+              )
+            }
+            style={{
+              padding: "3px 8px",
+              "font-size": "11px",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border-gold)",
+              "background-color": "var(--bg-secondary)",
+            }}
+          >
+            [react]
+          </button>
+          <Show when={canDelete()}>
+            <button
+              onClick={(e) => handleActionClick(e, handleDelete)}
+              style={{
+                padding: "3px 8px",
+                "font-size": "11px",
+                color: "var(--danger)",
+                border: "1px solid var(--danger)",
+                "background-color": "var(--bg-secondary)",
+              }}
+            >
+              [del]
+            </button>
+          </Show>
+        </div>
+      </Show>
+
+      {/* Desktop hover actions */}
       <Show when={!isMobile() && showActions()}>
         <div
           style={{
             position: "absolute",
-            top: "-8px",
+            top: "-4px",
             right: "16px",
             display: "flex",
-            gap: "2px",
+            gap: "1px",
             "background-color": "var(--bg-secondary)",
-            "border-radius": "4px",
-            padding: "2px",
-            "box-shadow": "0 1px 3px rgba(0,0,0,0.3)",
+            border: "1px solid var(--border-gold)",
+            "z-index": "5",
           }}
         >
           <button
             onClick={() => setReplyingTo(props.message)}
             title="Reply"
             style={{
-              padding: "4px 6px",
-              "font-size": "12px",
-              "border-radius": "3px",
-              color: "var(--text-muted)",
+              padding: "2px 6px",
+              "font-size": "11px",
+              color: "var(--text-secondary)",
             }}
           >
-            Reply
+            [reply]
           </button>
           <button
             onClick={() =>
@@ -302,25 +285,24 @@ export default function MessageItem(props: MessageProps) {
             }
             title="React"
             style={{
-              padding: "4px 6px",
-              "font-size": "12px",
-              "border-radius": "3px",
+              padding: "2px 6px",
+              "font-size": "11px",
+              color: "var(--text-secondary)",
             }}
           >
-            +
+            [+]
           </button>
           <Show when={canDelete()}>
             <button
               onClick={handleDelete}
               title="Delete"
               style={{
-                padding: "4px 6px",
-                "font-size": "12px",
-                "border-radius": "3px",
+                padding: "2px 6px",
+                "font-size": "11px",
                 color: "var(--danger)",
               }}
             >
-              Del
+              [del]
             </button>
           </Show>
         </div>
