@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
     <key>NSMicrophoneUsageDescription</key>
-    <string>GamersGuild needs microphone access for voice chat</string>
+    <string>Le Faux Pain needs microphone access for voice chat</string>
 </dict>
 </plist>

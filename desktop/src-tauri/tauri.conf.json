@@ -1,7 +1,7 @@
 {
-  "productName": "GamersGuild",
+  "productName": "LeFauxPain",
   "version": "1.0.0",
-  "identifier": "com.gamersguild.voicechat",
+  "identifier": "com.lefauxpain.chat",
   "build": {
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
@@ -10,7 +10,7 @@
   "app": {
     "windows": [
       {
-        "title": "GamersGuild",
+        "title": "Le Faux Pain",
         "width": 1200,
         "height": 800,
         "resizable": true

@@ -38,7 +38,7 @@ export default function Sidebar(props: SidebarProps) {
           "border-bottom": "1px solid var(--bg-primary)",
         }}
       >
-        VoiceChat
+        Le Faux Pain
       </div>
 
       {/* Channel list */}

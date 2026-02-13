@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GamersGuild</title>
+  <title>Le Faux Pain</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -146,7 +146,7 @@
 <body>
   <div class="card">
     <div class="crest">&#9876;</div>
-    <h1>GamersGuild</h1>
+    <h1>Le Faux Pain</h1>
     <p class="subtitle">Enter your server address to connect</p>
 
     <form id="connect-form">
@@ -169,8 +169,8 @@
   </div>
 
   <script>
-    const STORAGE_KEY = 'gamersguild_servers';
-    const LAST_KEY = 'gamersguild_last_server';
+    const STORAGE_KEY = 'lefauxpain_servers';
+    const LAST_KEY = 'lefauxpain_last_server';
 
     function getSavedServers() {
       try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }

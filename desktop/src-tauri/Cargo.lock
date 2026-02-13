@@ -824,7 +824,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gamersguild-desktop"
+name = "lefauxpain-desktop"
 version = "1.0.0"
 dependencies = [
  "tauri",

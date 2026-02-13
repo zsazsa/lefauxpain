@@ -48,8 +48,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'GamersGuild ${{ github.ref_name }}'
-          releaseBody: 'Desktop client for GamersGuild voice chat.'
+          releaseName: 'Le Faux Pain ${{ github.ref_name }}'
+          releaseBody: 'Desktop client for Le Faux Pain chat.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

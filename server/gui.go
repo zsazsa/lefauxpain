@@ -59,7 +59,7 @@ import "unsafe"
 const guiMode = true
 
 func runGUI(addr string) {
-	title := C.CString("GamersGuild")
+	title := C.CString("Le Faux Pain")
 	defer C.free(unsafe.Pointer(title))
 	url := C.CString("http://localhost" + addr)
 	defer C.free(unsafe.Pointer(url))
@@ -67,7 +67,7 @@ func runGUI(addr string) {
 }
 
 func runGUIRemote(remoteURL string) {
-	title := C.CString("GamersGuild")
+	title := C.CString("Le Faux Pain")
 	defer C.free(unsafe.Pointer(title))
 	url := C.CString(remoteURL)
 	defer C.free(unsafe.Pointer(url))
