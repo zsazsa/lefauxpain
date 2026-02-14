@@ -7,7 +7,7 @@ interface ChannelItemProps {
 }
 
 export default function ChannelItem(props: ChannelItemProps) {
-  const icon = () => (props.channel.type === "voice" ? "\u{1F50A}" : "#");
+  const icon = () => (props.channel.type === "voice" ? "\u23E3" : "#");
 
   return (
     <div
@@ -42,7 +42,7 @@ export default function ChannelItem(props: ChannelItemProps) {
           "font-size": props.channel.type === "text" ? "16px" : "14px",
           "min-width": "16px",
           "text-align": "center",
-          color: "var(--accent)",
+          color: props.channel.type === "voice" ? "var(--success)" : "var(--accent)",
         }}
       >
         {icon()}

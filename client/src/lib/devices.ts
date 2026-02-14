@@ -22,16 +22,22 @@ export { microphones, speakers, desktopInputs, desktopOutputs };
 
 export const isDesktop = !!(window as any).__DESKTOP__;
 
-function tauriInvoke(cmd: string, args?: any): Promise<any> {
+export function tauriInvoke(cmd: string, args?: any): Promise<any> {
   const internals = (window as any).__TAURI_INTERNALS__;
   if (!internals?.invoke) return Promise.reject("no tauri");
   return internals.invoke(cmd, args);
 }
 
 export async function enumerateDevices() {
+  console.log("[audio] enumerateDevices called, isDesktop:", isDesktop);
+  console.log("[audio] __DESKTOP__:", !!(window as any).__DESKTOP__);
+  console.log("[audio] __AUDIO_DEVICES__:", (window as any).__AUDIO_DEVICES__);
+  console.log("[audio] __TAURI_INTERNALS__:", !!(window as any).__TAURI_INTERNALS__);
+
   // Desktop: read devices injected by Tauri UserScript at page load
   const injected = (window as any).__AUDIO_DEVICES__;
   if (injected && (injected.inputs?.length > 0 || injected.outputs?.length > 0)) {
+    console.log("[audio] Using injected devices:", injected.inputs?.length, "inputs,", injected.outputs?.length, "outputs");
     setDesktopInputs(injected.inputs || []);
     setDesktopOutputs(injected.outputs || []);
     return;
@@ -40,13 +46,16 @@ export async function enumerateDevices() {
   // Also try Tauri IPC if injected data wasn't available
   if (isDesktop) {
     try {
+      console.log("[audio] Trying Tauri IPC list_audio_devices...");
       const result = await tauriInvoke("list_audio_devices");
+      console.log("[audio] IPC result:", result);
       if (result && (result.inputs?.length > 0 || result.outputs?.length > 0)) {
         setDesktopInputs(result.inputs || []);
         setDesktopOutputs(result.outputs || []);
         return;
       }
-    } catch {
+    } catch (e) {
+      console.log("[audio] IPC failed:", e);
       // IPC not available, fall through to browser API
     }
   }

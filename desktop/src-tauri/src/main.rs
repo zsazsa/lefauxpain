@@ -1,8 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod voice;
+
+use std::sync::Arc;
 use tauri::Manager;
 use serde::Serialize;
 use std::process::Command;
+use tokio::sync::Mutex;
+
+use voice::{
+    VoiceEngine,
+    voice_start, voice_stop, voice_handle_offer, voice_handle_ice,
+    voice_set_mute, voice_set_deafen, voice_set_master_volume, voice_set_mic_gain,
+    voice_list_devices, voice_set_input_device, voice_set_output_device,
+};
 
 #[derive(Serialize, Clone)]
 struct AudioDevice {
@@ -96,9 +107,22 @@ fn set_default_audio_device(id: String) -> bool {
 
 fn main() {
     tauri::Builder::default()
+        .manage(Arc::new(Mutex::new(VoiceEngine::new())) as voice::VoiceState)
         .invoke_handler(tauri::generate_handler![
             list_audio_devices,
             set_default_audio_device,
+            // Voice commands
+            voice_start,
+            voice_stop,
+            voice_handle_offer,
+            voice_handle_ice,
+            voice_set_mute,
+            voice_set_deafen,
+            voice_set_master_volume,
+            voice_set_mic_gain,
+            voice_list_devices,
+            voice_set_input_device,
+            voice_set_output_device,
         ])
         .setup(|app| {
             #[cfg(target_os = "linux")]
@@ -109,7 +133,7 @@ fn main() {
                 let devices = get_audio_devices();
                 let devices_json = serde_json::to_string(&devices).unwrap_or_default();
                 let inject_script = format!(
-                    "window.__DESKTOP__ = true; window.__AUDIO_DEVICES__ = {};",
+                    "window.__DESKTOP__ = true; window.__AUDIO_DEVICES__ = {}; console.log('[tauri] RTCPeerConnection available:', typeof RTCPeerConnection !== 'undefined');",
                     devices_json
                 );
 
@@ -125,6 +149,8 @@ fn main() {
                         settings.set_enable_media_stream(true);
                         settings.set_enable_media_capabilities(true);
                         settings.set_media_playback_requires_user_gesture(false);
+                        settings.set_enable_webrtc(true);
+                        eprintln!("[tauri] WebRTC enabled: {}", settings.enables_webrtc());
                     }
                     // Auto-grant microphone permission requests
                     wv.connect_permission_request(|_, request| {
@@ -142,6 +168,8 @@ fn main() {
                         );
                         manager.add_script(&script);
                     }
+                    // Reload so the web process picks up enable_webrtc
+                    wv.reload();
                 })?;
             }
             Ok(())

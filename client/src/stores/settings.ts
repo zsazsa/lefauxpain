@@ -17,7 +17,14 @@ const defaults: AppSettings = {
 function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem("settings");
-    if (raw) return { ...defaults, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = { ...defaults, ...JSON.parse(raw) };
+      // Clear stale wpctl IDs (short numeric strings) that old code may have saved;
+      // browser device IDs are long hex strings, not short numbers
+      if (/^\d{1,5}$/.test(parsed.inputDeviceId)) parsed.inputDeviceId = "";
+      if (/^\d{1,5}$/.test(parsed.outputDeviceId)) parsed.outputDeviceId = "";
+      return parsed;
+    }
   } catch {}
   return { ...defaults };
 }

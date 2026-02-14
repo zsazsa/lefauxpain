@@ -5,7 +5,7 @@ import {
   settingsOpen,
   setSettingsOpen,
 } from "../../stores/settings";
-import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, refreshDesktopDevices } from "../../lib/devices";
+import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
 import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword } from "../../lib/api";
 import { currentUser } from "../../stores/auth";
@@ -24,8 +24,10 @@ type Tab = "account" | "audio" | "admin";
 
 export default function SettingsModal() {
   const [activeTab, setActiveTab] = createSignal<Tab>("account");
-  const [testActive, setTestActive] = createSignal(false);
+  type TestPhase = "idle" | "recording" | "playing";
+  const [testPhase, setTestPhase] = createSignal<TestPhase>("idle");
   const [micLevel, setMicLevel] = createSignal(0);
+  const [recordCountdown, setRecordCountdown] = createSignal(5);
   const [pwInputs, setPwInputs] = createSignal<PwDevice[]>([]);
   const [pwOutputs, setPwOutputs] = createSignal<PwDevice[]>([]);
   const [adminUsers, setAdminUsers] = createSignal<AdminUser[]>([]);
@@ -42,8 +44,13 @@ export default function SettingsModal() {
   let testStream: MediaStream | null = null;
   let testCtx: AudioContext | null = null;
   let testInterval: number | null = null;
+  let pcmChunks: Float32Array[] = [];
+  let countdownTimer: number | null = null;
+  let scriptNode: ScriptProcessorNode | null = null;
 
   const [adminError, setAdminError] = createSignal("");
+  const [selectedPwInput, setSelectedPwInput] = createSignal(localStorage.getItem("pw_input_device") || "");
+  const [selectedPwOutput, setSelectedPwOutput] = createSignal(localStorage.getItem("pw_output_device") || "");
 
   const fetchAdminUsers = async () => {
     setAdminError("");
@@ -129,6 +136,20 @@ export default function SettingsModal() {
     fetchPwDevices();
   });
 
+  // Re-enumerate devices when audio tab is selected (triggers permission grant)
+  createEffect(() => {
+    if (activeTab() === "audio" && !isDesktop) {
+      // Request mic permission briefly to unlock full device labels
+      navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .then((stream) => {
+          stream.getTracks().forEach((t) => t.stop());
+          enumerateDevices();
+        })
+        .catch(() => {});
+    }
+  });
+
   // Fetch admin users when admin tab is selected
   createEffect(() => {
     if (activeTab() === "admin" && currentUser()?.is_admin) {
@@ -164,57 +185,107 @@ export default function SettingsModal() {
 
   const startTest = async () => {
     const s = settings();
+    const audioConstraint = (s.inputDeviceId && !isDesktop)
+      ? { deviceId: { exact: s.inputDeviceId } } as MediaTrackConstraints
+      : true;
     try {
-      testStream = await navigator.mediaDevices.getUserMedia({
-        audio: s.inputDeviceId
-          ? { deviceId: { exact: s.inputDeviceId } }
-          : true,
-      });
+      testStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint });
     } catch {
       return;
     }
+
     testCtx = new AudioContext();
-    if (s.outputDeviceId && "setSinkId" in testCtx) {
-      (testCtx as any).setSinkId(s.outputDeviceId).catch(() => {});
-    }
     const source = testCtx.createMediaStreamSource(testStream);
+
+    // Level meter via AnalyserNode
     const analyser = testCtx.createAnalyser();
     analyser.fftSize = 256;
-    const gain = testCtx.createGain();
-    gain.gain.value = s.micGain * s.masterVolume;
     source.connect(analyser);
-    source.connect(gain);
-    gain.connect(testCtx.destination);
-
-    const data = new Uint8Array(analyser.fftSize);
+    const data = new Float32Array(analyser.fftSize);
     testInterval = window.setInterval(() => {
-      analyser.getByteTimeDomainData(data);
-      let peak = 0;
-      for (let i = 0; i < data.length; i++) {
-        peak = Math.max(peak, Math.abs(data[i] - 128));
-      }
-      setMicLevel(Math.min(peak / 128, 1));
+      analyser.getFloatTimeDomainData(data);
+      let sumSq = 0;
+      for (let i = 0; i < data.length; i++) sumSq += data[i] * data[i];
+      setMicLevel(Math.min(Math.sqrt(sumSq / data.length) * 5, 1));
     }, 50);
 
-    setTestActive(true);
-    enumerateDevices(); // re-enumerate now that we have permission
+    // Record raw PCM via ScriptProcessorNode (bypasses broken MediaRecorder in WebKit2GTK)
+    pcmChunks = [];
+    scriptNode = testCtx.createScriptProcessor(4096, 1, 1);
+    scriptNode.onaudioprocess = (e) => {
+      pcmChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    };
+    source.connect(scriptNode);
+    scriptNode.connect(testCtx.destination); // must connect to destination for processing to run
+
+    setTestPhase("recording");
+    setRecordCountdown(5);
+
+    // Countdown — stop after 5 seconds and play back
+    let remaining = 5;
+    countdownTimer = window.setInterval(() => {
+      remaining--;
+      setRecordCountdown(remaining);
+      if (remaining <= 0) {
+        if (countdownTimer !== null) { clearInterval(countdownTimer); countdownTimer = null; }
+        finishRecording();
+      }
+    }, 1000);
+  };
+
+  const finishRecording = () => {
+    // Stop level meter
+    if (testInterval !== null) { clearInterval(testInterval); testInterval = null; }
+    // Disconnect script node
+    if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
+    // Stop mic
+    if (testStream) { testStream.getTracks().forEach((t) => t.stop()); testStream = null; }
+    setMicLevel(0);
+
+    if (pcmChunks.length === 0 || !testCtx) {
+      if (testCtx) { testCtx.close(); testCtx = null; }
+      setTestPhase("idle");
+      return;
+    }
+
+    // Build AudioBuffer from recorded PCM
+    const sampleRate = testCtx.sampleRate;
+    const totalLength = pcmChunks.reduce((sum, c) => sum + c.length, 0);
+    const playCtx = new AudioContext({ sampleRate });
+    const audioBuffer = playCtx.createBuffer(1, totalLength, sampleRate);
+    const channel = audioBuffer.getChannelData(0);
+    let offset = 0;
+    for (const chunk of pcmChunks) {
+      channel.set(chunk, offset);
+      offset += chunk.length;
+    }
+    pcmChunks = [];
+
+    // Close recording context, play via new context
+    testCtx.close();
+    testCtx = playCtx;
+
+    const bufSource = playCtx.createBufferSource();
+    bufSource.buffer = audioBuffer;
+    bufSource.connect(playCtx.destination);
+    setTestPhase("playing");
+    bufSource.onended = () => {
+      playCtx.close();
+      if (testCtx === playCtx) testCtx = null;
+      setTestPhase("idle");
+    };
+    bufSource.start();
   };
 
   const stopTest = () => {
-    if (testInterval !== null) {
-      clearInterval(testInterval);
-      testInterval = null;
-    }
-    if (testStream) {
-      testStream.getTracks().forEach((t) => t.stop());
-      testStream = null;
-    }
-    if (testCtx) {
-      testCtx.close();
-      testCtx = null;
-    }
+    if (countdownTimer !== null) { clearInterval(countdownTimer); countdownTimer = null; }
+    if (testInterval !== null) { clearInterval(testInterval); testInterval = null; }
+    if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
+    pcmChunks = [];
+    if (testStream) { testStream.getTracks().forEach((t) => t.stop()); testStream = null; }
+    if (testCtx) { testCtx.close(); testCtx = null; }
     setMicLevel(0);
-    setTestActive(false);
+    setTestPhase("idle");
   };
 
   const tabs = (): { id: Tab; label: string }[] => {
@@ -438,155 +509,185 @@ export default function SettingsModal() {
                 <label style={{ ...labelStyle, "margin-top": "16px" }}>
                   Input Device
                 </label>
-                {() => {
-                  // Desktop Tauri: local wpctl devices
-                  if (desktopInputs().length > 0) {
-                    return (
-                      <select
-                        value={desktopInputs().find((d) => d.default)?.id || ""}
-                        onChange={(e) => {
-                          const id = e.currentTarget.value;
-                          if (id) setDesktopDefaultDevice(id).then(() => refreshDesktopDevices());
-                        }}
-                        style={selectStyle}
-                      >
-                        <For each={desktopInputs()}>
-                          {(dev) => (
-                            <option value={dev.id}>
-                              {dev.name}{dev.default ? " (Default)" : ""}
-                            </option>
-                          )}
-                        </For>
-                      </select>
-                    );
-                  }
-                  // Server PipeWire devices
-                  if (pwInputs().length > 0) {
-                    return (
-                      <select
-                        value={pwInputs().find((d) => d.default)?.id || ""}
-                        onChange={(e) => {
-                          const id = e.currentTarget.value;
-                          if (id) setAudioDevice(id, "input").then(fetchPwDevices);
-                        }}
-                        style={selectStyle}
-                      >
-                        <For each={pwInputs()}>
-                          {(dev) => (
-                            <option value={dev.id}>
-                              {dev.name}{dev.default ? " (Default)" : ""}
-                            </option>
-                          )}
-                        </For>
-                      </select>
-                    );
-                  }
-                  // Browser fallback
-                  return (
-                    <select
-                      value={settings().inputDeviceId}
-                      onChange={(e) =>
-                        updateSettings({ inputDeviceId: e.currentTarget.value })
+                <Show when={desktopInputs().length > 0}>
+                  <select
+                    value={selectedPwInput() && desktopInputs().some((d) => d.id === selectedPwInput())
+                      ? selectedPwInput()
+                      : desktopInputs().find((d) => d.default)?.id || ""}
+                    onChange={(e) => {
+                      const id = e.currentTarget.value;
+                      if (id) {
+                        setSelectedPwInput(id);
+                        localStorage.setItem("pw_input_device", id);
+                        setDesktopDefaultDevice(id);
                       }
-                      style={selectStyle}
-                    >
-                      <option value="">Default</option>
-                      <For each={microphones()}>
-                        {(mic) => (
-                          <option value={mic.deviceId}>{mic.label}</option>
-                        )}
-                      </For>
-                    </select>
-                  );
-                }}
+                    }}
+                    style={selectStyle}
+                  >
+                    <For each={desktopInputs()}>
+                      {(dev) => (
+                        <option value={dev.id}>
+                          {dev.name}{dev.default ? " (Default)" : ""}
+                        </option>
+                      )}
+                    </For>
+                  </select>
+                </Show>
+                <Show when={desktopInputs().length === 0 && pwInputs().length > 0}>
+                  <select
+                    value={selectedPwInput() && pwInputs().some((d) => d.id === selectedPwInput())
+                      ? selectedPwInput()
+                      : pwInputs().find((d) => d.default)?.id || ""}
+                    onChange={(e) => {
+                      const id = e.currentTarget.value;
+                      if (id) {
+                        setSelectedPwInput(id);
+                        localStorage.setItem("pw_input_device", id);
+                        setAudioDevice(id, "input");
+                      }
+                    }}
+                    style={selectStyle}
+                  >
+                    <For each={pwInputs()}>
+                      {(dev) => (
+                        <option value={dev.id}>
+                          {dev.name}{dev.default ? " (Default)" : ""}
+                        </option>
+                      )}
+                    </For>
+                  </select>
+                </Show>
+                <Show when={desktopInputs().length === 0 && pwInputs().length === 0}>
+                  {(() => {
+                    const inputVal = () => {
+                      const stored = settings().inputDeviceId;
+                      if (stored && microphones().some((m) => m.deviceId === stored)) return stored;
+                      return "";
+                    };
+                    return (
+                      <select
+                        value={inputVal()}
+                        onChange={(e) =>
+                          updateSettings({ inputDeviceId: e.currentTarget.value })
+                        }
+                        style={selectStyle}
+                      >
+                        <option value="">Default</option>
+                        <For each={microphones()}>
+                          {(mic) => (
+                            <option value={mic.deviceId}>{mic.label}</option>
+                          )}
+                        </For>
+                      </select>
+                    );
+                  })()}
+                </Show>
 
                 {/* Output device */}
                 <label style={{ ...labelStyle, "margin-top": "16px" }}>
                   Output Device
                 </label>
-                {() => {
-                  // Desktop Tauri: local wpctl devices
-                  if (desktopOutputs().length > 0) {
-                    return (
-                      <select
-                        value={desktopOutputs().find((d) => d.default)?.id || ""}
-                        onChange={(e) => {
-                          const id = e.currentTarget.value;
-                          if (id) setDesktopDefaultDevice(id).then(() => refreshDesktopDevices());
-                        }}
-                        style={selectStyle}
-                      >
-                        <For each={desktopOutputs()}>
-                          {(dev) => (
-                            <option value={dev.id}>
-                              {dev.name}{dev.default ? " (Default)" : ""}
-                            </option>
-                          )}
-                        </For>
-                      </select>
-                    );
-                  }
-                  // Server PipeWire devices
-                  if (pwOutputs().length > 0) {
-                    return (
-                      <select
-                        value={pwOutputs().find((d) => d.default)?.id || ""}
-                        onChange={(e) => {
-                          const id = e.currentTarget.value;
-                          if (id) setAudioDevice(id, "output").then(fetchPwDevices);
-                        }}
-                        style={selectStyle}
-                      >
-                        <For each={pwOutputs()}>
-                          {(dev) => (
-                            <option value={dev.id}>
-                              {dev.name}{dev.default ? " (Default)" : ""}
-                            </option>
-                          )}
-                        </For>
-                      </select>
-                    );
-                  }
-                  // Browser fallback
-                  return (
-                    <select
-                      value={settings().outputDeviceId}
-                      onChange={(e) =>
-                        updateSettings({ outputDeviceId: e.currentTarget.value })
+                <Show when={desktopOutputs().length > 0}>
+                  <select
+                    value={selectedPwOutput() && desktopOutputs().some((d) => d.id === selectedPwOutput())
+                      ? selectedPwOutput()
+                      : desktopOutputs().find((d) => d.default)?.id || ""}
+                    onChange={(e) => {
+                      const id = e.currentTarget.value;
+                      if (id) {
+                        setSelectedPwOutput(id);
+                        localStorage.setItem("pw_output_device", id);
+                        setDesktopDefaultDevice(id);
                       }
-                      style={selectStyle}
-                    >
-                      <option value="">Default</option>
-                      <For each={speakers()}>
-                        {(spk) => (
-                          <option value={spk.deviceId}>{spk.label}</option>
-                        )}
-                      </For>
-                    </select>
-                  );
-                }}
+                    }}
+                    style={selectStyle}
+                  >
+                    <For each={desktopOutputs()}>
+                      {(dev) => (
+                        <option value={dev.id}>
+                          {dev.name}{dev.default ? " (Default)" : ""}
+                        </option>
+                      )}
+                    </For>
+                  </select>
+                </Show>
+                <Show when={desktopOutputs().length === 0 && pwOutputs().length > 0}>
+                  <select
+                    value={selectedPwOutput() && pwOutputs().some((d) => d.id === selectedPwOutput())
+                      ? selectedPwOutput()
+                      : pwOutputs().find((d) => d.default)?.id || ""}
+                    onChange={(e) => {
+                      const id = e.currentTarget.value;
+                      if (id) {
+                        setSelectedPwOutput(id);
+                        localStorage.setItem("pw_output_device", id);
+                        setAudioDevice(id, "output");
+                      }
+                    }}
+                    style={selectStyle}
+                  >
+                    <For each={pwOutputs()}>
+                      {(dev) => (
+                        <option value={dev.id}>
+                          {dev.name}{dev.default ? " (Default)" : ""}
+                        </option>
+                      )}
+                    </For>
+                  </select>
+                </Show>
+                <Show when={desktopOutputs().length === 0 && pwOutputs().length === 0}>
+                  {(() => {
+                    const outputVal = () => {
+                      const stored = settings().outputDeviceId;
+                      if (stored && speakers().some((s) => s.deviceId === stored)) return stored;
+                      return "";
+                    };
+                    return (
+                      <select
+                        value={outputVal()}
+                        onChange={(e) =>
+                          updateSettings({ outputDeviceId: e.currentTarget.value })
+                        }
+                        style={selectStyle}
+                      >
+                        <option value="">Default</option>
+                        <For each={speakers()}>
+                          {(spk) => (
+                            <option value={spk.deviceId}>{spk.label}</option>
+                          )}
+                        </For>
+                      </select>
+                    );
+                  })()}
+                </Show>
 
                 {/* Mic Test */}
                 <div style={{ "margin-top": "20px" }}>
                   <button
-                    onClick={() => (testActive() ? stopTest() : startTest())}
+                    onClick={() => (testPhase() !== "idle" ? stopTest() : startTest())}
+                    disabled={testPhase() === "playing"}
                     style={{
                       padding: "6px 16px",
                       "font-size": "12px",
-                      border: testActive()
+                      border: testPhase() !== "idle"
                         ? "1px solid var(--danger)"
                         : "1px solid var(--accent)",
-                      "background-color": testActive()
+                      "background-color": testPhase() !== "idle"
                         ? "rgba(232,64,64,0.15)"
                         : "var(--accent-glow)",
-                      color: testActive() ? "var(--danger)" : "var(--accent)",
+                      color: testPhase() !== "idle" ? "var(--danger)" : "var(--accent)",
                       "font-weight": "600",
                       width: "100%",
+                      opacity: testPhase() === "playing" ? "0.6" : "1",
                     }}
                   >
-                    {testActive() ? "[stop mic test]" : "[test microphone]"}
+                    {testPhase() === "recording"
+                      ? `[recording... ${recordCountdown()}s]`
+                      : testPhase() === "playing"
+                        ? "[playing back...]"
+                        : "[test microphone]"}
                   </button>
-                  <Show when={testActive()}>
+                  <Show when={testPhase() === "recording"}>
                     <div
                       style={{
                         "margin-top": "8px",
@@ -617,7 +718,18 @@ export default function SettingsModal() {
                         "margin-top": "4px",
                       }}
                     >
-                      Speak now — you should hear yourself through your speakers
+                      Speak now — recording for {recordCountdown()} seconds...
+                    </div>
+                  </Show>
+                  <Show when={testPhase() === "playing"}>
+                    <div
+                      style={{
+                        "font-size": "11px",
+                        color: "var(--accent)",
+                        "margin-top": "8px",
+                      }}
+                    >
+                      Playing back your recording...
                     </div>
                   </Show>
                 </div>

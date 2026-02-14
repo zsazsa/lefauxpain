@@ -1,4 +1,4 @@
-import { onMessage, type WSMessage } from "./ws";
+import { onMessage, send, type WSMessage } from "./ws";
 import { setUser, currentUser } from "../stores/auth";
 import {
   setChannelList,
@@ -23,6 +23,7 @@ import { setVoiceStateList, updateVoiceState, currentVoiceChannelId, voiceStates
 import { setNotificationList, addNotification } from "../stores/notifications";
 import { handleWebRTCOffer, handleWebRTCICE } from "./webrtc";
 import { playJoinSound, playLeaveSound } from "./sounds";
+import { isDesktop } from "./devices";
 
 // Typing state: channelId -> { userId -> timeout }
 type TypingState = Record<string, Record<string, number>>;
@@ -45,7 +46,87 @@ function notifyTyping() {
   typingListeners.forEach((fn) => fn());
 }
 
+/** Register Tauri event listeners for Rust→Frontend voice events. */
+function initDesktopVoiceEvents() {
+  if (!isDesktop) return;
+
+  const internals = (window as any).__TAURI_INTERNALS__;
+  if (!internals?.invoke) return;
+
+  // Tauri 2 event listening via __TAURI_INTERNALS__
+  const listen = (window as any).__TAURI_INTERNALS__?.plugins?.event?.listen;
+
+  // Use the Tauri global API if available
+  try {
+    const tauriEvent = (window as any).__TAURI__?.event;
+    if (tauriEvent?.listen) {
+      // voice:ice_candidate → forward to server over WS
+      tauriEvent.listen("voice:ice_candidate", (event: any) => {
+        const { candidate, sdpMid, sdpMLineIndex } = event.payload;
+        send("webrtc_ice", {
+          candidate: { candidate, sdpMid, sdpMLineIndex },
+        });
+      });
+
+      // voice:speaking → forward to server over WS
+      tauriEvent.listen("voice:speaking", (event: any) => {
+        send("voice_speaking", { speaking: event.payload.speaking });
+      });
+
+      // voice:connection_state → log for debugging
+      tauriEvent.listen("voice:connection_state", (event: any) => {
+        console.log("[voice] Native connection state:", event.payload.state);
+      });
+
+      console.log("[voice] Desktop voice event listeners registered");
+      return;
+    }
+  } catch {}
+
+  // Fallback: use __TAURI_INTERNALS__.invoke to register listeners
+  // Tauri 2 with withGlobalTauri exposes window.__TAURI_INTERNALS__
+  // We use the core:event:listen command directly
+  function tauriListen(eventName: string, handler: (payload: any) => void) {
+    // Create a callback that Tauri can call
+    const callbackId = `_${Math.random().toString(36).slice(2)}`;
+    (window as any)[callbackId] = (event: any) => {
+      handler(event.payload);
+    };
+
+    internals.invoke("plugin:event|listen", {
+      event: eventName,
+      target: { kind: "Any" },
+      handler: { handler: callbackId },
+    }).catch((e: any) => {
+      console.warn(`[voice] Failed to listen for ${eventName}:`, e);
+    });
+  }
+
+  tauriListen("voice:ice_candidate", (payload: any) => {
+    send("webrtc_ice", {
+      candidate: {
+        candidate: payload.candidate,
+        sdpMid: payload.sdpMid,
+        sdpMLineIndex: payload.sdpMLineIndex,
+      },
+    });
+  });
+
+  tauriListen("voice:speaking", (payload: any) => {
+    send("voice_speaking", { speaking: payload.speaking });
+  });
+
+  tauriListen("voice:connection_state", (payload: any) => {
+    console.log("[voice] Native connection state:", payload.state);
+  });
+
+  console.log("[voice] Desktop voice event listeners registered (fallback)");
+}
+
 export function initEventHandlers() {
+  // Set up desktop voice event listeners (Rust → Frontend)
+  initDesktopVoiceEvents();
+
   return onMessage((msg: WSMessage) => {
     switch (msg.op) {
       case "ready":
