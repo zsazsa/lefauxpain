@@ -1,261 +1,319 @@
-# Screen Sharing — Architecture & Implementation Plan
+# Screen Sharing — Architecture
 
-## Overview
+## Goal
 
-Add screen sharing (video + system audio where possible) to GamersGuild voice channels. A user in a voice channel can share their screen; other users in the same channel see the video stream and hear the audio. One active screen share per channel at a time.
+Any user in a voice channel can share their screen. Any logged-in user can watch — they do **not** need to join voice. Screen share carries its own audio (game sounds, music, video playback). The presenter's microphone stays on the voice channel, separate from the screen share stream.
 
-## Current Architecture
-
-### SFU (server/sfu/)
-- Pion-based Selective Forwarding Unit
-- `MediaEngine` registers **Opus only** — no video codecs
-- One `Room` per voice channel, one `Peer` per user
-- Each peer has one `PeerConnection` with a single recv-only audio transceiver
-- `OnTrack` creates a `TrackLocalStaticRTP` and forwards RTP to all other peers
-- Renegotiation happens when peers join/leave (new offer sent via WS)
-
-### WebRTC Client (client/src/lib/webrtc.ts)
-- Single `RTCPeerConnection` per session
-- Adds local audio track from `getUserMedia`
-- `ontrack` feeds incoming streams into an audio pipeline (gain nodes)
-- No video handling
-
-### Signaling (server/ws/)
-- `join_voice`, `leave_voice` — room management
-- `webrtc_offer`, `webrtc_answer`, `webrtc_ice` — SDP/ICE exchange
-- `voice_self_mute`, `voice_self_deafen`, `voice_speaking` — state updates
-
-### Voice State (stores/voice.ts, sfu/peer.go)
-- `VoiceState`: user_id, channel_id, self_mute, self_deafen, server_mute, speaking
-- No screen sharing fields
+One active screen share per voice channel at a time.
 
 ---
 
-## Design
+## How It Works (User's Perspective)
 
-### Approach: Separate PeerConnection for Screen Share
+**Presenter (in voice channel):**
+1. Joins a voice channel (existing flow)
+2. Clicks [SHARE] button in voice controls
+3. OS picker appears — choose screen/window/tab
+4. Other users see "Alice is sharing" indicator
+5. Clicks [STOP] to end, or the OS "Stop sharing" button ends it
 
-Use a **second PeerConnection** dedicated to screen sharing, rather than adding video tracks to the existing voice PC. Reasons:
+**Viewer (any logged-in user):**
+1. Sees "Alice is sharing in General" in the sidebar
+2. Clicks it — video appears in the main content area
+3. Hears screen audio (game sounds, etc.) without joining voice
+4. Can optionally join voice to talk while watching
+5. Closes the viewer or navigates away to stop watching
 
-1. **Isolation** — screen share lifecycle is independent of voice. Starting/stopping a share doesn't renegotiate the voice connection.
-2. **Codec flexibility** — the voice PC uses Opus-only MediaEngine. Screen share needs VP8/VP9 + Opus. A separate MediaEngine avoids polluting the voice path.
-3. **Simpler cleanup** — closing the screen share PC tears down exactly the screen share. No risk of disrupting audio.
-4. **Bandwidth control** — can apply different bitrate/resolution constraints to the screen share PC.
+**Key:** Voice and screen share are independent streams. You can:
+- Be in voice without watching the screen share
+- Watch the screen share without being in voice
+- Do both at the same time
+
+---
+
+## Architecture
+
+### Separation of Concerns
+
+```
+Voice Channel                     Screen Share
+─────────────                     ────────────
+PeerConnection A (voice)          PeerConnection B (screen)
+  └── Audio tracks (Opus)           ├── Video track (VP8)
+  └── Existing SFU Room             └── Audio track (Opus, screen audio)
+  └── Requires join_voice            └── Separate ScreenRoom in SFU
+  └── Mutual: everyone sends         └── One-to-many: 1 sender, N receivers
+      and receives audio                 Viewers are recv-only
+```
+
+Two completely separate PeerConnections. The voice PC uses the existing audio-only MediaEngine. The screen share PC uses a new MediaEngine with VP8 + Opus. They don't interfere with each other.
 
 ### Data Flow
 
 ```
-Presenter                          SFU                         Viewer
-   |                                |                            |
-   |-- getDisplayMedia() -------->  |                            |
-   |   (video + audio tracks)       |                            |
-   |                                |                            |
-   |-- screen_share_start -------> |                             |
-   |                                | -- screen_share_started -> |
-   |                                |    (broadcasts to room)    |
-   |                                |                            |
-   |<---- webrtc_screen_offer ---- |                             |
-   |---- webrtc_screen_answer ---> |                             |
-   |                                | -- webrtc_screen_offer --> |
-   |                                | <-- webrtc_screen_answer - |
-   |                                |                            |
-   |==== RTP video + audio ======> | ===== forward RTP =======> |
-   |                                |                            |
-   |-- screen_share_stop --------> |                             |
-   |                                | -- screen_share_stopped -> |
+Presenter                           SFU                          Viewer
+   │                                 │                             │
+   │  getDisplayMedia()              │                             │
+   │  (video + screen audio)         │                             │
+   │                                 │                             │
+   │── screen_share_start ─────────> │                             │
+   │                                 │── screen_share_started ───> │ (broadcast to ALL online)
+   │                                 │                             │
+   │<── webrtc_screen_offer ──────── │                             │
+   │── webrtc_screen_answer ───────> │                             │
+   │                                 │                             │
+   │                                 │        Viewer clicks "watch"│
+   │                                 │ <── screen_share_subscribe ─│
+   │                                 │── webrtc_screen_offer ────> │
+   │                                 │ <── webrtc_screen_answer ── │
+   │                                 │                             │
+   │═══ RTP video + audio ════════> │ ═══ forward to viewers ═══> │
+   │                                 │                             │
+   │── screen_share_stop ──────────> │                             │
+   │                                 │── screen_share_stopped ───> │ (broadcast to ALL online)
 ```
 
-### One Share Per Channel
+### SFU Changes
 
-The SFU enforces a single active screen share per room. If user A is sharing and user B tries to share, the server rejects it with an error message.
-
----
-
-## Implementation
-
-### Phase 1: SFU — Video Codec Support
-
-**File: `server/sfu/sfu.go`**
-
-Create a second `webrtc.API` instance for screen sharing with a MediaEngine that supports video codecs:
+#### New ScreenRoom (separate from voice Room)
 
 ```go
-// Screen share media engine: VP8 + Opus
-screenME := &webrtc.MediaEngine{}
-screenME.RegisterCodec(webrtc.RTPCodecParameters{
-    RTPCodecCapability: webrtc.RTPCodecCapability{
-        MimeType:  webrtc.MimeTypeVP8,
-        ClockRate: 90000,
-    },
-    PayloadType: 96,
-}, webrtc.RTPCodecTypeVideo)
-screenME.RegisterCodec(webrtc.RTPCodecParameters{
-    RTPCodecCapability: webrtc.RTPCodecCapability{
-        MimeType:    webrtc.MimeTypeOpus,
-        ClockRate:   48000,
-        Channels:    2,
-        SDPFmtpLine: "minptime=10;useinbandfec=1",
-    },
-    PayloadType: 111,
-}, webrtc.RTPCodecTypeAudio)
-```
+// server/sfu/screen_room.go
 
-Add NACK + PLI (Picture Loss Indication) interceptors for video reliability:
-
-```go
-// Add PLI for video keyframe requests
-ir.Add(nack.NewResponderInterceptor())
-ir.Add(nack.NewGeneratorInterceptor())
-// Register PLI/FIR for video
-webrtc.RegisterDefaultInterceptors(screenME, ir)
-```
-
-Store as `sfu.screenAPI`.
-
-### Phase 2: SFU — Screen Share Room Logic
-
-**File: `server/sfu/room.go`**
-
-Add screen share state to `Room`:
-
-```go
-type Room struct {
-    // ... existing fields ...
-    screenShareUserID string                       // who is sharing (empty = nobody)
-    screenPeers       map[string]*ScreenPeer       // viewer PCs
-    screenPresenter   *ScreenPresenter             // presenter PC
+type ScreenRoom struct {
+    ChannelID     string
+    PresenterID   string
+    presenterPC   *webrtc.PeerConnection
+    videoTrack    *webrtc.TrackLocalStaticRTP   // forwarding track
+    audioTrack    *webrtc.TrackLocalStaticRTP   // forwarding track (may be nil)
+    viewers       map[string]*ScreenViewer      // userID → viewer
+    mu            sync.RWMutex
 }
 
-type ScreenPresenter struct {
-    UserID      string
-    pc          *webrtc.PeerConnection
-    videoTrack  *webrtc.TrackLocalStaticRTP
-    audioTrack  *webrtc.TrackLocalStaticRTP  // may be nil (no audio)
-}
-
-type ScreenPeer struct {
+type ScreenViewer struct {
     UserID string
     pc     *webrtc.PeerConnection
 }
 ```
 
-New methods:
+**Why a separate struct instead of extending Room?**
+- Voice Room peers are mutual (everyone sends + receives audio). Screen share is one-to-many (one sender, N receivers).
+- Viewers don't need to be in the voice Room at all.
+- Lifecycle is independent — screen share can start/stop without disrupting voice connections.
+- Different codec requirements (VP8 video vs audio-only).
 
-- `StartScreenShare(userID string) error` — reject if someone else is sharing. Create a PeerConnection with recv-only video + recv-only audio transceivers. Send offer to presenter. Set `screenShareUserID`.
-- `StopScreenShare(userID string)` — close presenter PC, close all viewer PCs, clear state.
-- `AddScreenViewer(userID string) error` — create a send-only PC for a viewer. Add the presenter's local tracks. Send offer.
-- `RemoveScreenViewer(userID string)` — close viewer PC.
-- `HandleScreenAnswer(userID, sdp)` — route to presenter or viewer PC.
-- `HandleScreenICE(userID, candidate)` — route to presenter or viewer PC.
+#### Separate MediaEngine + API
 
-When the presenter's `OnTrack` fires (video and/or audio), create local forwarding tracks and add them to all existing viewer PCs (renegotiate).
+```go
+// server/sfu/sfu.go — add alongside existing voice API
 
-When a new user joins the voice channel while a screen share is active, automatically call `AddScreenViewer` for them.
+func newScreenAPI(publicIP string) *webrtc.API {
+    me := &webrtc.MediaEngine{}
 
-When a user leaves the voice channel, call `RemoveScreenViewer`. If the presenter leaves, call `StopScreenShare`.
+    // VP8 for video
+    me.RegisterCodec(webrtc.RTPCodecParameters{
+        RTPCodecCapability: webrtc.RTPCodecCapability{
+            MimeType:  webrtc.MimeTypeVP8,
+            ClockRate: 90000,
+        },
+        PayloadType: 96,
+    }, webrtc.RTPCodecTypeVideo)
 
-### Phase 3: Signaling — New WebSocket Messages
+    // Opus for screen audio (game sounds, music)
+    me.RegisterCodec(webrtc.RTPCodecParameters{
+        RTPCodecCapability: webrtc.RTPCodecCapability{
+            MimeType:    webrtc.MimeTypeOpus,
+            ClockRate:   48000,
+            Channels:    2,
+            SDPFmtpLine: "minptime=10;useinbandfec=1",
+        },
+        PayloadType: 111,
+    }, webrtc.RTPCodecTypeAudio)
 
-**File: `server/ws/handlers.go`**
+    // NACK + PLI for video reliability
+    ir := &interceptor.Registry{}
+    if err := webrtc.RegisterDefaultInterceptors(me, ir); err != nil {
+        log.Fatal(err)
+    }
 
-New operations:
+    return webrtc.NewAPI(
+        webrtc.WithMediaEngine(me),
+        webrtc.WithInterceptorRegistry(ir),
+    )
+}
+```
 
-| Client → Server | Payload | Server Action |
-|----------------|---------|---------------|
-| `screen_share_start` | `{}` | Call `room.StartScreenShare(userID)`. Broadcast `screen_share_started` to room. |
-| `screen_share_stop` | `{}` | Call `room.StopScreenShare(userID)`. Broadcast `screen_share_stopped` to room. |
-| `webrtc_screen_answer` | `{ sdp: string }` | Route to `room.HandleScreenAnswer(userID, sdp)` |
-| `webrtc_screen_ice` | `{ candidate: ICECandidateInit }` | Route to `room.HandleScreenICE(userID, candidate)` |
+#### ScreenRoom Methods
 
-| Server → Client | Payload | Trigger |
-|----------------|---------|---------|
-| `screen_share_started` | `{ user_id: string }` | Broadcast when share begins |
-| `screen_share_stopped` | `{ user_id: string }` | Broadcast when share ends |
-| `webrtc_screen_offer` | `{ sdp: string }` | SFU sends offer for screen share PC |
-| `webrtc_screen_ice` | `{ candidate: ICECandidateInit }` | SFU sends ICE candidate for screen share PC |
-| `screen_share_error` | `{ error: string }` | Rejection (e.g., someone else is already sharing) |
+```
+StartShare(presenterID) error
+    - Reject if already active
+    - Create recv-only PeerConnection for presenter (receives their video+audio)
+    - Send webrtc_screen_offer to presenter
+    - On presenter's OnTrack: create forwarding TrackLocalStaticRTP
+    - Store in sfu.screenRooms[channelID]
 
-**File: `server/ws/protocol.go`**
+StopShare()
+    - Close presenter PC
+    - Close all viewer PCs
+    - Remove from sfu.screenRooms
+    - Broadcast screen_share_stopped
 
-Add to `VoiceStatePayload`:
+AddViewer(userID) error
+    - Create send-only PeerConnection for viewer
+    - Add forwarding tracks (video + audio) to viewer PC
+    - Send webrtc_screen_offer to viewer
+
+RemoveViewer(userID)
+    - Close viewer PC, remove from map
+
+HandleScreenAnswer(userID, sdp)
+    - Route to presenter or viewer PC based on userID
+
+HandleScreenICE(userID, candidate)
+    - Route to presenter or viewer PC based on userID
+```
+
+#### SFU Struct Additions
+
+```go
+type SFU struct {
+    // existing
+    rooms    map[string]*Room
+    api      *webrtc.API   // voice (Opus-only)
+
+    // new
+    screenRooms map[string]*ScreenRoom
+    screenAPI   *webrtc.API  // screen share (VP8 + Opus)
+}
+```
+
+### WebSocket Protocol
+
+#### Client → Server
+
+| Op | Payload | Who | Description |
+|----|---------|-----|-------------|
+| `screen_share_start` | `{}` | Presenter (must be in voice) | Start sharing screen |
+| `screen_share_stop` | `{}` | Presenter | Stop sharing |
+| `screen_share_subscribe` | `{ channel_id }` | Any logged-in user | Start watching |
+| `screen_share_unsubscribe` | `{ channel_id }` | Viewer | Stop watching |
+| `webrtc_screen_answer` | `{ sdp }` | Presenter or Viewer | SDP answer for screen PC |
+| `webrtc_screen_ice` | `{ candidate }` | Presenter or Viewer | ICE candidate for screen PC |
+
+#### Server → Client
+
+| Op | Payload | To | Description |
+|----|---------|-----|-------------|
+| `screen_share_started` | `{ user_id, channel_id }` | All online | Someone started sharing |
+| `screen_share_stopped` | `{ user_id, channel_id }` | All online | Sharing ended |
+| `webrtc_screen_offer` | `{ sdp }` | Presenter or Viewer | SDP offer for screen PC |
+| `webrtc_screen_ice` | `{ candidate }` | Presenter or Viewer | ICE candidate for screen PC |
+| `screen_share_error` | `{ error }` | Requester | Rejection message |
+
+#### Ready Payload Addition
+
+Include active screen shares in the `ready` response so clients connecting mid-share know what's happening:
+
+```go
+type ReadyData struct {
+    // existing fields...
+    ScreenShares []ScreenShareState `json:"screen_shares"`
+}
+
+type ScreenShareState struct {
+    UserID    string `json:"user_id"`
+    ChannelID string `json:"channel_id"`
+}
+```
+
+### Voice State Addition
+
+Add `screen_sharing` to `VoiceStatePayload` so the sidebar can show who is sharing:
 
 ```go
 type VoiceStatePayload struct {
-    // ... existing fields ...
+    // existing fields...
     ScreenSharing bool `json:"screen_sharing"`
 }
 ```
 
-Include `ScreenSharing` in the `ready` payload so clients know the current state on connect.
+---
 
-### Phase 4: Frontend — Screen Share WebRTC
+## Frontend
 
-**File: `client/src/lib/screenshare.ts`** (new)
+### New File: `client/src/lib/screenshare.ts`
+
+Manages the screen share PeerConnection (separate from voice PC in webrtc.ts).
 
 ```typescript
 let screenPC: RTCPeerConnection | null = null;
-let screenStream: MediaStream | null = null;
+let screenStream: MediaStream | null = null;  // presenter only
+let isPresenting = false;
 
 export async function startScreenShare() {
-    // 1. getDisplayMedia (platform-dependent, see Phase 6)
     screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { max: 30 } },
-        audio: true,  // request audio — may be denied by platform
+        audio: true,  // screen audio — ignored if platform doesn't support it
     });
 
-    // 2. Signal server
-    send("screen_share_start", {});
+    // Handle user clicking "Stop sharing" in OS UI
+    screenStream.getVideoTracks()[0].onended = () => stopScreenShare();
 
-    // 3. Handle the track ending (user clicks "Stop sharing" in browser/OS UI)
-    screenStream.getVideoTracks()[0].onended = () => {
-        stopScreenShare();
-    };
+    isPresenting = true;
+    send("screen_share_start", {});
 }
 
 export function stopScreenShare() {
-    if (screenStream) {
-        screenStream.getTracks().forEach(t => t.stop());
-        screenStream = null;
-    }
-    if (screenPC) {
-        screenPC.close();
-        screenPC = null;
-    }
+    screenStream?.getTracks().forEach(t => t.stop());
+    screenStream = null;
+    screenPC?.close();
+    screenPC = null;
+    isPresenting = false;
     send("screen_share_stop", {});
+    setScreenShareStream(null);
+    setScreenShareUserId(null);
 }
 
-// Called when SFU sends an offer for the screen share PC
-export function handleScreenOffer(sdp: string) {
-    // If we are the presenter:
-    if (screenStream) {
-        screenPC = new RTCPeerConnection({ iceServers: [...] });
+export function subscribeScreenShare(channelId: string) {
+    send("screen_share_subscribe", { channel_id: channelId });
+}
+
+export function unsubscribeScreenShare(channelId: string) {
+    screenPC?.close();
+    screenPC = null;
+    send("screen_share_unsubscribe", { channel_id: channelId });
+    setScreenShareStream(null);
+}
+
+// Called when SFU sends webrtc_screen_offer
+export async function handleScreenOffer(sdp: string) {
+    screenPC = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+
+    if (isPresenting && screenStream) {
+        // Presenter: add local screen tracks to PC
         screenStream.getTracks().forEach(track => {
             screenPC!.addTrack(track, screenStream!);
         });
-        screenPC.onicecandidate = (e) => {
-            if (e.candidate) send("webrtc_screen_ice", { candidate: e.candidate.toJSON() });
+    } else {
+        // Viewer: receive tracks
+        screenPC.ontrack = (event) => {
+            setScreenShareStream(event.streams[0] || new MediaStream([event.track]));
         };
-        screenPC.setRemoteDescription({ type: "offer", sdp })
-            .then(() => screenPC!.createAnswer())
-            .then(answer => screenPC!.setLocalDescription(answer))
-            .then(() => send("webrtc_screen_answer", { sdp: screenPC!.localDescription!.sdp }));
-        return;
     }
 
-    // If we are a viewer:
-    screenPC = new RTCPeerConnection({ iceServers: [...] });
-    screenPC.ontrack = (event) => {
-        // event.track.kind === "video" → display in UI
-        // event.track.kind === "audio" → play through speakers
-        setScreenShareStream(event.streams[0]);  // update store
-    };
     screenPC.onicecandidate = (e) => {
-        if (e.candidate) send("webrtc_screen_ice", { candidate: e.candidate.toJSON() });
+        if (e.candidate) {
+            send("webrtc_screen_ice", { candidate: e.candidate.toJSON() });
+        }
     };
-    screenPC.setRemoteDescription({ type: "offer", sdp })
-        .then(() => screenPC!.createAnswer())
-        .then(answer => screenPC!.setLocalDescription(answer))
-        .then(() => send("webrtc_screen_answer", { sdp: screenPC!.localDescription!.sdp }));
+
+    await screenPC.setRemoteDescription({ type: "offer", sdp });
+    const answer = await screenPC.createAnswer();
+    await screenPC.setLocalDescription(answer);
+    send("webrtc_screen_answer", { sdp: answer.sdp! });
 }
 
 export function handleScreenICE(candidate: RTCIceCandidateInit) {
@@ -263,141 +321,195 @@ export function handleScreenICE(candidate: RTCIceCandidateInit) {
 }
 ```
 
-### Phase 5: Frontend — UI
-
-**File: `client/src/stores/voice.ts`**
-
-Add screen share state:
+### Store: `client/src/stores/voice.ts` additions
 
 ```typescript
+// Who is sharing and on which channel
 const [screenShareUserId, setScreenShareUserId] = createSignal<string | null>(null);
+const [screenShareChannelId, setScreenShareChannelId] = createSignal<string | null>(null);
+// The incoming video+audio stream for viewers
 const [screenShareStream, setScreenShareStream] = createSignal<MediaStream | null>(null);
-export { screenShareUserId, setScreenShareUserId, screenShareStream, setScreenShareStream };
 ```
 
-**File: `client/src/components/VoiceChannel/VoiceControls.tsx`**
+### Event Handler: `client/src/lib/events.ts` additions
 
-Add a "Share Screen" button next to mute/deafen:
-- Disabled if not in a voice channel
-- Disabled if someone else is already sharing
-- Toggles between start/stop
-- Shows the sharer's name when active
+```typescript
+case "screen_share_started":
+    setScreenShareUserId(msg.d.user_id);
+    setScreenShareChannelId(msg.d.channel_id);
+    break;
 
-**File: `client/src/components/VoiceChannel/ScreenShareView.tsx`** (new)
+case "screen_share_stopped":
+    setScreenShareUserId(null);
+    setScreenShareChannelId(null);
+    setScreenShareStream(null);
+    // Close viewer PC if watching
+    unsubscribeScreenShare(msg.d.channel_id);
+    break;
 
-Video display component:
-- Full-width `<video>` element bound to `screenShareStream()`
-- Shows sharer's username
-- "Stop Sharing" button if you are the presenter
-- Click to toggle fullscreen
-- Aspect ratio preserved, dark background
+case "webrtc_screen_offer":
+    handleScreenOffer(msg.d.sdp);
+    break;
 
-Place this component above the voice user grid in VoiceChannel.tsx when a screen share is active.
+case "webrtc_screen_ice":
+    handleScreenICE(msg.d.candidate);
+    break;
 
-### Phase 6: Platform-Specific `getDisplayMedia` Behavior
+case "screen_share_error":
+    console.error("[screen] Share rejected:", msg.d.error);
+    break;
+```
 
-#### Linux (WebKit2GTK — desktop app)
+### UI Components
 
-**`getDisplayMedia()` support:** WebKit2GTK supports screen capture via the **xdg-desktop-portal** API on systems running PipeWire. The portal shows a system dialog for the user to pick a screen/window.
+#### Sidebar Indicator
 
-**Requirements:**
-- PipeWire running (standard on Ubuntu 22.04+)
-- `xdg-desktop-portal` and `xdg-desktop-portal-gnome` (or `-gtk`) installed
-- WebKit2GTK built with portal support (default on major distros)
+When someone is sharing, show it in the sidebar under the voice channel:
 
-**Video:** Works. The portal provides a PipeWire video stream.
+```
+CANAUX VOCAUX
+  ○ General
+    └── 🖥 Alice is sharing
+  ○ Channel 2
+```
 
-**Audio:** `getDisplayMedia({ audio: true })` is **not supported** in WebKit2GTK. The portal protocol does support audio capture (since xdg-desktop-portal 0.4), but WebKit2GTK does not expose it to JavaScript.
+Clicking the indicator navigates to the channel and auto-subscribes.
 
-**Audio workaround — PipeWire monitor source:**
+#### VoiceControls.tsx — Share Button
 
-1. When the user starts screen sharing, the Go server creates a PipeWire loopback that captures the target application's audio into a virtual monitor source:
-   ```bash
-   pw-loopback --capture-props='media.class=Audio/Sink' --playback-props='media.class=Audio/Source'
-   ```
-   This creates a virtual sink + source pair.
+Add a [SHARE] button next to mute/deafen/quit:
+- Only visible when in a voice channel
+- Disabled if someone else is already sharing in the same channel
+- Toggles between [SHARE] and [STOP SHARE]
 
-2. Use `wpctl` to move the target application's audio to the virtual sink.
+#### ScreenShareView.tsx (new component)
 
-3. The frontend calls `getUserMedia({ audio: { deviceId: virtualSourceId } })` to capture the audio from the virtual source and adds it to the screen share PC as a second track.
+Displayed in the main content area above the voice user grid (or replacing it) when the user is watching a screen share:
 
-4. On stop, tear down the loopback.
+```
+┌──────────────────────────────────────────────┐
+│  Alice is sharing · General          [✕]     │
+├──────────────────────────────────────────────┤
+│                                              │
+│              <video> element                 │
+│           (click for fullscreen)             │
+│                                              │
+└──────────────────────────────────────────────┘
+```
 
-**Complexity:** High. Requires tracking which application the user is sharing (not easily available from the portal), and the virtual source dance is fragile. **Recommendation:** Ship Linux screen share as video-only initially. Add audio capture as a follow-up if there's demand.
+- `<video>` element bound to `screenShareStream()`
+- Click to toggle fullscreen (`element.requestFullscreen()`)
+- [✕] button to stop watching (unsubscribe)
+- If presenter: shows [STOP SHARING] instead
+- Aspect ratio preserved, letterboxed on dark background
+- Video plays muted by default with an "unmute" button (browsers block autoplay with audio)
 
-#### Windows (WebView2 / Edge Chromium)
+#### Where It Appears
 
-**`getDisplayMedia()` support:** Full Chromium implementation. Works out of the box.
+The viewer can watch from anywhere — they don't need to navigate to the voice channel. Options:
 
-**Video:** Full support — screen, window, or tab capture.
+**Option A: Inline in channel view** — When viewing the voice channel that has an active share, the video replaces the empty space above the user grid. Simple, but limits where you can watch from.
 
-**Audio:** Works when sharing a browser tab. For window/screen sharing, system audio capture is supported on Windows 10+ via the Windows Audio Session API loopback. `getDisplayMedia({ audio: true })` returns a system audio track when the user selects a screen or window (user must check the "Share audio" checkbox in the picker).
+**Option B: Floating panel** — A draggable/resizable overlay that persists while you browse text channels. Like Discord's mini-player. More complex but much more useful.
 
-**No workaround needed.** The standard Web API works.
-
-#### macOS (WKWebView)
-
-**`getDisplayMedia()` support:** WKWebView supports screen capture starting with macOS 12.3+ and Safari 15.4+. The user must grant Screen Recording permission in System Settings > Privacy & Security.
-
-**Video:** Works after the user grants Screen Recording permission. The OS shows a permission prompt on first use.
-
-**Audio:** `getDisplayMedia({ audio: true })` is **not supported** in WKWebView/Safari. Apple does not provide a Web API for capturing system audio.
-
-**Audio workaround — virtual audio driver:**
-
-macOS has no userspace API for capturing system audio. Applications like Discord and OBS use a **virtual audio driver** (kernel extension or System Extension) to intercept the audio pipeline:
-
-1. **ScreenCaptureKit (macOS 12.3+):** Apple's framework for screen + audio capture. Supports capturing audio from specific applications. However, this is a native Objective-C/Swift API — not exposed to JavaScript in WKWebView.
-
-2. **Approach A — Native helper process:** Build a small Swift helper that uses ScreenCaptureKit to capture audio, writes it to a local loopback, and the WebView captures from the loopback via `getUserMedia`. Complex but avoids a kernel extension.
-
-3. **Approach B — Virtual audio driver:** Ship a signed Audio Server Plugin (e.g., based on [BlackHole](https://github.com/ExistentialAudio/BlackHole)) that creates a virtual audio device. Route system audio through it. The WebView captures from the virtual device. Requires code signing and may require notarization.
-
-4. **Approach C — Accept the limitation.** Ship macOS screen share as video-only, same as the initial Linux approach.
-
-**Recommendation:** Start with video-only on macOS. If audio is needed later, Approach A (ScreenCaptureKit helper) is the most maintainable path, but requires a native macOS component outside the Go binary.
-
-#### Browser Mode (Chrome/Firefox/Safari)
-
-When running as a web app in a browser (not the desktop app):
-
-- **Chrome/Edge:** Full `getDisplayMedia` with video + audio support.
-- **Firefox:** `getDisplayMedia` with video. Audio capture is supported for tab sharing only (not window/screen).
-- **Safari:** `getDisplayMedia` with video only. No audio capture.
-
-No workarounds needed — the browser handles everything. The code is the same `getDisplayMedia({ video: true, audio: true })` call; the browser just ignores the `audio: true` if it's unsupported.
+**Recommendation: Start with Option A, add Option B later.** Option A is straightforward (just a conditional component in VoiceChannel.tsx). Option B requires z-index management, drag logic, and resize handling — polish work for later.
 
 ---
 
-## Summary: Platform Audio Capture Matrix
+## Desktop (Tauri) Considerations
 
-| Platform | Video | Audio | Notes |
-|----------|-------|-------|-------|
-| **Linux desktop** (WebKit2GTK) | Yes (via portal) | No | Possible via PipeWire loopback hack |
-| **Windows desktop** (WebView2) | Yes | Yes | Works natively |
-| **macOS desktop** (WKWebView) | Yes (needs permission) | No | Possible via ScreenCaptureKit helper |
-| **Chrome/Edge** (browser) | Yes | Yes | User must check "Share audio" |
-| **Firefox** (browser) | Yes | Tab audio only | No screen/window audio |
-| **Safari** (browser) | Yes | No | Apple limitation |
+### Browser Path (WebView)
+
+The existing browser `getDisplayMedia()` API works in WebView on most platforms:
+
+| Platform | Video | Screen Audio | Notes |
+|----------|-------|-------------|-------|
+| **Linux** (WebKit2GTK) | Yes | No | PipeWire portal for screen picker |
+| **Windows** (WebView2) | Yes | Yes | Full Chromium support |
+| **macOS** (WKWebView) | Yes | No | Needs Screen Recording permission |
+| **Chrome/Edge** | Yes | Yes | User checks "Share audio" |
+| **Firefox** | Yes | Tab only | No screen/window audio |
+| **Safari** | Yes | No | Apple limitation |
+
+### Native Rust Path (future)
+
+For Linux where WebKit2GTK may have issues, screen capture could be done natively via PipeWire in Rust (similar to how voice uses native Opus/cpal). This is a significant effort and should only be pursued if the WebView path proves unreliable.
+
+**Recommendation:** Use the WebView `getDisplayMedia()` path for all platforms initially. It works for video everywhere. Audio works on Windows and Chrome. Tackle native capture only if needed.
+
+---
+
+## Server-Side Validation
+
+The server enforces these rules:
+
+1. **Must be in voice to share** — `screen_share_start` rejected if user has no active voice state
+2. **One share per channel** — rejected if another user is already sharing in that channel
+3. **Share stops on voice leave** — if the presenter leaves voice, their screen share is automatically stopped
+4. **Share stops on disconnect** — if the presenter's WebSocket drops, screen share is cleaned up
+5. **Any logged-in user can subscribe** — no need to be in the voice channel
+6. **Viewer cleanup on disconnect** — viewer PCs closed when user goes offline
+
+---
+
+## Renegotiation
+
+The screen share PeerConnections are simpler than voice:
+
+- **Presenter PC**: Created once with recv-only video + audio transceivers. No renegotiation needed — the presenter sends tracks, the SFU receives them.
+- **Viewer PCs**: Created once with send-only video + audio tracks from the forwarding TrackLocalStaticRTP. No renegotiation needed — the SFU sends, the viewer receives.
+
+The existing voice renegotiation mechanism (`needsRenegotiation` flag) is not needed for screen share because tracks don't change mid-session. If the presenter stops sharing, the entire ScreenRoom is torn down rather than renegotiated.
+
+---
 
 ## Implementation Order
 
-1. **SFU video codec + screen share room logic** — the backbone. Independent of platform.
-2. **Signaling messages** — wire up WS ops for screen share lifecycle.
-3. **Frontend: screen share WebRTC + UI** — `getDisplayMedia` call, video display, controls. Use `{ video: true, audio: true }` and let the platform decide what's available.
-4. **Test on all platforms** — verify video works everywhere, audio works on Windows/Chrome.
-5. **(Future) Linux audio** — PipeWire loopback integration in Go server.
-6. **(Future) macOS audio** — ScreenCaptureKit native helper.
+### Phase 1: SFU Screen Share Room
+- `server/sfu/screen_room.go` — ScreenRoom struct, presenter/viewer PeerConnections
+- `server/sfu/sfu.go` — screenAPI, screenRooms map, GetScreenRoom/StartScreen/StopScreen methods
+- Video codec registration (VP8 + Opus)
+- PLI interceptor for keyframe requests
 
-Steps 1–4 deliver a working screen share (video everywhere, audio where the platform supports it) without any platform-specific hacks. Steps 5–6 are optional follow-ups for audio on restrictive platforms.
+### Phase 2: Signaling
+- `server/ws/handlers.go` — 6 new WS op handlers
+- `server/ws/protocol.go` — ScreenShareState, new payloads
+- Add screen_shares to ready payload
+- Add screen_sharing to VoiceStatePayload
+- Auto-stop on voice leave / disconnect
 
-## Estimated Scope
+### Phase 3: Frontend Core
+- `client/src/lib/screenshare.ts` — screen PC management, getDisplayMedia
+- `client/src/stores/voice.ts` — screen share signals
+- `client/src/lib/events.ts` — screen share event handlers
 
-| Step | Files Changed | Effort |
-|------|--------------|--------|
-| SFU video support | `sfu/sfu.go`, `sfu/room.go`, `sfu/peer.go` | Medium |
-| Signaling | `ws/handlers.go`, `ws/protocol.go` | Small |
-| Frontend WebRTC | `lib/screenshare.ts` (new), `lib/webrtc.ts` | Medium |
-| Frontend UI | `VoiceControls.tsx`, `VoiceChannel.tsx`, `ScreenShareView.tsx` (new), `stores/voice.ts` | Medium |
-| Linux audio | `audio/screencapture_linux.go` (new) | Large |
-| macOS audio | Native Swift helper (new binary) | Large |
+### Phase 4: Frontend UI
+- VoiceControls.tsx — [SHARE] / [STOP SHARE] button
+- Sidebar — "X is sharing" indicator
+- ScreenShareView.tsx — video display, fullscreen, close
+- VoiceChannel.tsx — mount ScreenShareView when active
+
+### Phase 5: Polish
+- Autoplay policy handling (muted autoplay + unmute button)
+- Resolution/framerate constraints (720p default, 1080p option)
+- Bandwidth estimation and adaptive quality
+- Floating viewer panel (Option B)
+
+---
+
+## Files Changed / Created
+
+| File | Action | Description |
+|------|--------|-------------|
+| `server/sfu/sfu.go` | Modify | Add screenAPI, screenRooms map |
+| `server/sfu/screen_room.go` | **Create** | ScreenRoom, ScreenViewer, presenter/viewer PC management |
+| `server/ws/handlers.go` | Modify | Add 6 screen share op handlers |
+| `server/ws/protocol.go` | Modify | ScreenShareState, new payloads, voice state addition |
+| `server/ws/hub.go` | Modify | Cleanup screen share on disconnect |
+| `client/src/lib/screenshare.ts` | **Create** | Screen share WebRTC + getDisplayMedia |
+| `client/src/lib/events.ts` | Modify | Screen share event dispatch |
+| `client/src/stores/voice.ts` | Modify | Screen share signals |
+| `client/src/components/VoiceChannel/VoiceControls.tsx` | Modify | [SHARE] button |
+| `client/src/components/VoiceChannel/ScreenShareView.tsx` | **Create** | Video viewer component |
+| `client/src/components/VoiceChannel/VoiceChannel.tsx` | Modify | Mount ScreenShareView |
+| `client/src/components/Sidebar/Sidebar.tsx` | Modify | "X is sharing" indicator |
