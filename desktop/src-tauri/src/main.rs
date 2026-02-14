@@ -3,6 +3,7 @@
 mod voice;
 
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
 use tauri::Manager;
 use serde::Serialize;
 use std::process::Command;
@@ -124,10 +125,10 @@ fn main() {
             voice_set_input_device,
             voice_set_output_device,
         ])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(target_os = "linux")]
             {
-                let window = app.get_webview_window("main").unwrap();
+                let window = _app.get_webview_window("main").unwrap();
 
                 // Enumerate local audio devices and build injection script
                 let devices = get_audio_devices();
