@@ -30,9 +30,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: install macOS targets
+      - name: install macOS deps and targets
         if: matrix.platform == 'macos-latest'
-        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+        run: |
+          brew install opus
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       - name: install Linux deps
         if: matrix.platform == 'ubuntu-22.04'
@@ -46,6 +48,7 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Le Faux Pain ${{ github.ref_name }}'
