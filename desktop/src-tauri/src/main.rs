@@ -1,14 +1,119 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::Manager;
+use serde::Serialize;
+use std::process::Command;
+
+#[derive(Serialize, Clone)]
+struct AudioDevice {
+    id: String,
+    name: String,
+    default: bool,
+}
+
+#[derive(Serialize)]
+struct AudioDevices {
+    inputs: Vec<AudioDevice>,
+    outputs: Vec<AudioDevice>,
+}
+
+fn parse_wpctl_section(output: &str, section: &str) -> Vec<AudioDevice> {
+    // No ^ anchor: wpctl lines have │ box-drawing chars that \s can't match
+    let re = regex::Regex::new(r"(\*)?\s*(\d+)\.\s+(.+?)\s+\[vol:").unwrap();
+    let mut devices = Vec::new();
+    let mut in_audio = false;
+    let mut in_section = false;
+
+    for line in output.lines() {
+        if line.starts_with("Audio") {
+            in_audio = true;
+            continue;
+        }
+        if in_audio && !line.starts_with(' ') && !line.is_empty() {
+            in_audio = false;
+            in_section = false;
+            continue;
+        }
+        if !in_audio {
+            continue;
+        }
+
+        let trimmed = line.trim();
+        let section_markers = [
+            format!("\u{251c}\u{2500} {}:", section),
+            format!("\u{2514}\u{2500} {}:", section),
+        ];
+        if section_markers.iter().any(|m| trimmed.starts_with(m.as_str())) {
+            in_section = true;
+            continue;
+        }
+        if in_section && (trimmed.starts_with("\u{251c}\u{2500} ") || trimmed.starts_with("\u{2514}\u{2500} ")) {
+            in_section = false;
+            continue;
+        }
+        if !in_section {
+            continue;
+        }
+
+        if let Some(caps) = re.captures(line) {
+            devices.push(AudioDevice {
+                id: caps[2].to_string(),
+                name: caps[3].trim().to_string(),
+                default: caps.get(1).map_or(false, |m| m.as_str() == "*"),
+            });
+        }
+    }
+    devices
+}
+
+fn get_audio_devices() -> AudioDevices {
+    let output = Command::new("wpctl")
+        .arg("status")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default();
+
+    AudioDevices {
+        inputs: parse_wpctl_section(&output, "Sources"),
+        outputs: parse_wpctl_section(&output, "Sinks"),
+    }
+}
+
+#[tauri::command]
+fn list_audio_devices() -> AudioDevices {
+    get_audio_devices()
+}
+
+#[tauri::command]
+fn set_default_audio_device(id: String) -> bool {
+    Command::new("wpctl")
+        .args(["set-default", &id])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
 
 fn main() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            list_audio_devices,
+            set_default_audio_device,
+        ])
         .setup(|app| {
             #[cfg(target_os = "linux")]
             {
                 let window = app.get_webview_window("main").unwrap();
-                window.with_webview(|webview| {
+
+                // Enumerate local audio devices and build injection script
+                let devices = get_audio_devices();
+                let devices_json = serde_json::to_string(&devices).unwrap_or_default();
+                let inject_script = format!(
+                    "window.__DESKTOP__ = true; window.__AUDIO_DEVICES__ = {};",
+                    devices_json
+                );
+
+                window.with_webview(move |webview| {
                     use webkit2gtk::{
                         WebViewExt, SettingsExt, PermissionRequestExt,
                         UserContentManagerExt, UserContentInjectedFrames,
@@ -26,10 +131,10 @@ fn main() {
                         request.allow();
                         true
                     });
-                    // Inject desktop flag into every page (including remote)
+                    // Inject desktop flag + audio devices into every page
                     if let Some(manager) = wv.user_content_manager() {
                         let script = UserScript::new(
-                            "window.__DESKTOP__ = true;",
+                            &inject_script,
                             UserContentInjectedFrames::TopFrame,
                             UserScriptInjectionTime::Start,
                             &[],

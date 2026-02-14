@@ -55,7 +55,8 @@ export default function Sidebar(props: SidebarProps) {
       <div
         ref={headerRef}
         style={{
-          padding: "10px 16px",
+          padding: "0 16px",
+          height: "41px",
           "border-bottom": "1px solid var(--border-gold)",
           display: "flex",
           "align-items": "center",

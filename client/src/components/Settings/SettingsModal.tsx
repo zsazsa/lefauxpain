@@ -5,7 +5,7 @@ import {
   settingsOpen,
   setSettingsOpen,
 } from "../../stores/settings";
-import { microphones, speakers, enumerateDevices } from "../../lib/devices";
+import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, refreshDesktopDevices } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
 import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword } from "../../lib/api";
 import { currentUser } from "../../stores/auth";
@@ -438,9 +438,51 @@ export default function SettingsModal() {
                 <label style={{ ...labelStyle, "margin-top": "16px" }}>
                   Input Device
                 </label>
-                <Show
-                  when={pwInputs().length > 0}
-                  fallback={
+                {() => {
+                  // Desktop Tauri: local wpctl devices
+                  if (desktopInputs().length > 0) {
+                    return (
+                      <select
+                        value={desktopInputs().find((d) => d.default)?.id || ""}
+                        onChange={(e) => {
+                          const id = e.currentTarget.value;
+                          if (id) setDesktopDefaultDevice(id).then(() => refreshDesktopDevices());
+                        }}
+                        style={selectStyle}
+                      >
+                        <For each={desktopInputs()}>
+                          {(dev) => (
+                            <option value={dev.id}>
+                              {dev.name}{dev.default ? " (Default)" : ""}
+                            </option>
+                          )}
+                        </For>
+                      </select>
+                    );
+                  }
+                  // Server PipeWire devices
+                  if (pwInputs().length > 0) {
+                    return (
+                      <select
+                        value={pwInputs().find((d) => d.default)?.id || ""}
+                        onChange={(e) => {
+                          const id = e.currentTarget.value;
+                          if (id) setAudioDevice(id, "input").then(fetchPwDevices);
+                        }}
+                        style={selectStyle}
+                      >
+                        <For each={pwInputs()}>
+                          {(dev) => (
+                            <option value={dev.id}>
+                              {dev.name}{dev.default ? " (Default)" : ""}
+                            </option>
+                          )}
+                        </For>
+                      </select>
+                    );
+                  }
+                  // Browser fallback
+                  return (
                     <select
                       value={settings().inputDeviceId}
                       onChange={(e) =>
@@ -455,33 +497,58 @@ export default function SettingsModal() {
                         )}
                       </For>
                     </select>
-                  }
-                >
-                  <select
-                    value={pwInputs().find((d) => d.default)?.id || ""}
-                    onChange={(e) => {
-                      const id = e.currentTarget.value;
-                      if (id) setAudioDevice(id, "input").then(fetchPwDevices);
-                    }}
-                    style={selectStyle}
-                  >
-                    <For each={pwInputs()}>
-                      {(dev) => (
-                        <option value={dev.id}>
-                          {dev.name}{dev.default ? " (Default)" : ""}
-                        </option>
-                      )}
-                    </For>
-                  </select>
-                </Show>
+                  );
+                }}
 
                 {/* Output device */}
                 <label style={{ ...labelStyle, "margin-top": "16px" }}>
                   Output Device
                 </label>
-                <Show
-                  when={pwOutputs().length > 0}
-                  fallback={
+                {() => {
+                  // Desktop Tauri: local wpctl devices
+                  if (desktopOutputs().length > 0) {
+                    return (
+                      <select
+                        value={desktopOutputs().find((d) => d.default)?.id || ""}
+                        onChange={(e) => {
+                          const id = e.currentTarget.value;
+                          if (id) setDesktopDefaultDevice(id).then(() => refreshDesktopDevices());
+                        }}
+                        style={selectStyle}
+                      >
+                        <For each={desktopOutputs()}>
+                          {(dev) => (
+                            <option value={dev.id}>
+                              {dev.name}{dev.default ? " (Default)" : ""}
+                            </option>
+                          )}
+                        </For>
+                      </select>
+                    );
+                  }
+                  // Server PipeWire devices
+                  if (pwOutputs().length > 0) {
+                    return (
+                      <select
+                        value={pwOutputs().find((d) => d.default)?.id || ""}
+                        onChange={(e) => {
+                          const id = e.currentTarget.value;
+                          if (id) setAudioDevice(id, "output").then(fetchPwDevices);
+                        }}
+                        style={selectStyle}
+                      >
+                        <For each={pwOutputs()}>
+                          {(dev) => (
+                            <option value={dev.id}>
+                              {dev.name}{dev.default ? " (Default)" : ""}
+                            </option>
+                          )}
+                        </For>
+                      </select>
+                    );
+                  }
+                  // Browser fallback
+                  return (
                     <select
                       value={settings().outputDeviceId}
                       onChange={(e) =>
@@ -496,25 +563,8 @@ export default function SettingsModal() {
                         )}
                       </For>
                     </select>
-                  }
-                >
-                  <select
-                    value={pwOutputs().find((d) => d.default)?.id || ""}
-                    onChange={(e) => {
-                      const id = e.currentTarget.value;
-                      if (id) setAudioDevice(id, "output").then(fetchPwDevices);
-                    }}
-                    style={selectStyle}
-                  >
-                    <For each={pwOutputs()}>
-                      {(dev) => (
-                        <option value={dev.id}>
-                          {dev.name}{dev.default ? " (Default)" : ""}
-                        </option>
-                      )}
-                    </For>
-                  </select>
-                </Show>
+                  );
+                }}
 
                 {/* Mic Test */}
                 <div style={{ "margin-top": "20px" }}>

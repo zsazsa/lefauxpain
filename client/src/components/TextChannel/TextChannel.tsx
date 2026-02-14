@@ -40,7 +40,8 @@ export default function TextChannel(props: TextChannelProps) {
       {/* Channel header */}
       <div
         style={{
-          padding: isMobile() ? "8px 12px" : "10px 16px",
+          padding: isMobile() ? "8px 12px" : "0 16px",
+          ...(!isMobile() && { height: "41px" }),
           "border-bottom": "1px solid var(--border-gold)",
           display: "flex",
           "align-items": "center",
@@ -59,7 +60,7 @@ export default function TextChannel(props: TextChannelProps) {
             {"\u2261"}
           </button>
         </Show>
-        <span style={{ color: "var(--border-gold)", "font-size": "16px" }}>#</span>
+        <span style={{ color: "var(--accent)", "font-size": "16px" }}>#</span>
         <span
           ref={glitchRef}
           class="glitch-text"

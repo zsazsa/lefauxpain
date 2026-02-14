@@ -17,7 +17,7 @@ type Device struct {
 // wpctl status output looks like:
 //  *  231. M Series [ALSA UCM error] Direct M6 [vol: 0.69]
 //      56. GA102 High Definition Audio Controller Digital Stereo (HDMI) [vol: 0.40]
-var deviceRe = regexp.MustCompile(`^\s*(\*)?\s*(\d+)\.\s+(.+?)\s+\[vol:`)
+var deviceRe = regexp.MustCompile(`(\*)?\s*(\d+)\.\s+(.+?)\s+\[vol:`)
 
 // ListSources returns available audio input (source) devices.
 func ListSources() ([]Device, error) {

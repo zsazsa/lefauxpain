@@ -7,12 +7,51 @@ export type MediaDeviceInfo2 = {
   kind: string;
 };
 
+export type DesktopAudioDevice = {
+  id: string;
+  name: string;
+  default: boolean;
+};
+
 const [microphones, setMicrophones] = createSignal<MediaDeviceInfo2[]>([]);
 const [speakers, setSpeakers] = createSignal<MediaDeviceInfo2[]>([]);
+const [desktopInputs, setDesktopInputs] = createSignal<DesktopAudioDevice[]>([]);
+const [desktopOutputs, setDesktopOutputs] = createSignal<DesktopAudioDevice[]>([]);
 
-export { microphones, speakers };
+export { microphones, speakers, desktopInputs, desktopOutputs };
+
+export const isDesktop = !!(window as any).__DESKTOP__;
+
+function tauriInvoke(cmd: string, args?: any): Promise<any> {
+  const internals = (window as any).__TAURI_INTERNALS__;
+  if (!internals?.invoke) return Promise.reject("no tauri");
+  return internals.invoke(cmd, args);
+}
 
 export async function enumerateDevices() {
+  // Desktop: read devices injected by Tauri UserScript at page load
+  const injected = (window as any).__AUDIO_DEVICES__;
+  if (injected && (injected.inputs?.length > 0 || injected.outputs?.length > 0)) {
+    setDesktopInputs(injected.inputs || []);
+    setDesktopOutputs(injected.outputs || []);
+    return;
+  }
+
+  // Also try Tauri IPC if injected data wasn't available
+  if (isDesktop) {
+    try {
+      const result = await tauriInvoke("list_audio_devices");
+      if (result && (result.inputs?.length > 0 || result.outputs?.length > 0)) {
+        setDesktopInputs(result.inputs || []);
+        setDesktopOutputs(result.outputs || []);
+        return;
+      }
+    } catch {
+      // IPC not available, fall through to browser API
+    }
+  }
+
+  // Browser API fallback
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     setMicrophones(
@@ -35,6 +74,26 @@ export async function enumerateDevices() {
     );
   } catch {
     // Permissions not granted yet
+  }
+}
+
+export async function setDesktopDefaultDevice(id: string): Promise<boolean> {
+  try {
+    return await tauriInvoke("set_default_audio_device", { id });
+  } catch {
+    return false;
+  }
+}
+
+export async function refreshDesktopDevices() {
+  try {
+    const result = await tauriInvoke("list_audio_devices");
+    if (result) {
+      setDesktopInputs(result.inputs || []);
+      setDesktopOutputs(result.outputs || []);
+    }
+  } catch {
+    // IPC not available
   }
 }
 

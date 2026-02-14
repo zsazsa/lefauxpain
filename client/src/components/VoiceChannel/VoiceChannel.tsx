@@ -49,7 +49,8 @@ export default function VoiceChannel(props: VoiceChannelProps) {
       {/* Channel header */}
       <div
         style={{
-          padding: isMobile() ? "8px 12px" : "10px 16px",
+          padding: isMobile() ? "8px 12px" : "0 16px",
+          ...(!isMobile() && { height: "41px" }),
           "border-bottom": "1px solid var(--border-gold)",
           display: "flex",
           "align-items": "center",
