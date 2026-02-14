@@ -13,6 +13,7 @@ let reconnectTimer: number | null = null;
 let reconnectDelay = 1000;
 let pingInterval: number | null = null;
 let pingSentAt = 0;
+let intentionalDisconnect = false;
 
 export type ConnState = "connected" | "reconnecting" | "offline";
 const [connState, setConnState] = createSignal<ConnState>("offline");
@@ -23,6 +24,7 @@ export { connState, ping };
 export function connectWS(token: string) {
   if (socket?.readyState === WebSocket.OPEN) return;
 
+  intentionalDisconnect = false;
   setConnState("reconnecting");
 
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -50,6 +52,7 @@ export function connectWS(token: string) {
     socket = null;
     stopPing();
     setPing(null);
+    if (intentionalDisconnect) return;
     setConnState("reconnecting");
     scheduleReconnect(token);
   };
@@ -86,6 +89,7 @@ function scheduleReconnect(token: string) {
 }
 
 export function disconnectWS() {
+  intentionalDisconnect = true;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;

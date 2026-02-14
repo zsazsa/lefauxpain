@@ -18,6 +18,11 @@ cd client && npm run build
 rm -rf server/static/assets/* server/static/index.html
 cp -r client/dist/* server/static/
 cd server && go build -o voicechat .
+
+# Desktop (Tauri) — requires libopus-dev, libasound2-dev
+cd desktop/src-tauri && cargo build              # Dev build
+cd desktop && npm run tauri dev                  # Dev with hot reload
+cd desktop && npm run tauri build                # Release build
 ```
 
 There are no tests. There is no linter configured.
@@ -35,18 +40,33 @@ There are no tests. There is no linter configured.
 
 **Frontend** (`client/`): SolidJS + TypeScript + Vite
 - `src/stores/` — State as SolidJS signals (`createSignal`). Key stores: `auth.ts` (token in localStorage), `channels.ts`, `messages.ts`, `users.ts`, `voice.ts`
-- `src/lib/ws.ts` — WebSocket client with reconnect backoff. All incoming messages dispatched via `onMessage()` observer pattern.
-- `src/lib/webrtc.ts` — Voice: `joinVoice`/`leaveVoice`, sends/receives SDP and ICE candidates over WS
-- `src/lib/audio.ts` — Per-user audio chain: MediaStreamSource → GainNode → AnalyserNode → destination
-- `src/lib/events.ts` — Maps WS ops to store updates (the central event dispatcher)
+- `src/lib/ws.ts` — WebSocket client with reconnect backoff. All incoming messages dispatched via `onMessage()` observer pattern. `disconnectWS()` sets `intentionalDisconnect` flag to prevent `onclose` from rescheduling reconnect.
+- `src/lib/webrtc.ts` — Voice: `joinVoice`/`leaveVoice`, sends/receives SDP and ICE candidates over WS. When `isDesktop`, routes through Tauri IPC to the native Rust voice engine instead of browser WebRTC.
+- `src/lib/audio.ts` — Per-user audio chain: MediaStreamSource → GainNode → AnalyserNode → destination (browser only; desktop uses Rust cpal)
+- `src/lib/devices.ts` — Audio device enumeration (browser API or Tauri IPC), speaking detection (RMS + EMA + hold timer)
+- `src/lib/events.ts` — Maps WS ops to store updates (the central event dispatcher). On desktop, registers Tauri event listeners to bridge `voice:ice_candidate` and `voice:speaking` from Rust to WS.
 - `src/lib/api.ts` — REST client (`fetch` with Bearer token)
 - `src/components/` — Sidebar (channel list), TextChannel (messages + input), VoiceChannel (user grid + controls), Settings, Auth
+
+**Desktop** (`desktop/`): Tauri 2 wrapper
+- `src-tauri/src/main.rs` — Tauri app entry. Injects `__DESKTOP__` flag and audio devices via UserScript. Enables webkit2gtk WebRTC/MediaStream settings. Registers voice IPC commands.
+- `src-tauri/src/voice/` — Native Rust voice engine (bypasses webkit2gtk's missing RTCPeerConnection):
+  - `mod.rs` — `VoiceEngine` struct, Tauri IPC commands, event forwarding loop
+  - `peer.rs` — webrtc-rs `RTCPeerConnection` with Opus codec matching Go SFU (48kHz/2ch/PT111/NACK)
+  - `audio_capture.rs` — cpal mic input → ring buffer → Opus encode → RTP via `TrackLocalStaticRTP`
+  - `audio_playback.rs` — RTP → Opus decode → shared ring buffer → cpal output. Multiple remote tracks mix by writing to the same buffer.
+  - `resampler.rs` — rubato FFT resampler for 44100↔48000 conversion
+  - `speaking.rs` — RMS + EMA speaking detection (ported from JS: threshold 0.015, attack 0.4, release 0.05, 250ms hold)
+  - `types.rs` — Serde structs for IPC payloads
+- `dist/index.html` — Server selector page (not the SPA). Prompts for server URL, saves to localStorage, navigates webview to the remote server. Do NOT overwrite with `client/dist/`.
 
 ## Key Patterns
 
 **WebSocket protocol**: `{ op: string, d: any }`. Client authenticates within 5 seconds of connecting. Server responds with `ready` containing full initial state. All mutations go through WS (not REST).
 
 **SFU signaling**: Voice join → server creates PeerConnection → sends `webrtc_offer` → client responds with `webrtc_answer` → ICE candidates exchanged via `webrtc_ice`. Renegotiation uses `needsRenegotiation` flag to avoid race conditions when signaling state isn't stable.
+
+**Desktop voice signaling**: On desktop (`isDesktop`), WebRTC runs natively in Rust. The SDP/ICE flow is: WS `webrtc_offer` → frontend forwards SDP to Rust via `voice_handle_offer` IPC → Rust creates answer → frontend sends `webrtc_answer` over WS. ICE candidates flow Rust→frontend via Tauri events (`voice:ice_candidate`), then frontend→WS. Speaking detection runs in Rust and emits `voice:speaking` events to frontend, which forwards over WS.
 
 **SolidJS reactivity pitfall**: `<Show>` without `keyed` uses truthiness equality (`!a === !b`) on its condition memo — switching between two truthy values won't re-render children. Use reactive function children `{() => { ... }}` for dynamic component swapping based on signal values, or use `<Show keyed>`.
 

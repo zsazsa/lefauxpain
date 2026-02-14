@@ -7,6 +7,7 @@ import SettingsModal from "./components/Settings/SettingsModal";
 import DesktopTitleBar from "./components/DesktopTitleBar";
 import { connectWS, disconnectWS } from "./lib/ws";
 import { initEventHandlers } from "./lib/events";
+import { leaveVoice } from "./lib/webrtc";
 import { currentUser, token, login, logout, setUser } from "./stores/auth";
 import {
   channels,
@@ -23,6 +24,7 @@ function App() {
   };
 
   const handleLogout = () => {
+    leaveVoice();
     disconnectWS();
     logout();
     setReady(false);
