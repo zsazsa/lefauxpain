@@ -445,24 +445,122 @@ A new signal `watchingScreenShareUserId` tracks who the user is currently watchi
 
 ## Desktop (Tauri) Considerations
 
-### Browser Path (WebView)
+### Screen Video Capture
 
-The existing browser `getDisplayMedia()` API works in WebView on most platforms:
+The browser `getDisplayMedia()` API handles the OS picker (screen, window, or tab) and returns a video stream. Support in webviews:
 
-| Platform | Video | Screen Audio | Notes |
-|----------|-------|-------------|-------|
-| **Linux** (WebKit2GTK) | Yes | No | PipeWire portal for screen picker |
-| **Windows** (WebView2) | Yes | Yes | Full Chromium support |
-| **macOS** (WKWebView) | Yes | No | Needs Screen Recording permission |
-| **Chrome/Edge** | Yes | Yes | User checks "Share audio" |
-| **Firefox** | Yes | Tab only | No screen/window audio |
-| **Safari** | Yes | No | Apple limitation |
+| Platform | `getDisplayMedia()` Video | Notes |
+|----------|--------------------------|-------|
+| **Linux** (WebKit2GTK) | Yes | PipeWire portal for screen picker |
+| **Windows** (WebView2) | Yes | Full Chromium support |
+| **macOS** (WKWebView) | Yes | Needs Screen Recording permission |
 
-### Native Rust Path (future)
+For the browser web app, Chrome/Edge/Firefox/Safari all support `getDisplayMedia()` video.
 
-For Linux where WebKit2GTK may have issues, screen capture could be done natively via PipeWire in Rust (similar to how voice uses native Opus/cpal). This is a significant effort and should only be pursued if the WebView path proves unreliable.
+### Screen Audio Capture — The Hard Part
 
-**Recommendation:** Use the WebView `getDisplayMedia()` path for all platforms initially. It works for video everywhere. Audio works on Windows and Chrome. Tackle native capture only if needed.
+`getDisplayMedia({ audio: true })` captures screen audio in **Chrome/Edge only** (and only for tabs or entire screens, not individual windows). Firefox, Safari, and all webviews except WebView2 on Windows **do not support screen audio** via `getDisplayMedia()`.
+
+For the Tauri desktop app, we can capture system audio natively in Rust on all three platforms. The approach differs per OS, but all produce PCM audio that gets Opus-encoded and sent as an RTP track alongside the screen video.
+
+#### Windows — WASAPI Loopback via `cpal`
+
+The simplest path. Since we already use `cpal` for mic capture, loopback is nearly free. Call `build_input_stream()` on the **output device** instead of the input device — `cpal` automatically adds the `AUDCLNT_STREAMFLAGS_LOOPBACK` flag.
+
+```rust
+// Mic capture:     host.default_input_device()  → build_input_stream()
+// System audio:    host.default_output_device() → build_input_stream()
+// Same API, same crate, same callback signature.
+```
+
+- Captures **all system audio** mixed to that output device
+- No permissions, no UAC prompt, no extra dependencies
+- Requires Windows 10 1703+
+- Per-app capture available via `wasapi` crate (`AudioClient::new_application_loopback_client(pid)`) on Win 10 21H2+
+
+#### macOS — CoreAudio Taps via `cpal`
+
+Apple's purpose-built system audio capture API, introduced in macOS 14.2. **Merged into `cpal`** (PR #1003, Sept 2025) — same pattern as Windows: open the output device as an input stream.
+
+```rust
+// Same API as Windows loopback — cpal abstracts the platform difference.
+let device = host.default_output_device().unwrap();
+let stream = device.build_input_stream(&config, |data: &[f32], _| {
+    // data = system audio PCM
+}, ...);
+```
+
+- Requires `NSAudioCaptureUsageDescription` in Info.plist
+- One-time "System Audio Recording" permission prompt (purple menu bar dot)
+- No monthly re-approval (unlike ScreenCaptureKit on macOS 15+)
+- App must be signed for the TCC permission dialog to appear
+- Per-app filtering supported via process IDs
+- **macOS 14.2+ only.** Fallback for macOS 13: `screencapturekit` crate (requires Screen Recording permission, must also capture video and discard it — worse UX)
+
+#### Linux — PulseAudio Monitor Sources
+
+Every PulseAudio output sink has a `.monitor` source that captures all audio going through it. Works on **both native PulseAudio and PipeWire** (via `pipewire-pulse` compatibility layer, which all modern distros ship).
+
+```rust
+use libpulse_simple_binding::Simple;
+use libpulse_binding::stream::Direction;
+
+let pulse = Simple::new(
+    None, "voicechat", Direction::Record,
+    Some("alsa_output.pci-0000_00_1b.0.analog-stereo.monitor"),
+    "screen-audio", &spec, None, None,
+).unwrap();
+
+let mut buf = [0u8; 4096];
+pulse.read(&mut buf).unwrap();  // blocking read, interleaved PCM
+```
+
+- Captures **all system audio** to that sink
+- No permissions needed (X11 or Wayland)
+- Requires `libpulse-dev` at build time
+- Crate: `libpulse-simple-binding`
+- Per-app capture: possible natively via PipeWire's `target.object` property using the `pipewire` crate, but PulseAudio monitor is simpler and covers 99% of cases
+
+### Desktop Audio Capture — Summary
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| **API** | WASAPI Loopback | CoreAudio Taps | PulseAudio Monitor |
+| **Crate** | `cpal` (already a dep) | `cpal` (already a dep) | `libpulse-simple-binding` |
+| **Extra build deps** | None | None | `libpulse-dev` |
+| **Permissions** | None | System Audio Recording (one-time) | None |
+| **Min OS version** | Win 10 1703 | macOS 14.2 | Any (PulseAudio or PipeWire) |
+| **Captures** | All system audio | All system audio | All system audio |
+| **Per-app option** | `wasapi` crate | CoreAudio tap w/ PID | PipeWire `target.object` |
+
+### Architecture: How Desktop Audio Joins the Screen Share
+
+```
+Screen Video (getDisplayMedia)  ──→  WebView → IPC → Rust
+                                                        ↓
+System Audio (cpal/pulse)       ──→  Rust capture task  ↓
+                                        ↓               ↓
+                                  Opus encode      VP8 encode
+                                        ↓               ↓
+                                   RTP audio         RTP video
+                                        ↓               ↓
+                                  Screen share PeerConnection → SFU
+```
+
+On the Tauri desktop app:
+1. `getDisplayMedia()` in the webview captures screen video (no audio flag)
+2. Video frames pass from webview to Rust via IPC
+3. Rust opens a system audio loopback stream (`cpal` on Win/Mac, `libpulse` on Linux)
+4. Both streams feed into the screen share PeerConnection as separate RTP tracks
+5. Viewer receives both tracks and plays them in a `<video>` element
+
+This means **every desktop platform gets screen audio**, regardless of browser/webview limitations.
+
+### Recommendation
+
+**Phase 1 (browser + webview):** Use `getDisplayMedia({ video: true, audio: true })` everywhere. Screen audio works in Chrome/Edge and WebView2 (Windows). Other platforms get video-only — still useful.
+
+**Phase 2 (native desktop audio):** Add Rust-native system audio capture for the Tauri app. Windows and macOS use `cpal` (already a dependency, same API as mic capture). Linux uses `libpulse-simple-binding`. This gives full screen-with-audio on all desktop platforms.
 
 ---
 
