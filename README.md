@@ -4,6 +4,8 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 
 Text channels with replies, reactions, mentions, and image uploads. Voice channels powered by a built-in WebRTC SFU (Pion). Works in any browser. Optional native desktop client via Tauri.
 
+![Screenshot](docs/screenshot01.png)
+
 ## Quick Start (Self-Hosting)
 
 ### Prerequisites
