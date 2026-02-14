@@ -18,6 +18,7 @@ import { isMobile, sidebarOpen, setSidebarOpen, initResponsive } from "./stores/
 
 function App() {
   const [ready, setReady] = createSignal(false);
+  let cleanupEvents: (() => void) | null = null;
 
   const handleLogin = (newToken: string, username: string, user: any) => {
     login(user, newToken);
@@ -26,6 +27,10 @@ function App() {
   const handleLogout = () => {
     leaveVoice();
     disconnectWS();
+    if (cleanupEvents) {
+      cleanupEvents();
+      cleanupEvents = null;
+    }
     logout();
     setReady(false);
   };
@@ -37,11 +42,14 @@ function App() {
 
     const t = token();
     if (t) {
-      const cleanup = initEventHandlers();
+      cleanupEvents = initEventHandlers();
       connectWS(t);
       setReady(true);
       onCleanup(() => {
-        cleanup();
+        if (cleanupEvents) {
+          cleanupEvents();
+          cleanupEvents = null;
+        }
         disconnectWS();
       });
     }
@@ -51,7 +59,8 @@ function App() {
   const connectOnLogin = () => {
     const t = token();
     if (t && !ready()) {
-      const cleanup = initEventHandlers();
+      if (cleanupEvents) cleanupEvents();
+      cleanupEvents = initEventHandlers();
       connectWS(t);
       setReady(true);
     }
