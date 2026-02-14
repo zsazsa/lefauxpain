@@ -18,11 +18,11 @@ One active screen share per voice channel at a time.
 5. Clicks [STOP] to end, or the OS "Stop sharing" button ends it
 
 **Viewer (any logged-in user):**
-1. Sees "Alice is sharing in General" in the sidebar
-2. Clicks it — video appears in the main content area
+1. Sees Alice's name in the "En Ligne" list has a screen icon: `🖥 Alice`
+2. Clicks her name — video appears in the main content area
 3. Hears screen audio (game sounds, etc.) without joining voice
 4. Can optionally join voice to talk while watching
-5. Closes the viewer or navigates away to stop watching
+5. Clicks [✕] on the viewer or clicks the name again to stop watching
 
 **Key:** Voice and screen share are independent streams. You can:
 - Be in voice without watching the screen share
@@ -360,59 +360,86 @@ case "screen_share_error":
     break;
 ```
 
-### UI Components
+### UI
 
-#### Sidebar Indicator
+#### Discovery: The Online Users List
 
-When someone is sharing, show it in the sidebar under the voice channel:
+No new UI panels needed for discovering who's sharing. The existing **"En Ligne"** list in the sidebar already shows every online user. When someone starts sharing, their entry gets a screen icon and becomes clickable:
+
+```
+EN LIGNE — 4
+  ● Kalli (you)
+  🖥 Alice              ← sharing, clickable
+  ● Bob
+  ● Charlie
+```
+
+- `🖥` icon appears next to users who are currently sharing
+- Clicking a sharing user's name opens the viewer in the main content area
+- Clicking again (or clicking [✕] on the viewer) stops watching
+- The icon also appears next to their name under the voice channel list:
 
 ```
 CANAUX VOCAUX
   ○ General
-    └── 🖥 Alice is sharing
-  ○ Channel 2
+    ● Alice 🖥
+    ● Bob
 ```
 
-Clicking the indicator navigates to the channel and auto-subscribes.
+This keeps discovery natural — you see who's online, you see who's sharing, you click to watch. No new navigation or modes.
 
-#### VoiceControls.tsx — Share Button
+#### Starting a Share: Voice Controls
 
-Add a [SHARE] button next to mute/deafen/quit:
+Add a [SHARE] button in `VoiceControls.tsx` next to mute/deafen/quit:
 - Only visible when in a voice channel
 - Disabled if someone else is already sharing in the same channel
-- Toggles between [SHARE] and [STOP SHARE]
+- Toggles between `[SHARE]` and `[STOP]`
 
-#### ScreenShareView.tsx (new component)
+```
+General · 42ms · 48kbps · opus
+[MIC] [SPK] [SHARE] [QUIT]
+```
 
-Displayed in the main content area above the voice user grid (or replacing it) when the user is watching a screen share:
+#### Watching: Main Content Area
+
+When the user clicks a sharing user's name, the main content area shows the screen share viewer. This replaces whatever was in the main panel (text channel, voice channel, or welcome screen):
 
 ```
 ┌──────────────────────────────────────────────┐
-│  Alice is sharing · General          [✕]     │
+│  🖥 Alice is sharing                   [✕]   │
 ├──────────────────────────────────────────────┤
+│                                              │
 │                                              │
 │              <video> element                 │
 │           (click for fullscreen)             │
 │                                              │
+│                                              │
+├──────────────────────────────────────────────┤
+│  🔇 unmute screen audio                     │
 └──────────────────────────────────────────────┘
 ```
 
 - `<video>` element bound to `screenShareStream()`
-- Click to toggle fullscreen (`element.requestFullscreen()`)
-- [✕] button to stop watching (unsubscribe)
-- If presenter: shows [STOP SHARING] instead
+- Click video to toggle fullscreen (`element.requestFullscreen()`)
+- [✕] closes viewer, unsubscribes from stream, returns to previous view
+- If the viewer is the presenter: shows `[STOP SHARING]` instead of [✕]
 - Aspect ratio preserved, letterboxed on dark background
-- Video plays muted by default with an "unmute" button (browsers block autoplay with audio)
+- **Autoplay policy**: video starts muted (browsers block unmuted autoplay). A "🔇 unmute screen audio" bar at the bottom lets the user enable audio with one click. Once clicked, it stays unmuted for the session.
 
-#### Where It Appears
+#### State in App.tsx
 
-The viewer can watch from anywhere — they don't need to navigate to the voice channel. Options:
+The main content area routing (currently: no channel selected → welcome, text channel → TextChannel, voice channel → VoiceChannel) gets one more branch:
 
-**Option A: Inline in channel view** — When viewing the voice channel that has an active share, the video replaces the empty space above the user grid. Simple, but limits where you can watch from.
+```typescript
+// In the channel content switcher:
+const watchingUser = watchingScreenShareUserId();
+if (watchingUser) {
+    return <ScreenShareView userId={watchingUser} />;
+}
+// ... existing channel routing
+```
 
-**Option B: Floating panel** — A draggable/resizable overlay that persists while you browse text channels. Like Discord's mini-player. More complex but much more useful.
-
-**Recommendation: Start with Option A, add Option B later.** Option A is straightforward (just a conditional component in VoiceChannel.tsx). Option B requires z-index management, drag logic, and resize handling — polish work for later.
+A new signal `watchingScreenShareUserId` tracks who the user is currently watching. Set by clicking a sharing user's name in the sidebar, cleared by clicking [✕] or when the share ends.
 
 ---
 
