@@ -230,10 +230,14 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 	if msg.ReplyToID != nil {
 		rc, _ := h.DB.GetReplyContext(*msg.ReplyToID)
 		if rc != nil {
+			rcAuthorID := ""
+			if rc.AuthorID != nil {
+				rcAuthorID = *rc.AuthorID
+			}
 			replyTo = &ReplyToPayload{
 				ID: rc.ID,
 				Author: UserPayload{
-					ID:       rc.AuthorID,
+					ID:       rcAuthorID,
 					Username: rc.AuthorUsername,
 				},
 				Content: rc.Content,
@@ -271,7 +275,7 @@ func (h *Hub) handleEditMessage(c *Client, data json.RawMessage) {
 	if err != nil || msg == nil {
 		return
 	}
-	if msg.AuthorID != c.UserID {
+	if msg.AuthorID == nil || *msg.AuthorID != c.UserID {
 		return
 	}
 
@@ -306,7 +310,7 @@ func (h *Hub) handleDeleteMessage(c *Client, data json.RawMessage) {
 	}
 
 	// Only author or admin can delete
-	if msg.AuthorID != c.UserID && !c.User.IsAdmin {
+	if (msg.AuthorID == nil || *msg.AuthorID != c.UserID) && !c.User.IsAdmin {
 		return
 	}
 

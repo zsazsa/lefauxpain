@@ -6,5 +6,8 @@ edition = "2021"
 [dependencies]
 tauri = { version = "2", features = [] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "=2.0.1"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

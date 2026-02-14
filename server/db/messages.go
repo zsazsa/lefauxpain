@@ -8,7 +8,7 @@ import (
 type Message struct {
 	ID        string  `json:"id"`
 	ChannelID string  `json:"channel_id"`
-	AuthorID  string  `json:"author_id"`
+	AuthorID  *string `json:"author_id"`
 	Content   *string `json:"content"`
 	ReplyToID *string `json:"reply_to_id"`
 	CreatedAt string  `json:"created_at"`
@@ -22,11 +22,11 @@ type MessageWithAuthor struct {
 }
 
 type ReplyContext struct {
-	ID             string  `json:"id"`
-	AuthorID       string  `json:"author_id"`
-	AuthorUsername string  `json:"author_username"`
+	ID              string  `json:"id"`
+	AuthorID        *string `json:"author_id"`
+	AuthorUsername  string  `json:"author_username"`
 	AuthorAvatarURL *string `json:"author_avatar_url"`
-	Content        *string `json:"content"`
+	Content         *string `json:"content"`
 }
 
 func (d *DB) CreateMessage(id, channelID, authorID string, content *string, replyToID *string) (*Message, error) {
@@ -67,9 +67,9 @@ func (d *DB) GetMessages(channelID string, limit int, before *string) ([]Message
 	if before != nil {
 		rows, err = d.Query(
 			`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at,
-			        u.username, u.avatar_path
+			        COALESCE(u.username, 'Deleted User'), u.avatar_path
 			 FROM messages m
-			 JOIN users u ON u.id = m.author_id
+			 LEFT JOIN users u ON u.id = m.author_id
 			 WHERE m.channel_id = ? AND m.created_at < (SELECT created_at FROM messages WHERE id = ?)
 			 ORDER BY m.created_at DESC
 			 LIMIT ?`,
@@ -78,9 +78,9 @@ func (d *DB) GetMessages(channelID string, limit int, before *string) ([]Message
 	} else {
 		rows, err = d.Query(
 			`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at,
-			        u.username, u.avatar_path
+			        COALESCE(u.username, 'Deleted User'), u.avatar_path
 			 FROM messages m
-			 JOIN users u ON u.id = m.author_id
+			 LEFT JOIN users u ON u.id = m.author_id
 			 WHERE m.channel_id = ?
 			 ORDER BY m.created_at DESC
 			 LIMIT ?`,
@@ -117,9 +117,9 @@ func (d *DB) GetMessagesAround(channelID string, messageID string, limit int) ([
 
 	rows, err := d.Query(
 		`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at,
-		        u.username, u.avatar_path
+		        COALESCE(u.username, 'Deleted User'), u.avatar_path
 		 FROM messages m
-		 JOIN users u ON u.id = m.author_id
+		 LEFT JOIN users u ON u.id = m.author_id
 		 WHERE m.channel_id = ? AND (
 		   m.created_at < (SELECT created_at FROM messages WHERE id = ?)
 		   OR m.id = ?
@@ -190,9 +190,9 @@ func (d *DB) DeleteMessage(id string) error {
 func (d *DB) GetReplyContext(messageID string) (*ReplyContext, error) {
 	rc := &ReplyContext{}
 	err := d.QueryRow(
-		`SELECT m.id, m.author_id, u.username, u.avatar_path, m.content
+		`SELECT m.id, m.author_id, COALESCE(u.username, 'Deleted User'), u.avatar_path, m.content
 		 FROM messages m
-		 JOIN users u ON u.id = m.author_id
+		 LEFT JOIN users u ON u.id = m.author_id
 		 WHERE m.id = ?`, messageID,
 	).Scan(&rc.ID, &rc.AuthorID, &rc.AuthorUsername, &rc.AuthorAvatarURL, &rc.Content)
 	if err == sql.ErrNoRows {

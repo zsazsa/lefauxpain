@@ -6,7 +6,7 @@
   <title>Le Faux Pain</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -15,8 +15,50 @@
       background-color: #0d0b1a;
       color: #f0e8d8;
       -webkit-font-smoothing: antialiased;
+      overflow: hidden;
     }
     body {
+      display: flex;
+      flex-direction: column;
+    }
+    .titlebar {
+      height: 32px;
+      min-height: 32px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      background-color: #16132b;
+      border-bottom: 1px solid #3a2e1a;
+      padding: 0 12px 0 16px;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .titlebar-label {
+      font-family: "Cinzel", serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: #c9a84c;
+      letter-spacing: 1.5px;
+      pointer-events: none;
+    }
+    .titlebar-btns { display: flex; }
+    .titlebar-btn {
+      width: 36px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #8a7a6a;
+      font-size: 16px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+    }
+    .titlebar-btn:hover { color: #c9a84c; }
+    .titlebar-btn.close-btn { font-size: 18px; }
+    .titlebar-btn.close-btn:hover { color: #c9374b; }
+    .content {
+      flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -144,6 +186,15 @@
   </style>
 </head>
 <body>
+  <div class="titlebar" id="titlebar" data-tauri-drag-region>
+    <span class="titlebar-label">LE FAUX PAIN</span>
+    <div class="titlebar-btns">
+      <button class="titlebar-btn" id="tb-min" title="Minimize">&minus;</button>
+      <button class="titlebar-btn" id="tb-max" title="Maximize">&#9633;</button>
+      <button class="titlebar-btn close-btn" id="tb-close" title="Close">&times;</button>
+    </div>
+  </div>
+  <div class="content">
   <div class="card">
     <div class="crest">&#9876;</div>
     <h1>Le Faux Pain</h1>
@@ -168,7 +219,23 @@
     </div>
   </div>
 
+  </div><!-- /content -->
+
   <script>
+    // Titlebar: show only in Tauri, wire up window controls
+    if (window.__TAURI_INTERNALS__) {
+      const tb = document.getElementById('titlebar');
+      tb.style.display = 'flex';
+      const invoke = (cmd) => window.__TAURI_INTERNALS__.invoke(cmd, { label: 'main' });
+      tb.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        invoke('plugin:window|start_dragging');
+      });
+      document.getElementById('tb-min').addEventListener('click', () => invoke('plugin:window|minimize'));
+      document.getElementById('tb-max').addEventListener('click', () => invoke('plugin:window|toggle_maximize'));
+      document.getElementById('tb-close').addEventListener('click', () => invoke('plugin:window|close'));
+    }
+
     const STORAGE_KEY = 'lefauxpain_servers';
     const LAST_KEY = 'lefauxpain_last_server';
 
@@ -196,6 +263,8 @@
 
     function connectTo(url) {
       saveServer(url);
+      // This page only loads inside the Tauri app, so always set the flag
+      localStorage.setItem('lefauxpain_desktop', '1');
       window.location.href = url;
     }
 

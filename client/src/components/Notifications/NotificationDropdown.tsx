@@ -3,6 +3,7 @@ import { notifications, unreadCount, markRead, markAllRead } from "../../stores/
 import { setSelectedChannelId } from "../../stores/channels";
 import { setScrollToMessageId } from "../../stores/messages";
 import { send } from "../../lib/ws";
+import { lookupUsername } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
 
 interface NotificationDropdownProps {
@@ -22,6 +23,13 @@ function formatRelativeTime(dateStr: string): string {
   if (diffHr < 24) return `${diffHr}h ago`;
   const diffDay = Math.floor(diffHr / 24);
   return `${diffDay}d ago`;
+}
+
+function resolveMentions(text: string): string {
+  return text.replace(/<@([0-9a-fA-F-]{36})>/g, (_, id) => {
+    const name = lookupUsername(id);
+    return name ? `@${name}` : "@unknown";
+  });
 }
 
 export default function NotificationDropdown(props: NotificationDropdownProps) {
@@ -187,7 +195,7 @@ export default function NotificationDropdown(props: NotificationDropdownProps) {
                     "white-space": "nowrap",
                   }}
                 >
-                  {notif.content_preview}
+                  {resolveMentions(notif.content_preview!)}
                 </div>
               </Show>
               <div

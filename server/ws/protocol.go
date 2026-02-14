@@ -33,9 +33,11 @@ type NotificationPayload struct {
 }
 
 type UserPayload struct {
-	ID        string  `json:"id"`
-	Username  string  `json:"username"`
-	AvatarURL *string `json:"avatar_url"`
+	ID          string  `json:"id"`
+	Username    string  `json:"username"`
+	AvatarURL   *string `json:"avatar_url"`
+	IsAdmin     bool    `json:"is_admin"`
+	HasPassword bool    `json:"has_password,omitempty"`
 }
 
 type ChannelPayload struct {

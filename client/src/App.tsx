@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar/Sidebar";
 import TextChannel from "./components/TextChannel/TextChannel";
 import VoiceChannel from "./components/VoiceChannel/VoiceChannel";
 import SettingsModal from "./components/Settings/SettingsModal";
+import DesktopTitleBar from "./components/DesktopTitleBar";
 import { connectWS, disconnectWS } from "./lib/ws";
 import { initEventHandlers } from "./lib/events";
 import { currentUser, token, login, logout, setUser } from "./stores/auth";
@@ -55,24 +56,27 @@ function App() {
   };
 
   return (
-    <Show
-      when={token()}
-      fallback={
-        <Login
-          onLogin={(t, username) => {
-            handleLogin(t, username, { id: "", username, avatar_url: null });
-            setTimeout(connectOnLogin, 0);
-          }}
-        />
-      }
-    >
-      <div
-        style={{
-          display: "flex",
-          height: "100%",
-          "background-color": "var(--bg-primary)",
-        }}
-      >
+    <div style={{ display: "flex", "flex-direction": "column", height: "var(--app-height, 100vh)", overflow: "hidden" }}>
+      <DesktopTitleBar />
+      <div style={{ flex: "1", "min-height": "0" }}>
+        <Show
+          when={token()}
+          fallback={
+            <Login
+              onLogin={(t, username) => {
+                handleLogin(t, username, { id: "", username, avatar_url: null });
+                setTimeout(connectOnLogin, 0);
+              }}
+            />
+          }
+        >
+          <div
+            style={{
+              display: "flex",
+              height: "100%",
+              "background-color": "var(--bg-primary)",
+            }}
+          >
         <SettingsModal />
 
         {/* Sidebar wrapper */}
@@ -188,8 +192,10 @@ function App() {
             return null;
           }}
         </div>
+          </div>
+        </Show>
       </div>
-    </Show>
+    </div>
   );
 }
 

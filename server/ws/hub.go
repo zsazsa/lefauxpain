@@ -51,6 +51,7 @@ func (h *Hub) Run() {
 				User: UserPayload{
 					ID:       client.User.ID,
 					Username: client.User.Username,
+					IsAdmin:  client.User.IsAdmin,
 				},
 			})
 			if err == nil {
@@ -121,6 +122,7 @@ func (h *Hub) OnlineUsers() []UserPayload {
 		users = append(users, UserPayload{
 			ID:       client.User.ID,
 			Username: client.User.Username,
+			IsAdmin:  client.User.IsAdmin,
 		})
 	}
 	return users
@@ -131,6 +133,15 @@ func (h *Hub) SendTo(userID string, msg []byte) {
 	defer h.mu.RUnlock()
 	if client, ok := h.clients[userID]; ok {
 		client.Send(msg)
+	}
+}
+
+func (h *Hub) DisconnectUser(userID string) {
+	h.mu.RLock()
+	client, ok := h.clients[userID]
+	h.mu.RUnlock()
+	if ok {
+		client.Close()
 	}
 }
 
@@ -196,6 +207,9 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleMarkNotificationRead(client, msg.Data)
 	case "mark_all_notifications_read":
 		h.handleMarkAllNotificationsRead(client)
+	case "ping":
+		pong, _ := NewMessage("pong", nil)
+		client.Send(pong)
 	default:
 		log.Printf("unhandled op: %s from user %s", msg.Op, client.UserID)
 	}

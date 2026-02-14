@@ -27,16 +27,20 @@ type authResponse struct {
 }
 
 type userPayload struct {
-	ID        string  `json:"id"`
-	Username  string  `json:"username"`
-	AvatarURL *string `json:"avatar_url"`
+	ID          string  `json:"id"`
+	Username    string  `json:"username"`
+	AvatarURL   *string `json:"avatar_url"`
+	IsAdmin     bool    `json:"is_admin"`
+	HasPassword bool    `json:"has_password"`
 }
 
 func newUserPayload(u *db.User) *userPayload {
 	return &userPayload{
-		ID:        u.ID,
-		Username:  u.Username,
-		AvatarURL: u.AvatarURL,
+		ID:          u.ID,
+		Username:    u.Username,
+		AvatarURL:   u.AvatarURL,
+		IsAdmin:     u.IsAdmin,
+		HasPassword: u.PasswordHash != nil,
 	}
 }
 
@@ -76,8 +80,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		h := string(hash)
-		passwordHash = &h
+		s := string(hash)
+		passwordHash = &s
 	}
 
 	// First user is admin
@@ -151,6 +155,55 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		User:  newUserPayload(user),
 		Token: token,
 	})
+}
+
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user := UserFromContext(r.Context())
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// If user has an existing password, verify current_password
+	if user.PasswordHash != nil {
+		if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+			writeError(w, http.StatusUnauthorized, "current password is incorrect")
+			return
+		}
+	}
+
+	// Set or remove password
+	var passwordHash *string
+	if req.NewPassword != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		s := string(hash)
+		passwordHash = &s
+	}
+
+	if err := h.DB.SetPassword(user.ID, passwordHash); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "updated", "has_password": passwordHash != nil})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

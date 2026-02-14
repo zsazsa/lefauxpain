@@ -95,6 +95,21 @@ var migrations = []string{
 		created_at  DATETIME DEFAULT (datetime('now'))
 	);
 	CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at DESC);`,
+
+	// Version 3: Nullable author_id on messages (ON DELETE SET NULL for user deletion)
+	`CREATE TABLE messages_new (
+		id          TEXT PRIMARY KEY,
+		channel_id  TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+		author_id   TEXT REFERENCES users(id) ON DELETE SET NULL,
+		content     TEXT CHECK(content IS NULL OR length(content) <= 4000),
+		reply_to_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+		created_at  DATETIME DEFAULT (datetime('now')),
+		edited_at   DATETIME
+	);
+	INSERT INTO messages_new SELECT * FROM messages;
+	DROP TABLE messages;
+	ALTER TABLE messages_new RENAME TO messages;
+	CREATE INDEX idx_messages_channel_time ON messages(channel_id, created_at DESC);`,
 }
 
 func (d *DB) migrate() error {
@@ -112,23 +127,37 @@ func (d *DB) migrate() error {
 
 	for i := currentVersion; i < len(migrations); i++ {
 		version := i + 1
+
+		// Disable FK checks during migrations (needed for table recreation)
+		if _, err := d.Exec(`PRAGMA foreign_keys=OFF`); err != nil {
+			return fmt.Errorf("disable fk migration %d: %w", version, err)
+		}
+
 		tx, err := d.Begin()
 		if err != nil {
+			d.Exec(`PRAGMA foreign_keys=ON`)
 			return fmt.Errorf("begin migration %d: %w", version, err)
 		}
 
 		if _, err := tx.Exec(migrations[i]); err != nil {
 			tx.Rollback()
+			d.Exec(`PRAGMA foreign_keys=ON`)
 			return fmt.Errorf("run migration %d: %w", version, err)
 		}
 
 		if _, err := tx.Exec(`INSERT INTO schema_version (version) VALUES (?)`, version); err != nil {
 			tx.Rollback()
+			d.Exec(`PRAGMA foreign_keys=ON`)
 			return fmt.Errorf("record migration %d: %w", version, err)
 		}
 
 		if err := tx.Commit(); err != nil {
+			d.Exec(`PRAGMA foreign_keys=ON`)
 			return fmt.Errorf("commit migration %d: %w", version, err)
+		}
+
+		if _, err := d.Exec(`PRAGMA foreign_keys=ON`); err != nil {
+			return fmt.Errorf("enable fk migration %d: %w", version, err)
 		}
 	}
 

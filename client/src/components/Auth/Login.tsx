@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 
 interface LoginProps {
   onLogin: (token: string, username: string) => void;
@@ -7,13 +7,20 @@ interface LoginProps {
 function Login(props: LoginProps) {
   const [username, setUsername] = createSignal("");
   const [password, setPassword] = createSignal("");
-  const [isRegister, setIsRegister] = createSignal(true);
+  const [confirmPassword, setConfirmPassword] = createSignal("");
+  const [isRegister, setIsRegister] = createSignal(false);
   const [error, setError] = createSignal("");
   const [loading, setLoading] = createSignal(false);
 
   const handleSubmit = async (e: Event) => {
     e.preventDefault();
     setError("");
+
+    if (isRegister() && password() && password() !== confirmPassword()) {
+      setError("Passwords do not match");
+      return;
+    }
+
     setLoading(true);
 
     const endpoint = isRegister()
@@ -140,7 +147,7 @@ function Login(props: LoginProps) {
           />
         </div>
 
-        <div style={{ "margin-bottom": "24px" }}>
+        <div style={{ "margin-bottom": isRegister() && password() ? "16px" : "24px" }}>
           <label
             style={{
               display: "block",
@@ -171,6 +178,37 @@ function Login(props: LoginProps) {
             }}
           />
         </div>
+
+        <Show when={isRegister() && password()}>
+          <div style={{ "margin-bottom": "24px" }}>
+            <label
+              style={{
+                display: "block",
+                "margin-bottom": "6px",
+                color: "var(--text-muted)",
+                "font-size": "11px",
+                "text-transform": "uppercase",
+                "letter-spacing": "1px",
+              }}
+            >
+              confirm password
+            </label>
+            <input
+              type="password"
+              value={confirmPassword()}
+              onInput={(e) => setConfirmPassword(e.currentTarget.value)}
+              style={{
+                width: "100%",
+                padding: "8px",
+                "background-color": "var(--bg-primary)",
+                border: "1px solid var(--border-gold)",
+                color: "var(--text-primary)",
+                "font-size": "14px",
+                "caret-color": "var(--accent)",
+              }}
+            />
+          </div>
+        </Show>
 
         <button
           type="submit"

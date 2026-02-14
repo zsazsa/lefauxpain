@@ -33,7 +33,7 @@ export function mergeKnownUsers(users: Array<{ id: string; username: string }>) 
     let changed = false;
     for (const u of users) {
       if (!next.has(u.id)) {
-        next.set(u.id, { id: u.id, username: u.username, avatar_url: null });
+        next.set(u.id, { id: u.id, username: u.username, avatar_url: null, is_admin: false });
         changed = true;
       }
     }

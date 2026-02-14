@@ -4,6 +4,8 @@ export type User = {
   id: string;
   username: string;
   avatar_url: string | null;
+  is_admin: boolean;
+  has_password?: boolean;
 };
 
 const [currentUser, setCurrentUser] = createSignal<User | null>(null);

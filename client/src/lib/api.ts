@@ -53,6 +53,43 @@ export function setAudioDevice(id: string, kind: "input" | "output") {
   });
 }
 
+export function getUsers(): Promise<
+  {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+    is_admin: boolean;
+    created_at: string;
+  }[]
+> {
+  return request("/admin/users");
+}
+
+export function deleteUser(id: string) {
+  return request(`/admin/users/${id}`, { method: "DELETE" });
+}
+
+export function setUserAdmin(id: string, isAdmin: boolean) {
+  return request(`/admin/users/${id}/admin`, {
+    method: "POST",
+    body: JSON.stringify({ is_admin: isAdmin }),
+  });
+}
+
+export function setUserPassword(id: string, password: string) {
+  return request(`/admin/users/${id}/password`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
+export function changePassword(currentPassword: string, newPassword: string) {
+  return request("/auth/password", {
+    method: "POST",
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
 export async function uploadFile(file: File) {
   const form = new FormData();
   form.append("file", file);

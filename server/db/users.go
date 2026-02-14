@@ -102,6 +102,55 @@ func (d *DB) GetUserByToken(token string) (*User, error) {
 	return u, nil
 }
 
+func (d *DB) GetAllUsers() ([]User, error) {
+	rows, err := d.Query(`SELECT id, username, password_hash, is_admin, avatar_path, created_at FROM users ORDER BY created_at`)
+	if err != nil {
+		return nil, fmt.Errorf("get all users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	if users == nil {
+		users = []User{}
+	}
+	return users, rows.Err()
+}
+
+func (d *DB) DeleteUser(id string) error {
+	_, err := d.Exec(`DELETE FROM tokens WHERE user_id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete user tokens: %w", err)
+	}
+	_, err = d.Exec(`DELETE FROM users WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}
+
+func (d *DB) SetPassword(id string, passwordHash *string) error {
+	_, err := d.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, id)
+	if err != nil {
+		return fmt.Errorf("set password: %w", err)
+	}
+	return nil
+}
+
+func (d *DB) SetAdmin(id string, isAdmin bool) error {
+	_, err := d.Exec(`UPDATE users SET is_admin = ? WHERE id = ?`, isAdmin, id)
+	if err != nil {
+		return fmt.Errorf("set admin: %w", err)
+	}
+	return nil
+}
+
 func (d *DB) GetAllChannels() ([]Channel, error) {
 	rows, err := d.Query(`SELECT id, name, type, position, created_at FROM channels ORDER BY position`)
 	if err != nil {

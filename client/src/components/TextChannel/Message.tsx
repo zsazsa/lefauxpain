@@ -82,7 +82,7 @@ export default function MessageItem(props: MessageProps) {
   const canDelete = () => {
     const user = currentUser();
     if (!user) return false;
-    return props.message.author.id === user.id;
+    return props.message.author.id === user.id || user.is_admin;
   };
 
   const showActions = () => {
@@ -110,8 +110,8 @@ export default function MessageItem(props: MessageProps) {
   return (
     <div
       data-message-id={props.message.id}
-      onMouseOver={() => { if (!isMobile()) setHovered(true); }}
-      onMouseOut={() => { if (!isMobile()) setHovered(false); }}
+      onMouseEnter={() => { if (!isMobile()) setHovered(true); }}
+      onMouseLeave={() => { if (!isMobile()) setHovered(false); }}
       onClick={handleTap}
       style={{
         padding: isMobile() ? "1px 10px" : "1px 16px",

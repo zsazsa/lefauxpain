@@ -97,16 +97,24 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			if m.ReplyToID != nil {
 				rc, _ := h.DB.GetReplyContext(*m.ReplyToID)
 				if rc != nil {
+					rcAuthorID := ""
+					if rc.AuthorID != nil {
+						rcAuthorID = *rc.AuthorID
+					}
 					reply = &replyPayload{
 						ID:      rc.ID,
-						Author:  authorPayload{ID: rc.AuthorID, Username: rc.AuthorUsername},
+						Author:  authorPayload{ID: rcAuthorID, Username: rc.AuthorUsername},
 						Content: rc.Content,
 					}
 				}
 			}
+			authorID := ""
+			if m.AuthorID != nil {
+				authorID = *m.AuthorID
+			}
 			result[i] = messageResponse{
 				ID: m.ID, ChannelID: m.ChannelID,
-				Author:      authorPayload{ID: m.AuthorID, Username: m.AuthorUsername, AvatarURL: m.AuthorAvatarURL},
+				Author:      authorPayload{ID: authorID, Username: m.AuthorUsername, AvatarURL: m.AuthorAvatarURL},
 				Content:     m.Content, ReplyTo: reply,
 				Attachments: attachPayloads, Reactions: reactions,
 				Mentions: mentions, CreatedAt: m.CreatedAt, EditedAt: m.EditedAt,
@@ -159,10 +167,14 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		if m.ReplyToID != nil {
 			rc, _ := h.DB.GetReplyContext(*m.ReplyToID)
 			if rc != nil {
+				rcAuthorID := ""
+				if rc.AuthorID != nil {
+					rcAuthorID = *rc.AuthorID
+				}
 				reply = &replyPayload{
 					ID: rc.ID,
 					Author: authorPayload{
-						ID:       rc.AuthorID,
+						ID:       rcAuthorID,
 						Username: rc.AuthorUsername,
 					},
 					Content: rc.Content,
@@ -170,11 +182,15 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		authorID := ""
+		if m.AuthorID != nil {
+			authorID = *m.AuthorID
+		}
 		result[i] = messageResponse{
 			ID:        m.ID,
 			ChannelID: m.ChannelID,
 			Author: authorPayload{
-				ID:        m.AuthorID,
+				ID:        authorID,
 				Username:  m.AuthorUsername,
 				AvatarURL: m.AuthorAvatarURL,
 			},

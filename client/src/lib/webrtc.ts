@@ -173,18 +173,7 @@ export function handleWebRTCOffer(sdp: string) {
     .then(() => peerConnection!.createAnswer())
     .then((answer) => peerConnection!.setLocalDescription(answer))
     .then(() => {
-      // Wait for ICE gathering to complete before sending the answer
-      const pc = peerConnection!;
-      if (pc.iceGatheringState === "complete") {
-        send("webrtc_answer", { sdp: pc.localDescription!.sdp });
-      } else {
-        pc.onicegatheringstatechange = () => {
-          if (pc.iceGatheringState === "complete") {
-            send("webrtc_answer", { sdp: pc.localDescription!.sdp });
-            pc.onicegatheringstatechange = null;
-          }
-        };
-      }
+      send("webrtc_answer", { sdp: peerConnection!.localDescription!.sdp });
     })
     .catch((err) => console.error("WebRTC offer handling failed:", err));
 }

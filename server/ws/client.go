@@ -179,8 +179,10 @@ func (c *Client) sendReady() error {
 
 	msg, err := NewMessage("ready", ReadyData{
 		User: &UserPayload{
-			ID:       c.User.ID,
-			Username: c.User.Username,
+			ID:          c.User.ID,
+			Username:    c.User.Username,
+			IsAdmin:     c.User.IsAdmin,
+			HasPassword: c.User.PasswordHash != nil,
 		},
 		Channels:      channelPayloads,
 		VoiceStates:   voiceStates,

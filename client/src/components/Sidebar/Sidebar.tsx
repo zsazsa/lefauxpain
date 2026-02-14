@@ -7,6 +7,7 @@ import { joinVoice } from "../../lib/webrtc";
 import { setSettingsOpen } from "../../stores/settings";
 import { unreadCount } from "../../stores/notifications";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
+import { connState, ping } from "../../lib/ws";
 import ChannelItem from "./ChannelItem";
 import CreateChannel from "./CreateChannel";
 import VoiceControls from "../VoiceChannel/VoiceControls";
@@ -54,7 +55,7 @@ export default function Sidebar(props: SidebarProps) {
       <div
         ref={headerRef}
         style={{
-          padding: "12px 16px",
+          padding: "10px 16px",
           "border-bottom": "1px solid var(--border-gold)",
           display: "flex",
           "align-items": "center",
@@ -62,13 +63,41 @@ export default function Sidebar(props: SidebarProps) {
         }}
       >
         <span style={{
-          "font-family": "var(--font-display)",
-          "font-weight": "700",
-          "font-size": "15px",
-          color: "var(--accent)",
-          "letter-spacing": "1px",
+          display: "flex",
+          "align-items": "center",
+          gap: "6px",
+          "font-size": "12px",
+          color: "var(--text-muted)",
         }}>
-          Le Faux Pain
+          <span style={{
+            width: "7px",
+            height: "7px",
+            "border-radius": "50%",
+            "background-color": connState() === "connected"
+              ? "var(--success)"
+              : connState() === "reconnecting"
+                ? "var(--accent)"
+                : "var(--danger)",
+            "flex-shrink": "0",
+          }} />
+          {connState() === "connected" ? (
+            <span>
+              <span style={{ color: "var(--text-secondary)" }}>
+                {onlineUsers().length + 1} online
+              </span>
+              {ping() !== null && (
+                <span style={{
+                  color: ping()! < 100 ? "var(--text-muted)" : ping()! < 300 ? "var(--accent)" : "var(--danger)",
+                }}>
+                  {" \u00B7 "}{ping()}ms
+                </span>
+              )}
+            </span>
+          ) : (
+            <span style={{ color: "var(--accent)" }}>
+              {connState() === "reconnecting" ? "reconnecting..." : "offline"}
+            </span>
+          )}
         </span>
         <button
           onClick={() => setNotifOpen((v) => !v)}
@@ -219,6 +248,57 @@ export default function Sidebar(props: SidebarProps) {
         </Show>
 
         <CreateChannel />
+
+        {/* Online users */}
+        <div
+          style={{
+            padding: "12px 16px 4px",
+            "font-family": "var(--font-display)",
+            "font-size": "11px",
+            "font-weight": "600",
+            "text-transform": "uppercase",
+            "letter-spacing": "2px",
+            color: "var(--text-muted)",
+            "margin-top": "8px",
+          }}
+        >
+          En Ligne — {onlineUsers().length + 1}
+        </div>
+        <div style={{ padding: "4px 16px" }}>
+          <Show when={currentUser()}>
+            <div
+              style={{
+                padding: "2px 0",
+                "font-size": "12px",
+                color: "var(--accent)",
+                display: "flex",
+                "align-items": "center",
+                gap: "6px",
+              }}
+            >
+              <span style={{ color: "var(--success)", "font-size": "8px" }}>{"\u25CF"}</span>
+              {currentUser()!.username}
+              <span style={{ "font-size": "10px", color: "var(--text-muted)" }}>(you)</span>
+            </div>
+          </Show>
+          <For each={onlineUsers()}>
+            {(user) => (
+              <div
+                style={{
+                  padding: "2px 0",
+                  "font-size": "12px",
+                  color: "var(--text-secondary)",
+                  display: "flex",
+                  "align-items": "center",
+                  gap: "6px",
+                }}
+              >
+                <span style={{ color: "var(--success)", "font-size": "8px" }}>{"\u25CF"}</span>
+                {user.username}
+              </div>
+            )}
+          </For>
+        </div>
       </div>
 
       {/* Voice controls */}

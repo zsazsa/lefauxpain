@@ -47,6 +47,24 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	// Upload (authenticated + rate limited)
 	mux.HandleFunc("/api/v1/upload", uploadRL.Wrap(authMW.Wrap(uploadHandler.Upload)))
 
+	// Auth - change password (authenticated)
+	mux.HandleFunc("/api/v1/auth/password", authMW.Wrap(authHandler.ChangePassword))
+
+	// Admin routes (authenticated)
+	adminHandler := &AdminHandler{DB: database, Hub: hub}
+	mux.HandleFunc("/api/v1/admin/users", authMW.Wrap(adminHandler.ListUsers))
+	mux.HandleFunc("/api/v1/admin/users/", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/admin") {
+			adminHandler.SetAdmin(w, r)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/password") {
+			adminHandler.SetPassword(w, r)
+			return
+		}
+		adminHandler.DeleteUser(w, r)
+	}))
+
 	// Audio device management (authenticated)
 	audioHandler := &AudioHandler{}
 	mux.HandleFunc("/api/v1/audio/devices", authMW.Wrap(audioHandler.ListDevices))
