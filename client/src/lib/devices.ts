@@ -21,6 +21,7 @@ const [desktopOutputs, setDesktopOutputs] = createSignal<DesktopAudioDevice[]>([
 export { microphones, speakers, desktopInputs, desktopOutputs };
 
 export const isDesktop = !!(window as any).__DESKTOP__;
+export const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
 export function tauriInvoke(cmd: string, args?: any): Promise<any> {
   const internals = (window as any).__TAURI_INTERNALS__;

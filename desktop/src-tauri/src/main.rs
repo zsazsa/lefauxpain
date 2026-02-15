@@ -115,6 +115,8 @@ fn set_default_audio_device(id: String) -> bool {
 
 fn main() {
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(Arc::new(Mutex::new(VoiceEngine::new())) as voice::VoiceState);
 
     #[cfg(target_os = "linux")]
@@ -151,7 +153,6 @@ fn main() {
             #[cfg(target_os = "linux")]
             {
                 let window = _app.get_webview_window("main").unwrap();
-
                 // Enumerate local audio devices and build injection script
                 let devices = get_audio_devices();
                 let devices_json = serde_json::to_string(&devices).unwrap_or_default();

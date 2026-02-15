@@ -2,7 +2,8 @@ import { createSignal } from "solid-js";
 
 const isDesktop =
   localStorage.getItem("lefauxpain_desktop") === "1" ||
-  !!(window as any).__DESKTOP__;
+  !!(window as any).__DESKTOP__ ||
+  !!(window as any).__TAURI_INTERNALS__;
 
 export default function DesktopTitleBar() {
   if (!isDesktop) return null;

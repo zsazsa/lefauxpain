@@ -5,7 +5,7 @@ import {
   settingsOpen,
   setSettingsOpen,
 } from "../../stores/settings";
-import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop } from "../../lib/devices";
+import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop, isTauri } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
 import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword } from "../../lib/api";
 import { currentUser } from "../../stores/auth";
@@ -20,7 +20,7 @@ type AdminUser = {
   created_at: string;
 };
 
-type Tab = "account" | "audio" | "admin";
+type Tab = "account" | "audio" | "admin" | "app";
 
 export default function SettingsModal() {
   const [activeTab, setActiveTab] = createSignal<Tab>("account");
@@ -288,6 +288,64 @@ export default function SettingsModal() {
     setTestPhase("idle");
   };
 
+  // --- App update state (desktop only) ---
+  type UpdateStatus = "idle" | "checking" | "no-update" | "available" | "downloading" | "ready" | "error";
+  const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus>("idle");
+  const [updateVersion, setUpdateVersion] = createSignal("");
+  const [updateBody, setUpdateBody] = createSignal("");
+  const [updateProgress, setUpdateProgress] = createSignal(0);
+  const [updateError, setUpdateError] = createSignal("");
+  let pendingUpdate: any = null;
+
+  const checkForUpdates = async () => {
+    setUpdateStatus("checking");
+    setUpdateError("");
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (update) {
+        pendingUpdate = update;
+        setUpdateVersion(update.version);
+        setUpdateBody(update.body || "");
+        setUpdateStatus("available");
+      } else {
+        setUpdateStatus("no-update");
+      }
+    } catch (e: any) {
+      setUpdateError(e.message || "Failed to check for updates");
+      setUpdateStatus("error");
+    }
+  };
+
+  const downloadAndInstall = async () => {
+    if (!pendingUpdate) return;
+    setUpdateStatus("downloading");
+    setUpdateProgress(0);
+    try {
+      let totalLen = 0;
+      let downloaded = 0;
+      await pendingUpdate.downloadAndInstall((event: any) => {
+        if (event.event === "Started" && event.data?.contentLength) {
+          totalLen = event.data.contentLength;
+        } else if (event.event === "Progress") {
+          downloaded += event.data.chunkLength;
+          if (totalLen > 0) setUpdateProgress(downloaded / totalLen);
+        } else if (event.event === "Finished") {
+          setUpdateProgress(1);
+        }
+      });
+      setUpdateStatus("ready");
+    } catch (e: any) {
+      setUpdateError(e.message || "Download failed");
+      setUpdateStatus("error");
+    }
+  };
+
+  const relaunchApp = async () => {
+    const { relaunch } = await import("@tauri-apps/plugin-process");
+    await relaunch();
+  };
+
   const tabs = (): { id: Tab; label: string }[] => {
     const t: { id: Tab; label: string }[] = [
       { id: "account", label: "Account" },
@@ -295,6 +353,9 @@ export default function SettingsModal() {
     ];
     if (currentUser()?.is_admin) {
       t.push({ id: "admin", label: "Admin" });
+    }
+    if (isTauri) {
+      t.push({ id: "app", label: "App" });
     }
     return t;
   };
@@ -879,6 +940,93 @@ export default function SettingsModal() {
                     );
                   }}
                 </For>
+              </Show>
+
+              {/* App tab (desktop only) */}
+              <Show when={activeTab() === "app" && isTauri}>
+                <div style={sectionHeaderStyle}>App Update</div>
+
+                <Show when={updateStatus() === "idle"}>
+                  <button onClick={checkForUpdates} style={{ ...actionBtnStyle, width: "100%" }}>
+                    [check for updates]
+                  </button>
+                </Show>
+
+                <Show when={updateStatus() === "checking"}>
+                  <div style={{ "font-size": "12px", color: "var(--text-muted)" }}>
+                    Checking for updates...
+                  </div>
+                </Show>
+
+                <Show when={updateStatus() === "no-update"}>
+                  <div style={{ "font-size": "12px", color: "var(--success)", "margin-bottom": "12px" }}>
+                    You're on the latest version.
+                  </div>
+                  <button onClick={checkForUpdates} style={{ ...actionBtnStyle, width: "100%" }}>
+                    [check again]
+                  </button>
+                </Show>
+
+                <Show when={updateStatus() === "available"}>
+                  <div style={{ "font-size": "12px", color: "var(--text-primary)", "margin-bottom": "8px" }}>
+                    Version <span style={{ color: "var(--accent)", "font-weight": "600" }}>{updateVersion()}</span> is available.
+                  </div>
+                  <Show when={updateBody()}>
+                    <div style={{
+                      "font-size": "11px",
+                      color: "var(--text-muted)",
+                      "margin-bottom": "12px",
+                      "white-space": "pre-wrap",
+                      "max-height": "120px",
+                      overflow: "auto",
+                      padding: "8px",
+                      "background-color": "var(--bg-primary)",
+                      border: "1px solid rgba(201,168,76,0.2)",
+                    }}>
+                      {updateBody()}
+                    </div>
+                  </Show>
+                  <button onClick={downloadAndInstall} style={{ ...actionBtnStyle, width: "100%" }}>
+                    [download & install]
+                  </button>
+                </Show>
+
+                <Show when={updateStatus() === "downloading"}>
+                  <div style={{ "font-size": "12px", color: "var(--text-primary)", "margin-bottom": "8px" }}>
+                    Downloading... {Math.round(updateProgress() * 100)}%
+                  </div>
+                  <div style={{
+                    height: "6px",
+                    "background-color": "var(--bg-primary)",
+                    border: "1px solid var(--border-gold)",
+                    overflow: "hidden",
+                  }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${updateProgress() * 100}%`,
+                      "background-color": "var(--accent)",
+                      transition: "width 0.2s",
+                    }} />
+                  </div>
+                </Show>
+
+                <Show when={updateStatus() === "ready"}>
+                  <div style={{ "font-size": "12px", color: "var(--success)", "margin-bottom": "12px" }}>
+                    Update installed. Restart to apply.
+                  </div>
+                  <button onClick={relaunchApp} style={{ ...actionBtnStyle, width: "100%" }}>
+                    [relaunch]
+                  </button>
+                </Show>
+
+                <Show when={updateStatus() === "error"}>
+                  <div style={{ color: "var(--danger)", "font-size": "11px", "margin-bottom": "12px" }}>
+                    {updateError()}
+                  </div>
+                  <button onClick={checkForUpdates} style={{ ...actionBtnStyle, width: "100%" }}>
+                    [retry]
+                  </button>
+                </Show>
               </Show>
             </div>
           </div>
