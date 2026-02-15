@@ -11,6 +11,7 @@ import { isDesktop, tauriInvoke } from "./devices";
 
 let screenPC: RTCPeerConnection | null = null;
 let screenStream: MediaStream | null = null;
+let previewStream: MediaStream | null = null;
 let isPresenting = false;
 
 export function getIsPresenting() {
@@ -60,7 +61,9 @@ export async function startScreenShare() {
   }
 
   isPresenting = true;
-  setLocalScreenStream(screenStream);
+  // Clone stream for preview so display and WebRTC encoder don't contend for frames
+  previewStream = screenStream.clone();
+  setLocalScreenStream(previewStream);
   send("screen_share_start", {});
 }
 
@@ -83,6 +86,10 @@ export function stopScreenShare() {
   }
 
   // Browser cleanup
+  if (previewStream) {
+    previewStream.getTracks().forEach((t) => t.stop());
+    previewStream = null;
+  }
   setLocalScreenStream(null);
 
   if (screenStream) {
