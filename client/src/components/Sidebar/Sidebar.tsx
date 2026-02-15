@@ -30,6 +30,7 @@ export default function Sidebar(props: SidebarProps) {
   const [notifOpen, setNotifOpen] = createSignal(false);
   const [shaking, setShaking] = createSignal(false);
   let headerRef: HTMLDivElement | undefined;
+  let bellRef: HTMLButtonElement | undefined;
 
   // Shake for 20s when unread count increases
   let shakeTimer: number | undefined;
@@ -107,6 +108,7 @@ export default function Sidebar(props: SidebarProps) {
           )}
         </span>
         <button
+          ref={bellRef}
           onClick={() => setNotifOpen((v) => !v)}
           style={{
             position: "relative",
@@ -142,7 +144,7 @@ export default function Sidebar(props: SidebarProps) {
           </Show>
         </button>
         <Show when={notifOpen()}>
-          <NotificationDropdown anchorRef={headerRef!} onClose={() => setNotifOpen(false)} />
+          <NotificationDropdown anchorRef={isMobile() ? headerRef! : bellRef!} onClose={() => setNotifOpen(false)} />
         </Show>
       </div>
 
