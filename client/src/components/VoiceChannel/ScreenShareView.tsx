@@ -121,6 +121,7 @@ export default function ScreenShareView(props: ScreenShareViewProps) {
             "object-fit": "contain",
             cursor: "pointer",
             "background-color": "#000",
+            transform: "translateZ(0)",
           }}
         />
 

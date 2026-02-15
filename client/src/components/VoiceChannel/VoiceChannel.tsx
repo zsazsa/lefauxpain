@@ -182,13 +182,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
                 <video
                   ref={(el) => {
                     previewRef = el;
-                    createEffect(() => {
-                      const s = localScreenStream();
-                      if (s) {
-                        el.srcObject = s;
-                        el.play().catch(() => {});
-                      }
-                    });
+                    el.srcObject = localScreenStream();
                     onCleanup(() => { el.srcObject = null; });
                   }}
                   autoplay
@@ -201,6 +195,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
                     "object-fit": "contain",
                     cursor: "pointer",
                     "min-height": "0",
+                    transform: "translateZ(0)",
                   }}
                 />
               ) : (
