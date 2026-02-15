@@ -9,6 +9,7 @@ import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs,
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
 import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword } from "../../lib/api";
 import { currentUser } from "../../stores/auth";
+import { allUsers, removeAllUser } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
 
 type PwDevice = { id: string; name: string; default: boolean };
@@ -70,6 +71,7 @@ export default function SettingsModal() {
     try {
       await deleteUser(id);
       setAdminUsers((prev) => prev.filter((u) => u.id !== id));
+      removeAllUser(id);
       setConfirmDelete(null);
     } catch {
       // Error

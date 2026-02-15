@@ -33,6 +33,10 @@ export function removeOnlineUser(userId: string) {
   // intentionally NOT removed from knownUsers
 }
 
+export function removeAllUser(userId: string) {
+  setAllUsers((prev) => prev.filter((u) => u.id !== userId));
+}
+
 export function mergeKnownUsers(users: Array<{ id: string; username: string }>) {
   setKnownUsers((prev) => {
     const next = new Map(prev);

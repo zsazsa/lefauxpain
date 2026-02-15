@@ -2,7 +2,7 @@ import { createSignal, Show, For } from "solid-js";
 import { send } from "../../lib/ws";
 import { replyingTo, setReplyingTo, getChannelMessages } from "../../stores/messages";
 import { uploadFile } from "../../lib/api";
-import { onlineUsers } from "../../stores/users";
+import { onlineUsers, allUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { isMobile } from "../../stores/responsive";
 
@@ -24,11 +24,16 @@ export default function MessageInput(props: MessageInputProps) {
   // Maps display name -> userId for mentions inserted in the current message
   const pendingMentions = new Map<string, string>();
 
-  // Build a de-duplicated user list from online users + message authors
+  // Build a de-duplicated user list: online users first, then offline
   const mentionableUsers = () => {
     const map = new Map<string, { id: string; username: string }>();
     for (const u of onlineUsers()) {
       map.set(u.id, u);
+    }
+    for (const u of allUsers()) {
+      if (!map.has(u.id)) {
+        map.set(u.id, u);
+      }
     }
     for (const m of getChannelMessages(props.channelId)) {
       if (!map.has(m.author.id)) {
