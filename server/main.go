@@ -57,6 +57,18 @@ func main() {
 		hub.SendTo(userID, msg)
 	}
 
+	// When a screen share stops (explicit, connection failure, or leave voice), broadcast
+	sfuInstance.OnScreenShareStopped = func(presenterID string, channelID string) {
+		msg, err := ws.NewMessage("screen_share_stopped", ws.ScreenSharePayload{
+			UserID:    presenterID,
+			ChannelID: channelID,
+		})
+		if err != nil {
+			return
+		}
+		hub.BroadcastAll(msg)
+	}
+
 	// When a peer is removed (connection failure, etc.), broadcast voice leave
 	sfuInstance.OnPeerRemoved = func(userID string) {
 		msg, err := ws.NewMessage("voice_state_update", ws.VoiceStatePayload{

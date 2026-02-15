@@ -60,6 +60,10 @@ export function stopScreenShare() {
   if (!isPresenting) return;
   isPresenting = false;
 
+  // Send WS stop BEFORE closing the peer connection to avoid race
+  // where SFU sees PC disconnect and cleans up before the WS message arrives
+  send("screen_share_stop", {});
+
   if (isDesktop) {
     // Desktop: stop native Rust screen capture
     setDesktopPresenting(false);
@@ -67,7 +71,6 @@ export function stopScreenShare() {
     tauriInvoke("screen_stop").catch((err: any) => {
       console.error("[screen] screen_stop failed:", err);
     });
-    send("screen_share_stop", {});
     return;
   }
 
@@ -83,8 +86,6 @@ export function stopScreenShare() {
     screenPC.close();
     screenPC = null;
   }
-
-  send("screen_share_stop", {});
 }
 
 export function subscribeScreenShare(channelId: string) {

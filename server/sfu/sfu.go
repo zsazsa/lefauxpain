@@ -13,6 +13,7 @@ import (
 // Callback types for signaling back to the WS layer
 type SignalFunc func(userID string, op string, data any)
 type PeerRemovedFunc func(userID string)
+type ScreenShareStoppedFunc func(presenterID string, channelID string)
 
 type ScreenShareState struct {
 	UserID    string `json:"user_id"`
@@ -26,8 +27,9 @@ type SFU struct {
 	config        webrtc.Configuration
 	api           *webrtc.API
 	screenAPI     *webrtc.API
-	Signal        SignalFunc
-	OnPeerRemoved PeerRemovedFunc
+	Signal               SignalFunc
+	OnPeerRemoved        PeerRemovedFunc
+	OnScreenShareStopped ScreenShareStoppedFunc
 }
 
 func New(stunServer string, publicIP string) *SFU {
@@ -192,7 +194,12 @@ func (s *SFU) StopScreenShare(channelID string) {
 	delete(s.screenRooms, channelID)
 	s.mu.Unlock()
 
+	presenterID := sr.PresenterID
 	sr.Stop()
+
+	if s.OnScreenShareStopped != nil {
+		s.OnScreenShareStopped(presenterID, channelID)
+	}
 }
 
 func (s *SFU) GetScreenRoom(channelID string) *ScreenRoom {

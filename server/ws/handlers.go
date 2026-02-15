@@ -539,14 +539,9 @@ func (h *Hub) handleLeaveVoice(c *Client) {
 	}
 
 	// Auto-stop screen share if presenter leaves voice
+	// StopScreenShare triggers OnScreenShareStopped callback which broadcasts
 	if sr := h.SFU.GetUserScreenRoom(c.UserID); sr != nil {
-		channelID := sr.ChannelID
-		h.SFU.StopScreenShare(channelID)
-		stopMsg, _ := NewMessage("screen_share_stopped", ScreenSharePayload{
-			UserID:    c.UserID,
-			ChannelID: channelID,
-		})
-		h.BroadcastAll(stopMsg)
+		h.SFU.StopScreenShare(sr.ChannelID)
 	}
 
 	room := h.SFU.GetUserRoom(c.UserID)
@@ -792,14 +787,8 @@ func (h *Hub) handleScreenShareStop(c *Client) {
 		return
 	}
 
-	channelID := sr.ChannelID
-	h.SFU.StopScreenShare(channelID)
-
-	broadcast, _ := NewMessage("screen_share_stopped", ScreenSharePayload{
-		UserID:    c.UserID,
-		ChannelID: channelID,
-	})
-	h.BroadcastAll(broadcast)
+	// StopScreenShare triggers OnScreenShareStopped callback which broadcasts
+	h.SFU.StopScreenShare(sr.ChannelID)
 }
 
 func (h *Hub) handleScreenShareSubscribe(c *Client, data json.RawMessage) {

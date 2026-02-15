@@ -67,15 +67,10 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 
 			// Stop screen share if presenter disconnects
+			// StopScreenShare triggers OnScreenShareStopped callback which broadcasts
 			if h.SFU != nil {
 				if sr := h.SFU.GetUserScreenRoom(client.UserID); sr != nil {
-					channelID := sr.ChannelID
-					h.SFU.StopScreenShare(channelID)
-					stopMsg, _ := NewMessage("screen_share_stopped", ScreenSharePayload{
-						UserID:    client.UserID,
-						ChannelID: channelID,
-					})
-					h.BroadcastAll(stopMsg)
+					h.SFU.StopScreenShare(sr.ChannelID)
 				}
 			}
 
