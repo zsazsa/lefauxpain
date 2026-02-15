@@ -73,7 +73,16 @@ Just open `https://your-domain.com` (or `http://your-ip:8080` without a reverse 
 
 The desktop client is a lightweight native window (Tauri/WebView) that connects to any Le Faux Pain server.
 
-**Download a prebuilt release** from [GitHub Releases](https://github.com/zsazsa/lefauxpain/releases) — available for Linux (.deb, .AppImage), Windows (.msi), and macOS (.dmg).
+Download a prebuilt release from [GitHub Releases](https://github.com/zsazsa/lefauxpain/releases):
+
+| Platform | Download |
+|----------|----------|
+| Windows | [LeFauxPain_x64-setup.exe](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_x64-setup.exe) or [.msi](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_x64_en-US.msi) |
+| macOS (Apple Silicon) | [LeFauxPain_aarch64.dmg](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_aarch64.dmg) |
+| macOS (Intel) | [LeFauxPain_x64.dmg](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_x64.dmg) |
+| Linux (Debian/Ubuntu) | [LeFauxPain_amd64.deb](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_amd64.deb) |
+| Linux (AppImage) | [LeFauxPain_amd64.AppImage](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_amd64.AppImage) |
+| Linux (RPM) | [LeFauxPain_x86_64.rpm](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain-1.1.0-1.x86_64.rpm) |
 
 On first launch, you'll see a connect screen where you enter your server URL (e.g. `https://your-domain.com`). The app remembers your choice for next time.
 
