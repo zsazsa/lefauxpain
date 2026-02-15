@@ -141,6 +141,17 @@ func (c *Client) sendReady() error {
 
 	onlineUsers := c.hub.OnlineUsers()
 
+	// Get all registered users
+	dbAllUsers, _ := c.hub.DB.GetAllUsers()
+	allUsers := make([]UserPayload, len(dbAllUsers))
+	for i, u := range dbAllUsers {
+		allUsers[i] = UserPayload{
+			ID:       u.ID,
+			Username: u.Username,
+			IsAdmin:  u.IsAdmin,
+		}
+	}
+
 	// Get current voice states from SFU
 	var voiceStates []VoiceStatePayload
 	if c.hub.SFU != nil {
@@ -197,6 +208,7 @@ func (c *Client) sendReady() error {
 		Channels:      channelPayloads,
 		VoiceStates:   voiceStates,
 		OnlineUsers:   onlineUsers,
+		AllUsers:      allUsers,
 		Notifications: notifPayloads,
 		ScreenShares:  screenShares,
 	})

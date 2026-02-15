@@ -22,6 +22,7 @@ type ReadyData struct {
 	Channels      []ChannelPayload       `json:"channels"`
 	VoiceStates   []VoiceStatePayload    `json:"voice_states"`
 	OnlineUsers   []UserPayload          `json:"online_users"`
+	AllUsers      []UserPayload          `json:"all_users"`
 	Notifications []NotificationPayload  `json:"notifications"`
 	ScreenShares  []sfu.ScreenShareState `json:"screen_shares"`
 }

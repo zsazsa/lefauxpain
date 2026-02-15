@@ -7,7 +7,7 @@ import {
   setWatchingScreenShare,
 } from "../../stores/voice";
 import { subscribeScreenShare } from "../../lib/screenshare";
-import { onlineUsers } from "../../stores/users";
+import { onlineUsers, allUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { joinVoice } from "../../lib/webrtc";
 import { setSettingsOpen } from "../../stores/settings";
@@ -90,7 +90,7 @@ export default function Sidebar(props: SidebarProps) {
           {connState() === "connected" ? (
             <span>
               <span style={{ color: "var(--text-secondary)" }}>
-                {onlineUsers().length + 1} online
+                {onlineUsers().length + 1} en ligne
               </span>
               {ping() !== null && (
                 <span style={{
@@ -274,9 +274,10 @@ export default function Sidebar(props: SidebarProps) {
             "margin-top": "8px",
           }}
         >
-          En Ligne — {onlineUsers().length + 1}
+          Membres — {allUsers().length}
         </div>
         <div style={{ padding: "4px 16px" }}>
+          {/* Online users (current user first) */}
           <Show when={currentUser()}>
             <div
               style={{
@@ -327,6 +328,30 @@ export default function Sidebar(props: SidebarProps) {
                 </div>
               );
             }}
+          </For>
+
+          {/* Offline users */}
+          <For each={allUsers().filter((u) => {
+            const me = currentUser();
+            if (me && u.id === me.id) return false;
+            return !onlineUsers().some((o) => o.id === u.id);
+          })}>
+            {(user) => (
+              <div
+                style={{
+                  padding: "2px 0",
+                  "font-size": "12px",
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  "align-items": "center",
+                  gap: "6px",
+                  opacity: "0.5",
+                }}
+              >
+                <span style={{ color: "var(--text-muted)", "font-size": "8px" }}>{"\u25CF"}</span>
+                {user.username}
+              </div>
+            )}
           </For>
         </div>
       </div>

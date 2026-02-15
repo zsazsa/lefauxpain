@@ -15,6 +15,7 @@ import {
 } from "../stores/messages";
 import {
   setOnlineUserList,
+  setAllUserList,
   addOnlineUser,
   removeOnlineUser,
   mergeKnownUsers,
@@ -173,6 +174,7 @@ export function initEventHandlers() {
         setUser(msg.d.user);
         setChannelList(msg.d.channels);
         setOnlineUserList(msg.d.online_users);
+        setAllUserList(msg.d.all_users || []);
         mergeKnownUsers([msg.d.user]);
         setVoiceStateList(msg.d.voice_states || []);
         setNotificationList(msg.d.notifications || []);

@@ -2,15 +2,21 @@ import { createSignal } from "solid-js";
 import type { User } from "./auth";
 
 const [onlineUsers, setOnlineUsers] = createSignal<User[]>([]);
+const [allUsers, setAllUsers] = createSignal<User[]>([]);
 
 // Accumulates every user we've ever seen — never shrinks.
 // Used for mention rendering so offline users still resolve.
 const [knownUsers, setKnownUsers] = createSignal<Map<string, User>>(new Map());
 
-export { onlineUsers, knownUsers };
+export { onlineUsers, allUsers, knownUsers };
 
 export function setOnlineUserList(users: User[]) {
   setOnlineUsers(users);
+  mergeKnownUsers(users);
+}
+
+export function setAllUserList(users: User[]) {
+  setAllUsers(users);
   mergeKnownUsers(users);
 }
 
