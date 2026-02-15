@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(target_os = "linux")]
 mod screen;
 mod voice;
 
@@ -16,6 +17,7 @@ use voice::{
     voice_set_mute, voice_set_deafen, voice_set_master_volume, voice_set_mic_gain,
     voice_list_devices, voice_set_input_device, voice_set_output_device,
 };
+#[cfg(target_os = "linux")]
 use screen::{
     ScreenEngine,
     screen_start, screen_stop, screen_handle_offer, screen_handle_ice,
@@ -112,9 +114,14 @@ fn set_default_audio_device(id: String) -> bool {
 }
 
 fn main() {
-    tauri::Builder::default()
-        .manage(Arc::new(Mutex::new(VoiceEngine::new())) as voice::VoiceState)
-        .manage(Arc::new(Mutex::new(ScreenEngine::new())) as screen::ScreenState)
+    let builder = tauri::Builder::default()
+        .manage(Arc::new(Mutex::new(VoiceEngine::new())) as voice::VoiceState);
+
+    #[cfg(target_os = "linux")]
+    let builder = builder
+        .manage(Arc::new(Mutex::new(ScreenEngine::new())) as screen::ScreenState);
+
+    builder
         .invoke_handler(tauri::generate_handler![
             list_audio_devices,
             set_default_audio_device,
@@ -130,10 +137,14 @@ fn main() {
             voice_list_devices,
             voice_set_input_device,
             voice_set_output_device,
-            // Screen share commands
+            // Screen share commands (Linux only — PipeWire capture)
+            #[cfg(target_os = "linux")]
             screen_start,
+            #[cfg(target_os = "linux")]
             screen_stop,
+            #[cfg(target_os = "linux")]
             screen_handle_offer,
+            #[cfg(target_os = "linux")]
             screen_handle_ice,
         ])
         .setup(|_app| {
