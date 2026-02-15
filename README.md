@@ -73,16 +73,16 @@ Just open `https://your-domain.com` (or `http://your-ip:8080` without a reverse 
 
 The desktop client is a lightweight native window (Tauri/WebView) that connects to any Le Faux Pain server.
 
-Download a prebuilt release from [GitHub Releases](https://github.com/zsazsa/lefauxpain/releases):
+Grab the latest release for your platform from [GitHub Releases](https://github.com/zsazsa/lefauxpain/releases/latest):
 
-| Platform | Download |
-|----------|----------|
-| Windows | [LeFauxPain_x64-setup.exe](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_x64-setup.exe) or [.msi](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_x64_en-US.msi) |
-| macOS (Apple Silicon) | [LeFauxPain_aarch64.dmg](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_aarch64.dmg) |
-| macOS (Intel) | [LeFauxPain_x64.dmg](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_x64.dmg) |
-| Linux (Debian/Ubuntu) | [LeFauxPain_amd64.deb](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_amd64.deb) |
-| Linux (AppImage) | [LeFauxPain_amd64.AppImage](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain_1.1.0_amd64.AppImage) |
-| Linux (RPM) | [LeFauxPain_x86_64.rpm](https://github.com/zsazsa/lefauxpain/releases/latest/download/LeFauxPain-1.1.0-1.x86_64.rpm) |
+| Platform | Format | Install |
+|----------|--------|---------|
+| **Windows** | `.exe` installer or `.msi` | Run the installer |
+| **macOS (Apple Silicon)** | `.dmg` | Open and drag to Applications |
+| **macOS (Intel)** | `.dmg` | Open and drag to Applications |
+| **Linux (Debian/Ubuntu)** | `.deb` | `sudo dpkg -i LeFauxPain_*_amd64.deb` |
+| **Linux (Fedora/RHEL)** | `.rpm` | `sudo rpm -i LeFauxPain-*.x86_64.rpm` |
+| **Linux (any)** | `.AppImage` | `chmod +x LeFauxPain_*.AppImage && ./LeFauxPain_*.AppImage` |
 
 On first launch, you'll see a connect screen where you enter your server URL (e.g. `https://your-domain.com`). The app remembers your choice for next time.
 
@@ -90,7 +90,14 @@ On first launch, you'll see a connect screen where you enter your server URL (e.
 
 Requires [Node.js 18+](https://nodejs.org/) and [Rust](https://rustup.rs/).
 
-Linux also needs: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf`
+Linux also needs:
+
+```bash
+sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+  patchelf libopus-dev libasound2-dev libpipewire-0.3-dev libclang-dev libvpx-dev
+```
+
+Then build:
 
 ```bash
 cd desktop
