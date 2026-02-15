@@ -10,7 +10,8 @@ import { subscribeScreenShare } from "../../lib/screenshare";
 import { onlineUsers, allUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { joinVoice } from "../../lib/webrtc";
-import { setSettingsOpen } from "../../stores/settings";
+import { setSettingsOpen, setSettingsTab } from "../../stores/settings";
+import { updateStatus, updateVersion } from "../../stores/updateChecker";
 import { unreadCount } from "../../stores/notifications";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
 import { connState, ping } from "../../lib/ws";
@@ -361,6 +362,30 @@ export default function Sidebar(props: SidebarProps) {
       {/* Voice controls */}
       <VoiceControls />
 
+      {/* Update banner */}
+      <Show when={updateStatus() === "available"}>
+        <button
+          onClick={() => {
+            setSettingsTab("app");
+            setSettingsOpen(true);
+          }}
+          style={{
+            display: "flex",
+            "align-items": "center",
+            gap: "8px",
+            width: "100%",
+            padding: "6px 12px",
+            "background-color": "rgba(201,168,76,0.1)",
+            "border-top": "1px solid var(--border-gold)",
+            "font-size": "11px",
+            color: "var(--accent)",
+            cursor: "pointer",
+          }}
+        >
+          {"\u2191"} Update {updateVersion()} available
+        </button>
+      </Show>
+
       {/* User bar */}
       <div
         style={{
@@ -380,6 +405,7 @@ export default function Sidebar(props: SidebarProps) {
           <button
             onClick={() => setSettingsOpen(true)}
             style={{
+              position: "relative",
               padding: "2px 6px",
               "font-size": "18px",
               color: "var(--text-muted)",
@@ -387,6 +413,17 @@ export default function Sidebar(props: SidebarProps) {
             title="Settings"
           >
             {"\u2699"}
+            <Show when={updateStatus() === "available"}>
+              <span style={{
+                position: "absolute",
+                top: "0",
+                right: "2px",
+                width: "8px",
+                height: "8px",
+                "border-radius": "50%",
+                "background-color": "var(--cyan)",
+              }} />
+            </Show>
           </button>
           <button
             onClick={props.onLogout}

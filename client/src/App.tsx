@@ -18,6 +18,7 @@ import {
 } from "./stores/channels";
 import { watchingScreenShare } from "./stores/voice";
 import { isMobile, sidebarOpen, setSidebarOpen, initResponsive } from "./stores/responsive";
+import { startUpdateChecker } from "./stores/updateChecker";
 
 function App() {
   const [ready, setReady] = createSignal(false);
@@ -43,6 +44,7 @@ function App() {
   onMount(() => {
     const cleanupResponsive = initResponsive();
     onCleanup(cleanupResponsive);
+    startUpdateChecker();
 
     const t = token();
     if (t) {

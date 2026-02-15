@@ -31,8 +31,9 @@ function loadSettings(): AppSettings {
 
 const [settings, setSettingsSignal] = createSignal<AppSettings>(loadSettings());
 const [settingsOpen, setSettingsOpen] = createSignal(false);
+const [settingsTab, setSettingsTab] = createSignal<string | null>(null);
 
-export { settings, settingsOpen, setSettingsOpen };
+export { settings, settingsOpen, setSettingsOpen, settingsTab, setSettingsTab };
 
 export function updateSettings(partial: Partial<AppSettings>) {
   setSettingsSignal((prev) => {

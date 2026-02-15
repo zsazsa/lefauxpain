@@ -4,6 +4,8 @@ import {
   updateSettings,
   settingsOpen,
   setSettingsOpen,
+  settingsTab,
+  setSettingsTab,
 } from "../../stores/settings";
 import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop, isTauri } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
@@ -11,6 +13,10 @@ import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, se
 import { currentUser } from "../../stores/auth";
 import { allUsers, removeAllUser } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
+import {
+  updateStatus, updateVersion, updateBody, updateProgress, updateError,
+  checkForUpdates, downloadAndInstall, relaunchApp,
+} from "../../stores/updateChecker";
 
 type PwDevice = { id: string; name: string; default: boolean };
 type AdminUser = {
@@ -25,6 +31,15 @@ type Tab = "account" | "audio" | "admin" | "app";
 
 export default function SettingsModal() {
   const [activeTab, setActiveTab] = createSignal<Tab>("account");
+
+  // Allow external code to open settings to a specific tab
+  createEffect(() => {
+    const tab = settingsTab();
+    if (tab && settingsOpen()) {
+      setActiveTab(tab as Tab);
+      setSettingsTab(null);
+    }
+  });
   type TestPhase = "idle" | "recording" | "playing";
   const [testPhase, setTestPhase] = createSignal<TestPhase>("idle");
   const [micLevel, setMicLevel] = createSignal(0);
@@ -288,64 +303,6 @@ export default function SettingsModal() {
     if (testCtx) { testCtx.close(); testCtx = null; }
     setMicLevel(0);
     setTestPhase("idle");
-  };
-
-  // --- App update state (desktop only) ---
-  type UpdateStatus = "idle" | "checking" | "no-update" | "available" | "downloading" | "ready" | "error";
-  const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus>("idle");
-  const [updateVersion, setUpdateVersion] = createSignal("");
-  const [updateBody, setUpdateBody] = createSignal("");
-  const [updateProgress, setUpdateProgress] = createSignal(0);
-  const [updateError, setUpdateError] = createSignal("");
-  let pendingUpdate: any = null;
-
-  const checkForUpdates = async () => {
-    setUpdateStatus("checking");
-    setUpdateError("");
-    try {
-      const { check } = await import("@tauri-apps/plugin-updater");
-      const update = await check();
-      if (update) {
-        pendingUpdate = update;
-        setUpdateVersion(update.version);
-        setUpdateBody(update.body || "");
-        setUpdateStatus("available");
-      } else {
-        setUpdateStatus("no-update");
-      }
-    } catch (e: any) {
-      setUpdateError(e.message || "Failed to check for updates");
-      setUpdateStatus("error");
-    }
-  };
-
-  const downloadAndInstall = async () => {
-    if (!pendingUpdate) return;
-    setUpdateStatus("downloading");
-    setUpdateProgress(0);
-    try {
-      let totalLen = 0;
-      let downloaded = 0;
-      await pendingUpdate.downloadAndInstall((event: any) => {
-        if (event.event === "Started" && event.data?.contentLength) {
-          totalLen = event.data.contentLength;
-        } else if (event.event === "Progress") {
-          downloaded += event.data.chunkLength;
-          if (totalLen > 0) setUpdateProgress(downloaded / totalLen);
-        } else if (event.event === "Finished") {
-          setUpdateProgress(1);
-        }
-      });
-      setUpdateStatus("ready");
-    } catch (e: any) {
-      setUpdateError(e.message || "Download failed");
-      setUpdateStatus("error");
-    }
-  };
-
-  const relaunchApp = async () => {
-    const { relaunch } = await import("@tauri-apps/plugin-process");
-    await relaunch();
   };
 
   const tabs = (): { id: Tab; label: string }[] => {
