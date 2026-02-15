@@ -5,15 +5,18 @@ import TextChannel from "./components/TextChannel/TextChannel";
 import VoiceChannel from "./components/VoiceChannel/VoiceChannel";
 import SettingsModal from "./components/Settings/SettingsModal";
 import DesktopTitleBar from "./components/DesktopTitleBar";
+import ScreenShareView from "./components/VoiceChannel/ScreenShareView";
 import { connectWS, disconnectWS } from "./lib/ws";
 import { initEventHandlers } from "./lib/events";
 import { leaveVoice } from "./lib/webrtc";
+import { cleanupScreenShare } from "./lib/screenshare";
 import { currentUser, token, login, logout, setUser } from "./stores/auth";
 import {
   channels,
   selectedChannelId,
   selectedChannel,
 } from "./stores/channels";
+import { watchingScreenShare } from "./stores/voice";
 import { isMobile, sidebarOpen, setSidebarOpen, initResponsive } from "./stores/responsive";
 
 function App() {
@@ -25,6 +28,7 @@ function App() {
   };
 
   const handleLogout = () => {
+    cleanupScreenShare();
     leaveVoice();
     disconnectWS();
     if (cleanupEvents) {
@@ -149,6 +153,10 @@ function App() {
 
         <div style={{ flex: "1", display: "flex", "flex-direction": "column", "min-width": "0" }}>
           {() => {
+            const watching = watchingScreenShare();
+            if (watching) {
+              return <ScreenShareView userId={watching.user_id} channelId={watching.channel_id} />;
+            }
             const id = selectedChannelId();
             if (!id) {
               return (

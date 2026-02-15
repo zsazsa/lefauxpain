@@ -17,6 +17,11 @@ export type VoiceStats = {
   codec: string;     // codec name
 };
 
+export type ScreenShare = {
+  user_id: string;
+  channel_id: string;
+};
+
 const [voiceStates, setVoiceStates] = createSignal<VoiceState[]>([]);
 const [currentVoiceChannelId, setCurrentVoiceChannelId] = createSignal<
   string | null
@@ -24,6 +29,12 @@ const [currentVoiceChannelId, setCurrentVoiceChannelId] = createSignal<
 const [selfMute, setSelfMute] = createSignal(false);
 const [selfDeafen, setSelfDeafen] = createSignal(false);
 const [voiceStats, setVoiceStats] = createSignal<VoiceStats | null>(null);
+const [screenShares, setScreenShares] = createSignal<ScreenShare[]>([]);
+const [watchingScreenShare, setWatchingScreenShare] = createSignal<ScreenShare | null>(null);
+const [screenShareStream, setScreenShareStream] = createSignal<MediaStream | null>(null);
+const [localScreenStream, setLocalScreenStream] = createSignal<MediaStream | null>(null);
+const [desktopPresenting, setDesktopPresenting] = createSignal(false);
+const [desktopPreviewUrl, setDesktopPreviewUrl] = createSignal<string | null>(null);
 
 export {
   voiceStates,
@@ -34,6 +45,18 @@ export {
   setSelfDeafen,
   voiceStats,
   setVoiceStats,
+  screenShares,
+  setScreenShares,
+  watchingScreenShare,
+  setWatchingScreenShare,
+  screenShareStream,
+  setScreenShareStream,
+  localScreenStream,
+  setLocalScreenStream,
+  desktopPresenting,
+  setDesktopPresenting,
+  desktopPreviewUrl,
+  setDesktopPreviewUrl,
 };
 
 export function setVoiceStateList(states: VoiceState[]) {
@@ -68,4 +91,19 @@ export function setJoinedVoiceChannel(channelId: string | null) {
 
 export function getUsersInVoiceChannel(channelId: string): VoiceState[] {
   return voiceStates().filter((s) => s.channel_id === channelId);
+}
+
+export function addScreenShare(userId: string, channelId: string) {
+  setScreenShares((prev) => {
+    if (prev.some((s) => s.user_id === userId)) return prev;
+    return [...prev, { user_id: userId, channel_id: channelId }];
+  });
+}
+
+export function removeScreenShare(userId: string) {
+  setScreenShares((prev) => prev.filter((s) => s.user_id !== userId));
+}
+
+export function getScreenShareForChannel(channelId: string): ScreenShare | undefined {
+  return screenShares().find((s) => s.channel_id === channelId);
 }

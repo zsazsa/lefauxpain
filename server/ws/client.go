@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kalman/voicechat/db"
+	"github.com/kalman/voicechat/sfu"
 	"nhooyr.io/websocket"
 )
 
@@ -177,6 +178,15 @@ func (c *Client) sendReady() error {
 		}
 	}
 
+	// Get current screen shares from SFU
+	var screenShares []sfu.ScreenShareState
+	if c.hub.SFU != nil {
+		screenShares = c.hub.SFU.ScreenShares()
+	}
+	if screenShares == nil {
+		screenShares = []sfu.ScreenShareState{}
+	}
+
 	msg, err := NewMessage("ready", ReadyData{
 		User: &UserPayload{
 			ID:          c.User.ID,
@@ -188,6 +198,7 @@ func (c *Client) sendReady() error {
 		VoiceStates:   voiceStates,
 		OnlineUsers:   onlineUsers,
 		Notifications: notifPayloads,
+		ScreenShares:  screenShares,
 	})
 	if err != nil {
 		return err

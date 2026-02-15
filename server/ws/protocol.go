@@ -1,6 +1,10 @@
 package ws
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/kalman/voicechat/sfu"
+)
 
 type Message struct {
 	Op   string          `json:"op"`
@@ -14,11 +18,12 @@ type AuthenticateData struct {
 
 // Server → Client ready event
 type ReadyData struct {
-	User          *UserPayload          `json:"user"`
-	Channels      []ChannelPayload      `json:"channels"`
-	VoiceStates   []VoiceStatePayload   `json:"voice_states"`
-	OnlineUsers   []UserPayload         `json:"online_users"`
-	Notifications []NotificationPayload `json:"notifications"`
+	User          *UserPayload           `json:"user"`
+	Channels      []ChannelPayload       `json:"channels"`
+	VoiceStates   []VoiceStatePayload    `json:"voice_states"`
+	OnlineUsers   []UserPayload          `json:"online_users"`
+	Notifications []NotificationPayload  `json:"notifications"`
+	ScreenShares  []sfu.ScreenShareState `json:"screen_shares"`
 }
 
 type NotificationPayload struct {

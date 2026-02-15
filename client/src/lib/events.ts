@@ -19,9 +19,21 @@ import {
   removeOnlineUser,
   mergeKnownUsers,
 } from "../stores/users";
-import { setVoiceStateList, updateVoiceState, currentVoiceChannelId, voiceStates } from "../stores/voice";
+import {
+  setVoiceStateList,
+  updateVoiceState,
+  currentVoiceChannelId,
+  voiceStates,
+  addScreenShare,
+  removeScreenShare,
+  setScreenShares,
+  watchingScreenShare,
+  setWatchingScreenShare,
+  setDesktopPreviewUrl,
+} from "../stores/voice";
 import { setNotificationList, addNotification } from "../stores/notifications";
 import { handleWebRTCOffer, handleWebRTCICE } from "./webrtc";
+import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./screenshare";
 import { playJoinSound, playLeaveSound } from "./sounds";
 import { isDesktop } from "./devices";
 
@@ -78,6 +90,20 @@ function initDesktopVoiceEvents() {
         console.log("[voice] Native connection state:", event.payload.state);
       });
 
+      // screen:ice_candidate → forward to server over WS
+      tauriEvent.listen("screen:ice_candidate", (event: any) => {
+        const { candidate, sdpMid, sdpMLineIndex } = event.payload;
+        send("webrtc_screen_ice", {
+          candidate: { candidate, sdpMid, sdpMLineIndex },
+        });
+      });
+
+      // screen:preview → JPEG data URL for local preview
+      tauriEvent.listen("screen:preview", (event: any) => {
+        console.log("[screen] Preview event received, payload length:", event.payload?.length);
+        setDesktopPreviewUrl(event.payload);
+      });
+
       console.log("[voice] Desktop voice event listeners registered");
       return;
     }
@@ -120,6 +146,20 @@ function initDesktopVoiceEvents() {
     console.log("[voice] Native connection state:", payload.state);
   });
 
+  tauriListen("screen:ice_candidate", (payload: any) => {
+    send("webrtc_screen_ice", {
+      candidate: {
+        candidate: payload.candidate,
+        sdpMid: payload.sdpMid,
+        sdpMLineIndex: payload.sdpMLineIndex,
+      },
+    });
+  });
+
+  tauriListen("screen:preview", (payload: any) => {
+    setDesktopPreviewUrl(payload);
+  });
+
   console.log("[voice] Desktop voice event listeners registered (fallback)");
 }
 
@@ -136,6 +176,7 @@ export function initEventHandlers() {
         mergeKnownUsers([msg.d.user]);
         setVoiceStateList(msg.d.voice_states || []);
         setNotificationList(msg.d.notifications || []);
+        setScreenShares(msg.d.screen_shares || []);
         break;
 
       case "message_create":
@@ -227,6 +268,30 @@ export function initEventHandlers() {
 
       case "webrtc_ice":
         handleWebRTCICE(msg.d.candidate);
+        break;
+
+      case "screen_share_started":
+        addScreenShare(msg.d.user_id, msg.d.channel_id);
+        break;
+
+      case "screen_share_stopped":
+        removeScreenShare(msg.d.user_id);
+        if (watchingScreenShare()?.user_id === msg.d.user_id) {
+          unsubscribeScreenShare();
+          setWatchingScreenShare(null);
+        }
+        break;
+
+      case "webrtc_screen_offer":
+        handleScreenOffer(msg.d.sdp);
+        break;
+
+      case "webrtc_screen_ice":
+        handleScreenICE(msg.d.candidate);
+        break;
+
+      case "screen_share_error":
+        console.error("[screen] Share rejected:", msg.d.error);
         break;
 
       case "notification_create":

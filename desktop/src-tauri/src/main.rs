@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod screen;
 mod voice;
 
 use std::sync::Arc;
@@ -14,6 +15,10 @@ use voice::{
     voice_start, voice_stop, voice_handle_offer, voice_handle_ice,
     voice_set_mute, voice_set_deafen, voice_set_master_volume, voice_set_mic_gain,
     voice_list_devices, voice_set_input_device, voice_set_output_device,
+};
+use screen::{
+    ScreenEngine,
+    screen_start, screen_stop, screen_handle_offer, screen_handle_ice,
 };
 
 #[derive(Serialize, Clone)]
@@ -109,6 +114,7 @@ fn set_default_audio_device(id: String) -> bool {
 fn main() {
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(VoiceEngine::new())) as voice::VoiceState)
+        .manage(Arc::new(Mutex::new(ScreenEngine::new())) as screen::ScreenState)
         .invoke_handler(tauri::generate_handler![
             list_audio_devices,
             set_default_audio_device,
@@ -124,6 +130,11 @@ fn main() {
             voice_list_devices,
             voice_set_input_device,
             voice_set_output_device,
+            // Screen share commands
+            screen_start,
+            screen_stop,
+            screen_handle_offer,
+            screen_handle_ice,
         ])
         .setup(|_app| {
             #[cfg(target_os = "linux")]

@@ -538,6 +538,17 @@ func (h *Hub) handleLeaveVoice(c *Client) {
 		return
 	}
 
+	// Auto-stop screen share if presenter leaves voice
+	if sr := h.SFU.GetUserScreenRoom(c.UserID); sr != nil {
+		channelID := sr.ChannelID
+		h.SFU.StopScreenShare(channelID)
+		stopMsg, _ := NewMessage("screen_share_stopped", ScreenSharePayload{
+			UserID:    c.UserID,
+			ChannelID: channelID,
+		})
+		h.BroadcastAll(stopMsg)
+	}
+
 	room := h.SFU.GetUserRoom(c.UserID)
 	if room != nil {
 		room.RemovePeer(c.UserID)
@@ -707,6 +718,157 @@ func (h *Hub) handleMarkAllNotificationsRead(c *Client) {
 	if err := h.DB.MarkAllNotificationsRead(c.UserID); err != nil {
 		log.Printf("mark all notifications read: %v", err)
 	}
+}
+
+// --- Screen share handlers ---
+
+type ScreenShareSubscribeData struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type ScreenShareUnsubscribeData struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type WebRTCScreenAnswerData struct {
+	SDP string `json:"sdp"`
+}
+
+type WebRTCScreenICEData struct {
+	Candidate webrtc.ICECandidateInit `json:"candidate"`
+}
+
+type ScreenSharePayload struct {
+	UserID    string `json:"user_id"`
+	ChannelID string `json:"channel_id"`
+}
+
+type ScreenShareErrorPayload struct {
+	Error string `json:"error"`
+}
+
+func (h *Hub) handleScreenShareStart(c *Client, data json.RawMessage) {
+	if h.SFU == nil {
+		return
+	}
+
+	// Must be in a voice channel
+	room := h.SFU.GetUserRoom(c.UserID)
+	if room == nil {
+		msg, _ := NewMessage("screen_share_error", ScreenShareErrorPayload{
+			Error: "must be in a voice channel to share screen",
+		})
+		c.Send(msg)
+		return
+	}
+
+	channelID := room.ChannelID
+
+	sr, err := h.SFU.StartScreenShare(channelID, c.UserID)
+	if err != nil {
+		log.Printf("screen share start: %v", err)
+		msg, _ := NewMessage("screen_share_error", ScreenShareErrorPayload{
+			Error: err.Error(),
+		})
+		c.Send(msg)
+		return
+	}
+	_ = sr
+
+	broadcast, _ := NewMessage("screen_share_started", ScreenSharePayload{
+		UserID:    c.UserID,
+		ChannelID: channelID,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleScreenShareStop(c *Client) {
+	if h.SFU == nil {
+		return
+	}
+
+	sr := h.SFU.GetUserScreenRoom(c.UserID)
+	if sr == nil {
+		return
+	}
+
+	channelID := sr.ChannelID
+	h.SFU.StopScreenShare(channelID)
+
+	broadcast, _ := NewMessage("screen_share_stopped", ScreenSharePayload{
+		UserID:    c.UserID,
+		ChannelID: channelID,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleScreenShareSubscribe(c *Client, data json.RawMessage) {
+	if h.SFU == nil {
+		return
+	}
+
+	var d ScreenShareSubscribeData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	sr := h.SFU.GetScreenRoom(d.ChannelID)
+	if sr == nil {
+		msg, _ := NewMessage("screen_share_error", ScreenShareErrorPayload{
+			Error: "no active screen share in this channel",
+		})
+		c.Send(msg)
+		return
+	}
+
+	if err := sr.AddViewer(c.UserID); err != nil {
+		log.Printf("screen share subscribe: %v", err)
+		return
+	}
+}
+
+func (h *Hub) handleScreenShareUnsubscribe(c *Client, data json.RawMessage) {
+	if h.SFU == nil {
+		return
+	}
+
+	var d ScreenShareUnsubscribeData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	sr := h.SFU.GetScreenRoom(d.ChannelID)
+	if sr == nil {
+		return
+	}
+
+	sr.RemoveViewer(c.UserID)
+}
+
+func (h *Hub) handleWebRTCScreenAnswer(c *Client, data json.RawMessage) {
+	if h.SFU == nil {
+		return
+	}
+
+	var d WebRTCScreenAnswerData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	h.SFU.HandleScreenAnswer(c.UserID, d.SDP)
+}
+
+func (h *Hub) handleWebRTCScreenICE(c *Client, data json.RawMessage) {
+	if h.SFU == nil {
+		return
+	}
+
+	var d WebRTCScreenICEData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	h.SFU.HandleScreenICE(c.UserID, d.Candidate)
 }
 
 func (h *Hub) handleVoiceServerMute(c *Client, data json.RawMessage) {

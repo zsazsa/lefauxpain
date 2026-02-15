@@ -66,6 +66,19 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 
+			// Stop screen share if presenter disconnects
+			if h.SFU != nil {
+				if sr := h.SFU.GetUserScreenRoom(client.UserID); sr != nil {
+					channelID := sr.ChannelID
+					h.SFU.StopScreenShare(channelID)
+					stopMsg, _ := NewMessage("screen_share_stopped", ScreenSharePayload{
+						UserID:    client.UserID,
+						ChannelID: channelID,
+					})
+					h.BroadcastAll(stopMsg)
+				}
+			}
+
 			// Leave voice if in a voice channel
 			if h.SFU != nil {
 				if room := h.SFU.GetUserRoom(client.UserID); room != nil {
@@ -203,6 +216,18 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleVoiceSpeaking(client, msg.Data)
 	case "voice_server_mute":
 		h.handleVoiceServerMute(client, msg.Data)
+	case "screen_share_start":
+		h.handleScreenShareStart(client, msg.Data)
+	case "screen_share_stop":
+		h.handleScreenShareStop(client)
+	case "screen_share_subscribe":
+		h.handleScreenShareSubscribe(client, msg.Data)
+	case "screen_share_unsubscribe":
+		h.handleScreenShareUnsubscribe(client, msg.Data)
+	case "webrtc_screen_answer":
+		h.handleWebRTCScreenAnswer(client, msg.Data)
+	case "webrtc_screen_ice":
+		h.handleWebRTCScreenICE(client, msg.Data)
 	case "mark_notification_read":
 		h.handleMarkNotificationRead(client, msg.Data)
 	case "mark_all_notifications_read":

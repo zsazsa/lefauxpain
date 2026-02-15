@@ -1,6 +1,6 @@
-import { For, Show, onMount, onCleanup } from "solid-js";
+import { For, Show, createEffect, onMount, onCleanup } from "solid-js";
 import { channels } from "../../stores/channels";
-import { getUsersInVoiceChannel, currentVoiceChannelId } from "../../stores/voice";
+import { getUsersInVoiceChannel, currentVoiceChannelId, localScreenStream, desktopPresenting, desktopPreviewUrl } from "../../stores/voice";
 import { onlineUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
@@ -106,7 +106,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
       {/* User grid */}
       <div
         style={{
-          flex: "1",
+          flex: (localScreenStream() || desktopPresenting()) ? "none" : "1",
           padding: isMobile() ? "12px" : "24px",
           display: "flex",
           "flex-wrap": "wrap",
@@ -152,6 +152,73 @@ export default function VoiceChannel(props: VoiceChannelProps) {
           </For>
         </Show>
       </div>
+
+      {/* Screen share preview (when presenting) */}
+      <Show when={localScreenStream() || desktopPresenting()}>
+        {() => {
+          const stream = localScreenStream();
+          let previewRef: HTMLVideoElement | undefined;
+          if (stream) {
+            createEffect(() => {
+              if (previewRef) {
+                previewRef.srcObject = stream;
+                previewRef.play().catch(() => {});
+              }
+            });
+            onCleanup(() => {
+              if (previewRef) previewRef.srcObject = null;
+            });
+          }
+          return (
+            <div
+              style={{
+                flex: "1",
+                "min-height": "0",
+                "border-top": "1px solid var(--border-gold)",
+                display: "flex",
+                "flex-direction": "column",
+                "align-items": "center",
+                "justify-content": "center",
+                "background-color": "#0a0a0f",
+                padding: "8px",
+              }}
+            >
+              <div style={{
+                "font-size": "11px",
+                color: "var(--text-muted)",
+                "margin-bottom": "6px",
+              }}>
+                sharing your screen
+              </div>
+              {stream ? (
+                <video
+                  ref={previewRef}
+                  autoplay
+                  playsinline
+                  muted
+                  onClick={() => previewRef?.requestFullscreen?.()}
+                  style={{
+                    "max-width": "100%",
+                    "max-height": "100%",
+                    cursor: "pointer",
+                    "min-height": "0",
+                  }}
+                />
+              ) : (
+                <img
+                  src={desktopPreviewUrl() || ""}
+                  style={{
+                    "max-width": "100%",
+                    "max-height": "100%",
+                    "min-height": "0",
+                    display: desktopPreviewUrl() ? "block" : "none",
+                  }}
+                />
+              )}
+            </div>
+          );
+        }}
+      </Show>
     </div>
   );
 }

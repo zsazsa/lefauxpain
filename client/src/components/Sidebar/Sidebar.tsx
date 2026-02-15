@@ -1,12 +1,19 @@
 import { createSignal, createEffect, on, For, Show, onCleanup } from "solid-js";
 import { channels, selectedChannelId, setSelectedChannelId } from "../../stores/channels";
-import { getUsersInVoiceChannel, currentVoiceChannelId } from "../../stores/voice";
+import {
+  getUsersInVoiceChannel,
+  currentVoiceChannelId,
+  screenShares,
+  setWatchingScreenShare,
+} from "../../stores/voice";
+import { subscribeScreenShare } from "../../lib/screenshare";
 import { onlineUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { joinVoice } from "../../lib/webrtc";
 import { setSettingsOpen } from "../../stores/settings";
 import { unreadCount } from "../../stores/notifications";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
+import { isDesktop } from "../../lib/devices";
 import { connState, ping } from "../../lib/ws";
 import ChannelItem from "./ChannelItem";
 import CreateChannel from "./CreateChannel";
@@ -209,6 +216,11 @@ export default function Sidebar(props: SidebarProps) {
                               {"\u{1F508}"}
                             </span>
                           )}
+                          {screenShares().some((s) => s.user_id === vs.user_id) && (
+                            <span style={{ "font-size": "10px" }}>
+                              {"\uD83D\uDDA5"}
+                            </span>
+                          )}
                         </div>
                       </Show>
                     );
@@ -283,21 +295,39 @@ export default function Sidebar(props: SidebarProps) {
             </div>
           </Show>
           <For each={onlineUsers()}>
-            {(user) => (
-              <div
-                style={{
-                  padding: "2px 0",
-                  "font-size": "12px",
-                  color: "var(--text-secondary)",
-                  display: "flex",
-                  "align-items": "center",
-                  gap: "6px",
-                }}
-              >
-                <span style={{ color: "var(--success)", "font-size": "8px" }}>{"\u25CF"}</span>
-                {user.username}
-              </div>
-            )}
+            {(user) => {
+              const isSharing = () => screenShares().some((s) => s.user_id === user.id);
+              const canWatch = () => isSharing() && !isDesktop;
+              const handleClick = () => {
+                if (!canWatch()) return;
+                const share = screenShares().find((s) => s.user_id === user.id)!;
+                setWatchingScreenShare({ user_id: share.user_id, channel_id: share.channel_id });
+                subscribeScreenShare(share.channel_id);
+                if (isMobile()) setSidebarOpen(false);
+              };
+              return (
+                <div
+                  onClick={handleClick}
+                  style={{
+                    padding: "2px 0",
+                    "font-size": "12px",
+                    color: "var(--text-secondary)",
+                    display: "flex",
+                    "align-items": "center",
+                    gap: "6px",
+                    cursor: canWatch() ? "pointer" : "default",
+                  }}
+                >
+                  <span style={{
+                    color: isSharing() ? "var(--accent)" : "var(--success)",
+                    "font-size": isSharing() ? "10px" : "8px",
+                  }}>
+                    {isSharing() ? "\uD83D\uDDA5" : "\u25CF"}
+                  </span>
+                  {user.username}
+                </div>
+              );
+            }}
           </For>
         </div>
       </div>

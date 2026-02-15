@@ -6,8 +6,12 @@ import {
   selfDeafen,
   setSelfDeafen,
   voiceStats,
+  screenShares,
+  getScreenShareForChannel,
 } from "../../stores/voice";
+import { currentUser } from "../../stores/auth";
 import { leaveVoice, toggleMute, toggleDeafen } from "../../lib/webrtc";
+import { startScreenShare, stopScreenShare, getIsPresenting } from "../../lib/screenshare";
 import { enumerateDevices } from "../../lib/devices";
 import { channels } from "../../stores/channels";
 
@@ -34,6 +38,31 @@ export default function VoiceControls() {
 
   const handleDisconnect = () => {
     leaveVoice();
+  };
+
+  const myScreenShare = () => {
+    const chId = currentVoiceChannelId();
+    if (!chId) return null;
+    const userId = currentUser()?.id;
+    if (!userId) return null;
+    return screenShares().find((s) => s.user_id === userId && s.channel_id === chId) || null;
+  };
+
+  const otherScreenShare = () => {
+    const chId = currentVoiceChannelId();
+    if (!chId) return null;
+    const userId = currentUser()?.id;
+    const share = getScreenShareForChannel(chId);
+    if (!share || share.user_id === userId) return null;
+    return share;
+  };
+
+  const handleScreenShare = () => {
+    if (myScreenShare()) {
+      stopScreenShare();
+    } else {
+      startScreenShare();
+    }
   };
 
   const qualityColor = () => {
@@ -127,6 +156,38 @@ export default function VoiceControls() {
             title={selfDeafen() ? "Undeafen" : "Deafen"}
           >
             {selfDeafen() ? "[DEAF]" : "[SPK]"}
+          </button>
+
+          <button
+            onClick={handleScreenShare}
+            disabled={!!otherScreenShare()}
+            style={{
+              flex: "1",
+              padding: "5px",
+              "font-size": "11px",
+              border: myScreenShare()
+                ? "1px solid var(--danger)"
+                : "1px solid var(--border-gold)",
+              "background-color": myScreenShare()
+                ? "rgba(232,64,64,0.15)"
+                : "transparent",
+              color: otherScreenShare()
+                ? "var(--text-muted)"
+                : myScreenShare()
+                  ? "var(--danger)"
+                  : "var(--text-secondary)",
+              opacity: otherScreenShare() ? 0.5 : 1,
+              cursor: otherScreenShare() ? "not-allowed" : "pointer",
+            }}
+            title={
+              myScreenShare()
+                ? "Stop sharing"
+                : otherScreenShare()
+                  ? "Someone else is sharing"
+                  : "Share screen"
+            }
+          >
+            {myScreenShare() ? "[STOP]" : "[SHARE]"}
           </button>
 
           <button
