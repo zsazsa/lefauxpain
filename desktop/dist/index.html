@@ -263,9 +263,8 @@
 
     function connectTo(url) {
       saveServer(url);
-      // This page only loads inside the Tauri app, so always set the flag
-      localStorage.setItem('lefauxpain_desktop', '1');
-      window.location.href = url;
+      var sep = url.includes('?') ? '&' : '?';
+      window.location.href = url + sep + 'tauri=1';
     }
 
     function renderRecent() {
