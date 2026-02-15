@@ -35,7 +35,12 @@ export async function startScreenShare() {
   // Browser: use getDisplayMedia
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: "always" } as any,
+      video: {
+        cursor: "always",
+        frameRate: { ideal: 30 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      } as any,
       audio: true,
     });
   } catch (err) {
@@ -43,9 +48,12 @@ export async function startScreenShare() {
     return;
   }
 
-  // Auto-stop when user clicks browser's "Stop sharing" button
+  // Hint the encoder to optimize for sharpness (text/UI) over motion smoothness
   const videoTrack = screenStream.getVideoTracks()[0];
   if (videoTrack) {
+    (videoTrack as any).contentHint = "detail";
+
+    // Auto-stop when user clicks browser's "Stop sharing" button
     videoTrack.onended = () => {
       stopScreenShare();
     };
@@ -107,7 +115,7 @@ export function unsubscribeScreenShare() {
 }
 
 export async function handleScreenOffer(sdp: string) {
-  if (isDesktop) {
+  if (isDesktop && isPresenting) {
     // Desktop presenter: forward SDP to Rust, get answer back
     try {
       const result = await tauriInvoke("screen_handle_offer", { sdp });
@@ -135,9 +143,22 @@ export async function handleScreenOffer(sdp: string) {
     };
 
     if (isPresenting && screenStream) {
-      // Presenter: add screen tracks to PC
+      // Presenter: add screen tracks to PC and set bitrate
       screenStream.getTracks().forEach((track) => {
-        screenPC!.addTrack(track, screenStream!);
+        const sender = screenPC!.addTrack(track, screenStream!);
+        if (track.kind === "video") {
+          // Set max bitrate for sharp screen content
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = 6_000_000; // 6 Mbps
+            sender.setParameters(params);
+          } catch (e) {
+            console.warn("[screen] setParameters failed:", e);
+          }
+        }
       });
     } else {
       // Viewer: receive tracks
@@ -157,7 +178,7 @@ export async function handleScreenOffer(sdp: string) {
 }
 
 export function handleScreenICE(candidate: RTCIceCandidateInit) {
-  if (isDesktop) {
+  if (isDesktop && isPresenting) {
     // Desktop presenter: forward ICE to Rust
     tauriInvoke("screen_handle_ice", {
       candidate: candidate.candidate,

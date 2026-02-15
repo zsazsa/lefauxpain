@@ -89,6 +89,11 @@ func New(stunServer string, publicIP string) *SFU {
 	}
 
 	screenIR := &interceptor.Registry{}
+	// Explicit NACK interceptors for packet retransmission (critical for video quality)
+	screenNackResp, _ := nack.NewResponderInterceptor()
+	screenIR.Add(screenNackResp)
+	screenNackGen, _ := nack.NewGeneratorInterceptor()
+	screenIR.Add(screenNackGen)
 	if err := webrtc.RegisterDefaultInterceptors(screenME, screenIR); err != nil {
 		log.Printf("sfu: register screen interceptors: %v", err)
 	}

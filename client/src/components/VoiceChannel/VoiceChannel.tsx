@@ -156,19 +156,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
       {/* Screen share preview (when presenting) */}
       <Show when={localScreenStream() || desktopPresenting()}>
         {() => {
-          const stream = localScreenStream();
           let previewRef: HTMLVideoElement | undefined;
-          if (stream) {
-            createEffect(() => {
-              if (previewRef) {
-                previewRef.srcObject = stream;
-                previewRef.play().catch(() => {});
-              }
-            });
-            onCleanup(() => {
-              if (previewRef) previewRef.srcObject = null;
-            });
-          }
           return (
             <div
               style={{
@@ -190,9 +178,19 @@ export default function VoiceChannel(props: VoiceChannelProps) {
               }}>
                 sharing your screen
               </div>
-              {stream ? (
+              {localScreenStream() ? (
                 <video
-                  ref={previewRef}
+                  ref={(el) => {
+                    previewRef = el;
+                    createEffect(() => {
+                      const s = localScreenStream();
+                      if (s) {
+                        el.srcObject = s;
+                        el.play().catch(() => {});
+                      }
+                    });
+                    onCleanup(() => { el.srcObject = null; });
+                  }}
                   autoplay
                   playsinline
                   muted
@@ -200,6 +198,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
                   style={{
                     "max-width": "100%",
                     "max-height": "100%",
+                    "object-fit": "contain",
                     cursor: "pointer",
                     "min-height": "0",
                   }}
@@ -210,6 +209,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
                   style={{
                     "max-width": "100%",
                     "max-height": "100%",
+                    "object-fit": "contain",
                     "min-height": "0",
                     display: desktopPreviewUrl() ? "block" : "none",
                   }}

@@ -13,7 +13,6 @@ import { joinVoice } from "../../lib/webrtc";
 import { setSettingsOpen } from "../../stores/settings";
 import { unreadCount } from "../../stores/notifications";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
-import { isDesktop } from "../../lib/devices";
 import { connState, ping } from "../../lib/ws";
 import ChannelItem from "./ChannelItem";
 import CreateChannel from "./CreateChannel";
@@ -297,7 +296,7 @@ export default function Sidebar(props: SidebarProps) {
           <For each={onlineUsers()}>
             {(user) => {
               const isSharing = () => screenShares().some((s) => s.user_id === user.id);
-              const canWatch = () => isSharing() && !isDesktop;
+              const canWatch = () => isSharing();
               const handleClick = () => {
                 if (!canWatch()) return;
                 const share = screenShares().find((s) => s.user_id === user.id)!;

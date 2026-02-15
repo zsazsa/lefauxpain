@@ -118,6 +118,7 @@ export default function ScreenShareView(props: ScreenShareViewProps) {
           style={{
             "max-width": "100%",
             "max-height": "100%",
+            "object-fit": "contain",
             cursor: "pointer",
             "background-color": "#000",
           }}
