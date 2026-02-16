@@ -19,6 +19,7 @@ import ChannelItem from "./ChannelItem";
 import CreateChannel from "./CreateChannel";
 import VoiceControls from "../VoiceChannel/VoiceControls";
 import NotificationDropdown from "../Notifications/NotificationDropdown";
+import { t } from "../../stores/theme";
 
 interface SidebarProps {
   onLogout: () => void;
@@ -92,7 +93,7 @@ export default function Sidebar(props: SidebarProps) {
           {connState() === "connected" ? (
             <span>
               <span style={{ color: "var(--text-secondary)" }}>
-                {onlineUsers().length + 1} en ligne
+                {onlineUsers().length + 1} {t("online")}
               </span>
               {ping() !== null && (
                 <span style={{
@@ -163,7 +164,7 @@ export default function Sidebar(props: SidebarProps) {
               color: "var(--text-muted)",
             }}
           >
-            Canaux Vocaux
+            {t("voiceChannels")}
           </div>
           <For each={voiceChannels()}>
             {(ch) => (
@@ -246,7 +247,7 @@ export default function Sidebar(props: SidebarProps) {
               "margin-top": "8px",
             }}
           >
-            Canaux Texte
+            {t("textChannels")}
           </div>
           <For each={textChannels()}>
             {(ch) => (
@@ -277,7 +278,7 @@ export default function Sidebar(props: SidebarProps) {
             "margin-top": "8px",
           }}
         >
-          Membres — {allUsers().length}
+          {t("members")} — {allUsers().length}
         </div>
         <div style={{ padding: "4px 16px" }}>
           {/* Online users (current user first) */}
@@ -405,7 +406,6 @@ export default function Sidebar(props: SidebarProps) {
           <button
             onClick={() => setSettingsOpen(true)}
             style={{
-              position: "relative",
               padding: "2px 6px",
               "font-size": "18px",
               color: "var(--text-muted)",
@@ -413,17 +413,6 @@ export default function Sidebar(props: SidebarProps) {
             title="Settings"
           >
             {"\u2699"}
-            <Show when={updateStatus() === "available"}>
-              <span style={{
-                position: "absolute",
-                top: "0",
-                right: "2px",
-                width: "8px",
-                height: "8px",
-                "border-radius": "50%",
-                "background-color": "var(--cyan)",
-              }} />
-            </Show>
           </button>
           <button
             onClick={props.onLogout}

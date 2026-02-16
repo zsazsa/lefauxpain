@@ -1,4 +1,5 @@
 import { createSignal, Show } from "solid-js";
+import { t } from "../../stores/theme";
 
 interface LoginProps {
   onLogin: (token: string, username: string) => void;
@@ -85,7 +86,7 @@ function Login(props: LoginProps) {
             "letter-spacing": "2px",
           }}
         >
-          Le Faux Pain
+          {t("appName")}
         </h2>
         <p
           style={{

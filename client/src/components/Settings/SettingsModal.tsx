@@ -17,6 +17,7 @@ import {
   updateStatus, updateVersion, updateBody, updateProgress, updateError,
   checkForUpdates, downloadAndInstall, relaunchApp, appVersion,
 } from "../../stores/updateChecker";
+import { theme, setTheme, themes, t, ThemeId } from "../../stores/theme";
 
 type PwDevice = { id: string; name: string; default: boolean };
 type AdminUser = {
@@ -27,7 +28,7 @@ type AdminUser = {
   created_at: string;
 };
 
-type Tab = "account" | "audio" | "admin" | "app";
+type Tab = "account" | "display" | "audio" | "admin" | "app";
 
 export default function SettingsModal() {
   const [activeTab, setActiveTab] = createSignal<Tab>("account");
@@ -306,17 +307,18 @@ export default function SettingsModal() {
   };
 
   const tabs = (): { id: Tab; label: string }[] => {
-    const t: { id: Tab; label: string }[] = [
+    const list: { id: Tab; label: string }[] = [
       { id: "account", label: "Account" },
+      { id: "display", label: "Display" },
       { id: "audio", label: "Audio" },
     ];
     if (currentUser()?.is_admin) {
-      t.push({ id: "admin", label: "Admin" });
+      list.push({ id: "admin", label: "Admin" });
     }
     if (isTauri) {
-      t.push({ id: "app", label: "App" });
+      list.push({ id: "app", label: "App" });
     }
-    return t;
+    return list;
   };
 
   return (
@@ -361,7 +363,7 @@ export default function SettingsModal() {
               color: "var(--accent)",
               "letter-spacing": "1px",
             }}>
-              {"\u2699"} Param\u00e8tres
+              {"\u2699"} {t("settings")}
             </span>
             <button
               onClick={close}
@@ -481,6 +483,28 @@ export default function SettingsModal() {
                 >
                   [change password]
                 </button>
+              </Show>
+
+              {/* Display tab */}
+              <Show when={activeTab() === "display"}>
+                <div style={sectionHeaderStyle}>Theme</div>
+                <label style={labelStyle}>Color & Language</label>
+                <select
+                  value={theme()}
+                  onChange={(e) => setTheme(e.currentTarget.value as ThemeId)}
+                  style={selectStyle}
+                >
+                  <optgroup label="French">
+                    <option value="french-gold">{themes["french-gold"].name}</option>
+                    <option value="french-cyan">{themes["french-cyan"].name}</option>
+                    <option value="french-green">{themes["french-green"].name}</option>
+                  </optgroup>
+                  <optgroup label="English">
+                    <option value="english-gold">{themes["english-gold"].name}</option>
+                    <option value="english-cyan">{themes["english-cyan"].name}</option>
+                    <option value="english-green">{themes["english-green"].name}</option>
+                  </optgroup>
+                </select>
               </Show>
 
               {/* Audio tab */}

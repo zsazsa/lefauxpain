@@ -5,6 +5,7 @@ import { setScrollToMessageId } from "../../stores/messages";
 import { send } from "../../lib/ws";
 import { lookupUsername } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
+import { t } from "../../stores/theme";
 
 interface NotificationDropdownProps {
   anchorRef: HTMLElement;
@@ -119,7 +120,7 @@ export default function NotificationDropdown(props: NotificationDropdownProps) {
             color: "var(--accent)",
             "letter-spacing": "1px",
           }}>
-            Avis
+            {t("notifications")}
           </span>
         </div>
         <Show when={unreadCount() > 0}>

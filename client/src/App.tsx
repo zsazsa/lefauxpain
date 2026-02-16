@@ -19,6 +19,7 @@ import {
 import { watchingScreenShare } from "./stores/voice";
 import { isMobile, sidebarOpen, setSidebarOpen, initResponsive } from "./stores/responsive";
 import { startUpdateChecker } from "./stores/updateChecker";
+import { t, applyTheme } from "./stores/theme";
 
 function App() {
   const [ready, setReady] = createSignal(false);
@@ -42,6 +43,7 @@ function App() {
 
   // Connect WS when we have a token
   onMount(() => {
+    applyTheme();
     const cleanupResponsive = initResponsive();
     onCleanup(cleanupResponsive);
     startUpdateChecker();
@@ -215,7 +217,7 @@ function App() {
                         "background-color": "transparent",
                       }}
                     >
-                      [{"\u2261"} open canaux]
+                      [{"\u2261"} {t("openChannels")}]
                     </button>
                   </Show>
                   <Show when={!isMobile()}>
@@ -227,9 +229,9 @@ function App() {
                         "margin-bottom": "8px",
                         "letter-spacing": "2px",
                       }}>
-                        Le Faux Pain
+                        {t("appName")}
                       </div>
-                      <span style={{ color: "var(--text-muted)" }}>// select a channel to begin</span>
+                      <span style={{ color: "var(--text-muted)" }}>{t("selectChannel")}</span>
                     </div>
                   </Show>
                 </div>

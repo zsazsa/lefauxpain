@@ -71,7 +71,7 @@ Just open `https://your-domain.com` (or `http://your-ip:8080` without a reverse 
 
 ### From the Desktop Client
 
-The desktop client is a lightweight native window (Tauri/WebView) that connects to any Le Faux Pain server.
+The desktop client is a lightweight native window (Tauri/WebView) that connects to any Le Faux Pain server. It does not include the server — you need a running server to connect to (either self-hosted or someone else's).
 
 Grab the latest release for your platform from [GitHub Releases](https://github.com/zsazsa/lefauxpain/releases/latest):
 

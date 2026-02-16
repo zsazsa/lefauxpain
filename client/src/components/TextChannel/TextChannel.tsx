@@ -1,5 +1,7 @@
 import { Show, onMount, onCleanup } from "solid-js";
 import { channels } from "../../stores/channels";
+import { currentVoiceChannelId } from "../../stores/voice";
+import { leaveVoice } from "../../lib/webrtc";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
@@ -40,40 +42,56 @@ export default function TextChannel(props: TextChannelProps) {
       {/* Channel header */}
       <div
         style={{
-          padding: isMobile() ? "8px 12px" : "0 16px",
+          padding: isMobile() ? "10px 12px" : "0 16px",
           ...(!isMobile() && { height: "41px" }),
           "border-bottom": "1px solid var(--border-gold)",
           display: "flex",
           "align-items": "center",
-          gap: "8px",
+          "justify-content": "space-between",
         }}
       >
-        <Show when={isMobile()}>
-          <button
-            onClick={() => setSidebarOpen(true)}
+        <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+          <Show when={isMobile()}>
+            <button
+              onClick={() => setSidebarOpen(true)}
+              style={{
+                "font-size": "22px",
+                color: "var(--accent)",
+                padding: "0 4px",
+              }}
+            >
+              {"\u2261"}
+            </button>
+          </Show>
+          <span style={{ color: "var(--accent)", "font-size": isMobile() ? "18px" : "16px" }}>#</span>
+          <span
+            ref={glitchRef}
+            class="glitch-text"
             style={{
-              "font-size": "18px",
-              color: "var(--accent)",
-              padding: "0 4px",
+              "font-family": "var(--font-display)",
+              "font-weight": "600",
+              "font-size": isMobile() ? "16px" : "14px",
+              color: "var(--text-primary)",
+              display: "inline-block",
             }}
           >
-            {"\u2261"}
+            {channel()?.name}
+          </span>
+        </div>
+        <Show when={isMobile() && currentVoiceChannelId()}>
+          <button
+            onClick={() => leaveVoice()}
+            style={{
+              padding: "4px 10px",
+              "font-size": "11px",
+              border: "1px solid var(--danger)",
+              "background-color": "rgba(232,64,64,0.15)",
+              color: "var(--danger)",
+            }}
+          >
+            [disconnect]
           </button>
         </Show>
-        <span style={{ color: "var(--accent)", "font-size": "16px" }}>#</span>
-        <span
-          ref={glitchRef}
-          class="glitch-text"
-          style={{
-            "font-family": "var(--font-display)",
-            "font-weight": "600",
-            "font-size": "14px",
-            color: "var(--text-primary)",
-            display: "inline-block",
-          }}
-        >
-          {channel()?.name}
-        </span>
       </div>
 
       {/* Messages */}

@@ -5,7 +5,7 @@ import { onlineUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
 import VoiceUser from "./VoiceUser";
-import { joinVoice } from "../../lib/webrtc";
+import { joinVoice, leaveVoice } from "../../lib/webrtc";
 
 interface VoiceChannelProps {
   channelId: string;
@@ -49,7 +49,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
       {/* Channel header */}
       <div
         style={{
-          padding: isMobile() ? "8px 12px" : "0 16px",
+          padding: isMobile() ? "10px 12px" : "0 16px",
           ...(!isMobile() && { height: "41px" }),
           "border-bottom": "1px solid var(--border-gold)",
           display: "flex",
@@ -62,7 +62,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
             <button
               onClick={() => setSidebarOpen(true)}
               style={{
-                "font-size": "18px",
+                "font-size": "22px",
                 color: "var(--accent)",
                 padding: "0 4px",
               }}
@@ -70,14 +70,14 @@ export default function VoiceChannel(props: VoiceChannelProps) {
               {"\u2261"}
             </button>
           </Show>
-          <span style={{ color: "var(--border-gold)", "font-size": "14px" }}>{"\u2666"}</span>
+          <span style={{ color: "var(--border-gold)", "font-size": isMobile() ? "18px" : "14px" }}>{"\u2666"}</span>
           <span
             ref={glitchRef}
             class="glitch-text"
             style={{
               "font-family": "var(--font-display)",
               "font-weight": "600",
-              "font-size": "14px",
+              "font-size": isMobile() ? "16px" : "14px",
               color: "var(--text-primary)",
               display: "inline-block",
             }}
@@ -86,21 +86,37 @@ export default function VoiceChannel(props: VoiceChannelProps) {
           </span>
         </div>
 
-        <Show when={!isConnected()}>
-          <button
-            onClick={handleJoin}
-            style={{
-              padding: "4px 12px",
-              "background-color": "transparent",
-              border: "1px solid var(--success)",
-              color: "var(--success)",
-              "font-size": "12px",
-              "font-weight": "600",
-            }}
-          >
-            [join voice]
-          </button>
-        </Show>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <Show when={!isConnected()}>
+            <button
+              onClick={handleJoin}
+              style={{
+                padding: "4px 12px",
+                "background-color": "transparent",
+                border: "1px solid var(--success)",
+                color: "var(--success)",
+                "font-size": "12px",
+                "font-weight": "600",
+              }}
+            >
+              [join voice]
+            </button>
+          </Show>
+          <Show when={isMobile() && isConnected()}>
+            <button
+              onClick={() => leaveVoice()}
+              style={{
+                padding: "4px 10px",
+                "font-size": "11px",
+                border: "1px solid var(--danger)",
+                "background-color": "rgba(232,64,64,0.15)",
+                color: "var(--danger)",
+              }}
+            >
+              [disconnect]
+            </button>
+          </Show>
+        </div>
       </div>
 
       {/* User grid */}
