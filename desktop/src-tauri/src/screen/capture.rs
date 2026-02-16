@@ -13,12 +13,7 @@ const BITRATE_KBPS: u32 = 5000;
 const PREVIEW_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS preview
 const PREVIEW_MAX_WIDTH: u32 = 480;
 
-struct FrameData {
-    data: Vec<u8>,
-    width: u32,
-    height: u32,
-    is_bgra: bool,
-}
+use super::encoder::FrameData;
 
 pub struct PortalResult {
     pub node_id: u32,
@@ -146,8 +141,7 @@ async fn run_capture(
     let track_clone = Arc::clone(&track);
     let enc_stop = stop.clone();
     tokio::task::spawn_blocking(move || {
-        use openh264::encoder::{Encoder, EncoderConfig};
-        use openh264::formats::YUVBuffer;
+        use super::encoder::create_encoder;
 
         let rt = tokio::runtime::Handle::current();
 
@@ -163,16 +157,10 @@ async fn run_capture(
         eprintln!("[screen] First frame: {}x{}, bgra={}, data_len={}",
             first_frame.width, first_frame.height, first_frame.is_bgra, first_frame.data.len());
 
-        let config = EncoderConfig::new()
-            .set_bitrate_bps(BITRATE_KBPS * 1000)
-            .usage_type(openh264::encoder::UsageType::ScreenContentRealTime)
-            .max_frame_rate(30.0)
-            .enable_skip_frame(false)
-            .rate_control_mode(openh264::encoder::RateControlMode::Bitrate);
-        let mut encoder = match Encoder::with_api_config(openh264::OpenH264API::from_source(), config) {
+        let mut encoder = match create_encoder(w as u32, h as u32, BITRATE_KBPS) {
             Ok(e) => e,
             Err(e) => {
-                eprintln!("[screen] H.264 encoder init failed: {:?}", e);
+                eprintln!("[screen] Encoder init failed: {:?}", e);
                 return;
             }
         };
@@ -205,7 +193,7 @@ async fn run_capture(
             let fh = (frame.height as usize) & !1;
 
             // Skip frames whose dimensions don't match the encoder (crop changed,
-            // window resized, etc.) — avoids feeding wrong-sized I420 data to H.264.
+            // window resized, etc.) — avoids feeding wrong-sized data to encoder.
             if fw != w || fh != h {
                 continue;
             }
@@ -218,22 +206,19 @@ async fn run_capture(
                 }
             }
 
-            let i420 = if frame.is_bgra {
-                bgra_to_i420(&frame.data, fw, fh)
-            } else {
-                rgba_to_i420(&frame.data, fw, fh)
-            };
-
             // Force periodic IDR keyframes so late-joining viewers can decode
             frame_count += 1;
             if frame_count % IDR_INTERVAL == 0 {
-                encoder.force_intra_frame();
+                encoder.force_keyframe();
             }
 
-            let yuv = YUVBuffer::from_vec(i420, fw, fh);
-            match encoder.encode(&yuv) {
-                Ok(bitstream) => {
-                    let data = bitstream.to_vec();
+            match encoder.encode(&FrameData {
+                data: frame.data,
+                width: frame.width,
+                height: frame.height,
+                is_bgra: frame.is_bgra,
+            }) {
+                Ok(data) => {
                     if !data.is_empty() {
                         let sample = Sample {
                             data: bytes::Bytes::from(data),
@@ -249,7 +234,7 @@ async fn run_capture(
                     }
                 }
                 Err(e) => {
-                    eprintln!("[screen] H.264 encode error: {:?}", e);
+                    eprintln!("[screen] Encode error: {:?}", e);
                 }
             }
         }
@@ -1094,107 +1079,3 @@ fn make_preview_jpeg(data: &[u8], w: usize, h: usize, is_bgra: bool) -> Option<V
     Some(buf.into_inner())
 }
 
-/// Convert BGRA pixels to I420 (YUV420p) using fixed-point BT.601 coefficients.
-/// Integer math avoids float ops — ~3-5x faster than the float version.
-fn bgra_to_i420(bgra: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let y_size = width * height;
-    let uv_width = width / 2;
-    let uv_height = height / 2;
-    let uv_size = uv_width * uv_height;
-
-    let mut yuv = vec![0u8; y_size + uv_size * 2];
-    let (y_plane, uv_planes) = yuv.split_at_mut(y_size);
-    let (u_plane, v_plane) = uv_planes.split_at_mut(uv_size);
-
-    // Y plane: one sample per pixel
-    for row in 0..height {
-        let row_off = row * width;
-        for col in 0..width {
-            let px = (row_off + col) * 4;
-            let b = bgra[px] as i32;
-            let g = bgra[px + 1] as i32;
-            let r = bgra[px + 2] as i32;
-            // Y = 16 + (66*R + 129*G + 25*B + 128) >> 8
-            y_plane[row_off + col] = (((66 * r + 129 * g + 25 * b + 128) >> 8) + 16) as u8;
-        }
-    }
-
-    // U/V planes: 2x2 subsampled
-    for row in 0..uv_height {
-        let src_row = row * 2;
-        let uv_off = row * uv_width;
-        for col in 0..uv_width {
-            let src_col = col * 2;
-            let mut r_sum = 0i32;
-            let mut g_sum = 0i32;
-            let mut b_sum = 0i32;
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let px = ((src_row + dy) * width + (src_col + dx)) * 4;
-                    b_sum += bgra[px] as i32;
-                    g_sum += bgra[px + 1] as i32;
-                    r_sum += bgra[px + 2] as i32;
-                }
-            }
-            // Average the 2x2 block (>> 2)
-            let r = r_sum >> 2;
-            let g = g_sum >> 2;
-            let b = b_sum >> 2;
-            // U = 128 + (-38*R - 74*G + 112*B + 128) >> 8
-            u_plane[uv_off + col] = (((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128) as u8;
-            // V = 128 + (112*R - 94*G - 18*B + 128) >> 8
-            v_plane[uv_off + col] = (((112 * r - 94 * g - 18 * b + 128) >> 8) + 128) as u8;
-        }
-    }
-
-    yuv
-}
-
-/// Convert RGBA pixels to I420 (YUV420p) using fixed-point BT.601 coefficients.
-fn rgba_to_i420(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let y_size = width * height;
-    let uv_width = width / 2;
-    let uv_height = height / 2;
-    let uv_size = uv_width * uv_height;
-
-    let mut yuv = vec![0u8; y_size + uv_size * 2];
-    let (y_plane, uv_planes) = yuv.split_at_mut(y_size);
-    let (u_plane, v_plane) = uv_planes.split_at_mut(uv_size);
-
-    for row in 0..height {
-        let row_off = row * width;
-        for col in 0..width {
-            let px = (row_off + col) * 4;
-            let r = rgba[px] as i32;
-            let g = rgba[px + 1] as i32;
-            let b = rgba[px + 2] as i32;
-            y_plane[row_off + col] = (((66 * r + 129 * g + 25 * b + 128) >> 8) + 16) as u8;
-        }
-    }
-
-    for row in 0..uv_height {
-        let src_row = row * 2;
-        let uv_off = row * uv_width;
-        for col in 0..uv_width {
-            let src_col = col * 2;
-            let mut r_sum = 0i32;
-            let mut g_sum = 0i32;
-            let mut b_sum = 0i32;
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let px = ((src_row + dy) * width + (src_col + dx)) * 4;
-                    r_sum += rgba[px] as i32;
-                    g_sum += rgba[px + 1] as i32;
-                    b_sum += rgba[px + 2] as i32;
-                }
-            }
-            let r = r_sum >> 2;
-            let g = g_sum >> 2;
-            let b = b_sum >> 2;
-            u_plane[uv_off + col] = (((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128) as u8;
-            v_plane[uv_off + col] = (((112 * r - 94 * g - 18 * b + 128) >> 8) + 128) as u8;
-        }
-    }
-
-    yuv
-}
