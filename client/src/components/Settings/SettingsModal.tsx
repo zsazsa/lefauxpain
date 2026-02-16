@@ -954,17 +954,19 @@ export default function SettingsModal() {
                   {navigator.platform.toLowerCase().includes("linux") ? (
                     <div>
                       <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-bottom": "8px" }}>
-                        Auto-update is not supported for Linux package installs. Download the new version:
+                        Auto-update is not supported for Linux package installs.
                       </div>
-                      <a
-                        href={`https://github.com/zsazsa/lefauxpain/releases/download/v${updateVersion()}/LeFauxPain_${updateVersion()}_amd64.deb`}
-                        target="_blank"
-                        style={{ ...actionBtnStyle, width: "100%", display: "block", "text-align": "center", "text-decoration": "none" }}
+                      <button
+                        onClick={async () => {
+                          const { openUrl } = await import("@tauri-apps/plugin-opener");
+                          openUrl(`https://github.com/zsazsa/lefauxpain/releases/tag/v${updateVersion()}`);
+                        }}
+                        style={{ ...actionBtnStyle, width: "100%" }}
                       >
-                        [download .deb]
-                      </a>
+                        [open download page]
+                      </button>
                       <div style={{ "font-size": "10px", color: "var(--text-muted)", "margin-top": "8px" }}>
-                        Then run: sudo apt install ~/Downloads/LeFauxPain_{updateVersion()}_amd64.deb
+                        Download the .deb, then run: sudo apt install ~/Downloads/LeFauxPain_{updateVersion()}_amd64.deb
                       </div>
                     </div>
                   ) : (

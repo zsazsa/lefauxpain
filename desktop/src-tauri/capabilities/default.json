@@ -13,7 +13,8 @@
     "core:event:allow-listen",
     "core:event:allow-emit",
     "updater:default",
-    "process:default"
+    "process:default",
+    "opener:default"
   ],
   "remote": {
     "urls": ["https://*/*", "http://*/*"]
