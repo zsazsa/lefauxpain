@@ -6,7 +6,7 @@ import VoiceChannel from "./components/VoiceChannel/VoiceChannel";
 import SettingsModal from "./components/Settings/SettingsModal";
 import DesktopTitleBar from "./components/DesktopTitleBar";
 import ScreenShareView from "./components/VoiceChannel/ScreenShareView";
-import { connectWS, disconnectWS } from "./lib/ws";
+import { connectWS, disconnectWS, connState } from "./lib/ws";
 import { initEventHandlers } from "./lib/events";
 import { leaveVoice } from "./lib/webrtc";
 import { cleanupScreenShare } from "./lib/screenshare";
@@ -154,6 +154,35 @@ function App() {
         }}
 
         <div style={{ flex: "1", display: "flex", "flex-direction": "column", "min-width": "0" }}>
+          <Show when={connState() !== "connected"}>
+            <div style={{
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              gap: "10px",
+              padding: "10px 16px",
+              "background-color": connState() === "reconnecting"
+                ? "rgba(201,168,76,0.15)"
+                : "rgba(220,50,50,0.15)",
+              "border-bottom": connState() === "reconnecting"
+                ? "1px solid rgba(201,168,76,0.3)"
+                : "1px solid rgba(220,50,50,0.3)",
+              "font-size": "13px",
+              color: connState() === "reconnecting" ? "var(--accent)" : "var(--danger)",
+            }}>
+              <span style={{
+                width: "8px",
+                height: "8px",
+                "border-radius": "50%",
+                "background-color": "currentColor",
+                animation: connState() === "reconnecting" ? "pulse 1.5s ease-in-out infinite" : "none",
+                "flex-shrink": "0",
+              }} />
+              {connState() === "reconnecting"
+                ? "Waiting for connection..."
+                : "Offline"}
+            </div>
+          </Show>
           {() => {
             const watching = watchingScreenShare();
             if (watching) {

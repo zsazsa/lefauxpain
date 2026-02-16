@@ -15,7 +15,7 @@ import { allUsers, removeAllUser } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
 import {
   updateStatus, updateVersion, updateBody, updateProgress, updateError,
-  checkForUpdates, downloadAndInstall, relaunchApp,
+  checkForUpdates, downloadAndInstall, relaunchApp, appVersion,
 } from "../../stores/updateChecker";
 
 type PwDevice = { id: string; name: string; default: boolean };
@@ -903,10 +903,16 @@ export default function SettingsModal() {
 
               {/* App tab (desktop only) */}
               <Show when={activeTab() === "app" && isTauri}>
+                <Show when={appVersion()}>
+                  <div style={{ "font-size": "12px", color: "var(--text-muted)", "margin-bottom": "16px" }}>
+                    Current version: <span style={{ color: "var(--text-primary)", "font-weight": "600" }}>{appVersion()}</span>
+                  </div>
+                </Show>
+
                 <div style={sectionHeaderStyle}>App Update</div>
 
                 <Show when={updateStatus() === "idle"}>
-                  <button onClick={checkForUpdates} style={{ ...actionBtnStyle, width: "100%" }}>
+                  <button onClick={() => checkForUpdates(true)} style={{ ...actionBtnStyle, width: "100%" }}>
                     [check for updates]
                   </button>
                 </Show>
@@ -921,7 +927,7 @@ export default function SettingsModal() {
                   <div style={{ "font-size": "12px", color: "var(--success)", "margin-bottom": "12px" }}>
                     You're on the latest version.
                   </div>
-                  <button onClick={checkForUpdates} style={{ ...actionBtnStyle, width: "100%" }}>
+                  <button onClick={() => checkForUpdates(true)} style={{ ...actionBtnStyle, width: "100%" }}>
                     [check again]
                   </button>
                 </Show>
@@ -945,9 +951,27 @@ export default function SettingsModal() {
                       {updateBody()}
                     </div>
                   </Show>
-                  <button onClick={downloadAndInstall} style={{ ...actionBtnStyle, width: "100%" }}>
-                    [download & install]
-                  </button>
+                  {navigator.platform.toLowerCase().includes("linux") ? (
+                    <div>
+                      <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-bottom": "8px" }}>
+                        Auto-update is not supported for Linux package installs. Download the new version:
+                      </div>
+                      <a
+                        href={`https://github.com/zsazsa/lefauxpain/releases/download/v${updateVersion()}/LeFauxPain_${updateVersion()}_amd64.deb`}
+                        target="_blank"
+                        style={{ ...actionBtnStyle, width: "100%", display: "block", "text-align": "center", "text-decoration": "none" }}
+                      >
+                        [download .deb]
+                      </a>
+                      <div style={{ "font-size": "10px", color: "var(--text-muted)", "margin-top": "8px" }}>
+                        Then run: sudo apt install ~/Downloads/LeFauxPain_{updateVersion()}_amd64.deb
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={downloadAndInstall} style={{ ...actionBtnStyle, width: "100%" }}>
+                      [download & install]
+                    </button>
+                  )}
                 </Show>
 
                 <Show when={updateStatus() === "downloading"}>
@@ -982,7 +1006,7 @@ export default function SettingsModal() {
                   <div style={{ color: "var(--danger)", "font-size": "11px", "margin-bottom": "12px" }}>
                     {updateError()}
                   </div>
-                  <button onClick={checkForUpdates} style={{ ...actionBtnStyle, width: "100%" }}>
+                  <button onClick={() => checkForUpdates(true)} style={{ ...actionBtnStyle, width: "100%" }}>
                     [retry]
                   </button>
                 </Show>

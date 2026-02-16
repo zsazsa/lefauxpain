@@ -10,9 +10,18 @@ const [updateProgress, setUpdateProgress] = createSignal(0);
 const [updateError, setUpdateError] = createSignal("");
 let pendingUpdate: any = null;
 
-export { updateStatus, updateVersion, updateBody, updateProgress, updateError };
+const [appVersion, setAppVersion] = createSignal("");
 
-export async function checkForUpdates() {
+export { updateStatus, updateVersion, updateBody, updateProgress, updateError, appVersion };
+
+// Fetch the app version from the Tauri binary
+if (isTauri) {
+  import("@tauri-apps/api/app").then(({ getVersion }) => {
+    getVersion().then(setAppVersion).catch(() => {});
+  }).catch(() => {});
+}
+
+export async function checkForUpdates(manual = false) {
   setUpdateStatus("checking");
   setUpdateError("");
   try {
@@ -27,8 +36,15 @@ export async function checkForUpdates() {
       setUpdateStatus("no-update");
     }
   } catch (e: any) {
-    setUpdateError(e.message || "Failed to check for updates");
-    setUpdateStatus("error");
+    if (manual) {
+      // Only show error when user explicitly clicked the button
+      setUpdateError(e.message || "Failed to check for updates");
+      setUpdateStatus("error");
+    } else {
+      // Background check failed (likely no internet) — stay idle, retry next cycle
+      console.log("[updater] background check failed:", e.message);
+      setUpdateStatus("idle");
+    }
   }
 }
 
@@ -65,10 +81,10 @@ const TWO_HOURS = 2 * 60 * 60 * 1000;
 
 export function startUpdateChecker() {
   if (!isTauri) return;
-  // Initial check after 30 seconds (let the app finish loading)
+  // Initial check after 5 seconds
   setTimeout(() => {
     checkForUpdates();
-  }, 30_000);
+  }, 5_000);
   // Then every 2 hours
   setInterval(() => {
     // Only re-check if we haven't already found an update or started downloading
