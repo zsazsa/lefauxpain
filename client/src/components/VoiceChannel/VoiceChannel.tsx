@@ -1,4 +1,4 @@
-import { For, Show, createEffect, onMount, onCleanup } from "solid-js";
+import { For, Show, onMount, onCleanup } from "solid-js";
 import { channels } from "../../stores/channels";
 import { getUsersInVoiceChannel, currentVoiceChannelId, localScreenStream, desktopPresenting, desktopPreviewUrl } from "../../stores/voice";
 import { onlineUsers } from "../../stores/users";
@@ -173,6 +173,7 @@ export default function VoiceChannel(props: VoiceChannelProps) {
       <Show when={localScreenStream() || desktopPresenting()}>
         {() => {
           let previewRef: HTMLVideoElement | undefined;
+
           return (
             <div
               style={{
@@ -222,7 +223,6 @@ export default function VoiceChannel(props: VoiceChannelProps) {
                     "max-height": "100%",
                     "object-fit": "contain",
                     "min-height": "0",
-                    display: desktopPreviewUrl() ? "block" : "none",
                   }}
                 />
               )}

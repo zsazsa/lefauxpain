@@ -1,14 +1,17 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use ringbuf::{HeapRb, traits::{Producer, Consumer, Observer, Split}};
+use tokio::sync::watch;
 use webrtc::media::Sample;
+use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
+use webrtc::track::track_local::TrackLocalWriter;
 
 const FRAME_DURATION: Duration = Duration::from_millis(33); // ~30 FPS
 const BITRATE_KBPS: u32 = 5000;
-const PREVIEW_INTERVAL: Duration = Duration::from_millis(100); // ~10 FPS preview
-const PREVIEW_MAX_WIDTH: u32 = 360;
+const PREVIEW_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS preview
+const PREVIEW_MAX_WIDTH: u32 = 480;
 
 struct FrameData {
     data: Vec<u8>,
@@ -39,15 +42,16 @@ impl ScreenCapture {
 
     pub fn start(
         &mut self,
-        track: Arc<TrackLocalStaticSample>,
-        app: AppHandle,
+        video_track: Arc<TrackLocalStaticSample>,
+        audio_track: Arc<TrackLocalStaticRTP>,
+        preview_tx: watch::Sender<Option<Vec<u8>>>,
         portal: PortalResult,
     ) {
         // Create a fresh stop flag for this session — old threads keep their own flag (true)
         let stop = Arc::new(AtomicBool::new(false));
         self.stop_flag = stop.clone();
         let handle = tokio::spawn(async move {
-            if let Err(e) = run_capture(track, app, stop, portal).await {
+            if let Err(e) = run_capture(video_track, audio_track, preview_tx, stop, portal).await {
                 eprintln!("[screen] Capture error: {}", e);
             }
         });
@@ -113,10 +117,20 @@ pub async fn portal_start_screencast(
 
 async fn run_capture(
     track: Arc<TrackLocalStaticSample>,
-    app: AppHandle,
+    audio_track: Arc<TrackLocalStaticRTP>,
+    preview_tx: watch::Sender<Option<Vec<u8>>>,
     stop: Arc<AtomicBool>,
     portal: PortalResult,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Spawn PipeWire audio capture (sink monitor) — failure is non-fatal
+    let audio_stop = stop.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = pipewire_audio_capture_loop(audio_track, audio_stop) {
+            log::warn!("[screen] Audio capture error (non-fatal): {:?}", e);
+        }
+        eprintln!("[screen] Audio capture thread exited");
+    });
+
     // Spawn PipeWire frame reader on a dedicated thread
     let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<FrameData>(4);
 
@@ -166,6 +180,8 @@ async fn run_capture(
         eprintln!("[screen] Encode loop started ({}x{})", w, h);
 
         let mut last_preview = Instant::now() - PREVIEW_INTERVAL;
+        let mut frame_count: u32 = 0;
+        const IDR_INTERVAL: u32 = 60; // Force IDR keyframe every ~2s at 30fps
 
         // Process the first frame
         let mut pending = Some(first_frame);
@@ -194,11 +210,11 @@ async fn run_capture(
                 continue;
             }
 
-            // Emit JPEG preview thumbnail periodically
+            // Send JPEG preview thumbnail periodically via watch channel
             if last_preview.elapsed() >= PREVIEW_INTERVAL {
                 last_preview = Instant::now();
-                if let Some(jpeg_b64) = make_preview_jpeg(&frame.data, fw, fh, frame.is_bgra) {
-                    let _ = app.emit("screen:preview", &jpeg_b64);
+                if let Some(jpeg_bytes) = make_preview_jpeg(&frame.data, fw, fh, frame.is_bgra) {
+                    preview_tx.send_replace(Some(jpeg_bytes));
                 }
             }
 
@@ -207,6 +223,12 @@ async fn run_capture(
             } else {
                 rgba_to_i420(&frame.data, fw, fh)
             };
+
+            // Force periodic IDR keyframes so late-joining viewers can decode
+            frame_count += 1;
+            if frame_count % IDR_INTERVAL == 0 {
+                encoder.force_intra_frame();
+            }
 
             let yuv = YUVBuffer::from_vec(i420, fw, fh);
             match encoder.encode(&yuv) {
@@ -547,6 +569,415 @@ fn pipewire_capture_loop(
     Ok(())
 }
 
+// --- Screen audio capture (PipeWire sink monitor → Opus → RTP) ---
+
+const OPUS_SAMPLE_RATE: u32 = 48000;
+const OPUS_CHANNELS: usize = 2;
+const OPUS_FRAME_SAMPLES: usize = 960; // 20ms at 48kHz
+
+/// Capture system audio output via PipeWire sink monitor, encode as Opus, write RTP.
+fn pipewire_audio_capture_loop(
+    track: Arc<TrackLocalStaticRTP>,
+    stop: Arc<AtomicBool>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    pipewire::init();
+
+    let mainloop = pipewire::main_loop::MainLoop::new(None)
+        .map_err(|_| "failed to create PipeWire audio main loop")?;
+    let context = pipewire::context::Context::new(&mainloop)
+        .map_err(|_| "failed to create PipeWire audio context")?;
+
+    // Connect to the default PipeWire daemon (NOT the portal fd)
+    let core = context
+        .connect(None)
+        .map_err(|_| "failed to connect to PipeWire daemon")?;
+
+    let stream = pipewire::stream::Stream::new(
+        &core,
+        "screen-audio-capture",
+        pipewire::properties::properties! {
+            *pipewire::keys::MEDIA_TYPE => "Audio",
+            *pipewire::keys::MEDIA_CATEGORY => "Capture",
+            *pipewire::keys::MEDIA_ROLE => "Music",
+            "stream.capture.sink" => "true",
+        },
+    )
+    .map_err(|_| "failed to create PipeWire audio stream")?;
+
+    // Shared state for negotiated format
+    let negotiated_rate = Arc::new(AtomicU32::new(48000));
+    let negotiated_channels = Arc::new(AtomicU32::new(2));
+
+    // Ring buffer: ~400ms of stereo f32 at 48kHz
+    let rb = HeapRb::<f32>::new(48000 * 2 * 400 / 1000);
+    let (producer, consumer) = rb.split();
+    let producer = Arc::new(std::sync::Mutex::new(producer));
+
+    let mainloop_ptr = &mainloop as *const pipewire::main_loop::MainLoop;
+
+    struct MainLoopQuit(*const pipewire::main_loop::MainLoop);
+    unsafe impl Send for MainLoopQuit {}
+    unsafe impl Sync for MainLoopQuit {}
+
+    struct AudioState {
+        producer: Arc<std::sync::Mutex<ringbuf::HeapProd<f32>>>,
+        stop: Arc<AtomicBool>,
+        stopped: bool,
+        quit: MainLoopQuit,
+        rate: Arc<AtomicU32>,
+        channels: Arc<AtomicU32>,
+        logged_format: bool,
+    }
+
+    let state = AudioState {
+        producer: producer.clone(),
+        stop: stop.clone(),
+        stopped: false,
+        quit: MainLoopQuit(mainloop_ptr),
+        rate: negotiated_rate.clone(),
+        channels: negotiated_channels.clone(),
+        logged_format: false,
+    };
+
+    let _listener = stream
+        .add_local_listener_with_user_data(state)
+        .param_changed(|_stream, state, id, param| {
+            use libspa::param::ParamType;
+            use libspa::param::format::FormatProperties;
+            use libspa::pod::deserialize::PodDeserializer;
+            use libspa::pod::Value;
+
+            if id != ParamType::Format.as_raw() {
+                return;
+            }
+
+            if let Some(pod) = param {
+                if let Ok((_, Value::Object(obj))) =
+                    PodDeserializer::deserialize_from::<Value>(pod.as_bytes())
+                {
+                    for prop in &obj.properties {
+                        if prop.key == FormatProperties::AudioRate.as_raw() {
+                            if let Value::Int(rate) = &prop.value {
+                                state.rate.store(*rate as u32, Ordering::Relaxed);
+                            }
+                        }
+                        if prop.key == FormatProperties::AudioChannels.as_raw() {
+                            if let Value::Int(ch) = &prop.value {
+                                state.channels.store(*ch as u32, Ordering::Relaxed);
+                            }
+                        }
+                    }
+                }
+            }
+
+            eprintln!(
+                "[screen] Audio format: {}Hz, {}ch",
+                state.rate.load(Ordering::Relaxed),
+                state.channels.load(Ordering::Relaxed),
+            );
+        })
+        .process(|stream, state| {
+            if state.stopped {
+                return;
+            }
+
+            if state.stop.load(Ordering::Relaxed) {
+                state.stopped = true;
+                unsafe { (&*state.quit.0).quit(); }
+                return;
+            }
+
+            let Some(mut buffer) = stream.dequeue_buffer() else {
+                return;
+            };
+            let datas = buffer.datas_mut();
+            if datas.is_empty() {
+                return;
+            }
+
+            let d = &mut datas[0];
+            let chunk = d.chunk();
+            let size = chunk.size() as usize;
+            let offset = chunk.offset() as usize;
+
+            if size == 0 {
+                return;
+            }
+
+            let Some(raw) = d.data() else { return };
+            if raw.len() < offset + size {
+                return;
+            }
+            let raw = &raw[offset..offset + size];
+
+            if !state.logged_format {
+                state.logged_format = true;
+                eprintln!("[screen] First audio buffer: {} bytes", size);
+            }
+
+            // Interpret as f32 samples (little-endian)
+            let samples: Vec<f32> = raw
+                .chunks_exact(4)
+                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                .collect();
+
+            if let Ok(mut prod) = state.producer.lock() {
+                for s in samples {
+                    let _ = prod.try_push(s);
+                }
+            }
+        })
+        .register()
+        .map_err(|_| "failed to register PipeWire audio listener")?;
+
+    // Build SPA format params: F32LE audio
+    let params_bytes = {
+        use libspa::pod::{Object, Property, PropertyFlags, Value};
+        use libspa::pod::serialize::PodSerializer;
+        use libspa::utils::{Id, SpaTypes};
+        use libspa::param::ParamType;
+        use libspa::param::format::{FormatProperties, MediaType, MediaSubtype};
+
+        let obj = Object {
+            type_: SpaTypes::ObjectParamFormat.as_raw(),
+            id: ParamType::EnumFormat.as_raw(),
+            properties: vec![
+                Property {
+                    key: FormatProperties::MediaType.as_raw(),
+                    flags: PropertyFlags::empty(),
+                    value: Value::Id(Id(MediaType::Audio.as_raw())),
+                },
+                Property {
+                    key: FormatProperties::MediaSubtype.as_raw(),
+                    flags: PropertyFlags::empty(),
+                    value: Value::Id(Id(MediaSubtype::Raw.as_raw())),
+                },
+                Property {
+                    key: FormatProperties::AudioFormat.as_raw(),
+                    flags: PropertyFlags::empty(),
+                    value: Value::Id(Id(libspa::param::audio::AudioFormat::F32LE.as_raw())),
+                },
+                Property {
+                    key: FormatProperties::AudioRate.as_raw(),
+                    flags: PropertyFlags::empty(),
+                    value: Value::Int(48000),
+                },
+                Property {
+                    key: FormatProperties::AudioChannels.as_raw(),
+                    flags: PropertyFlags::empty(),
+                    value: Value::Int(2),
+                },
+            ],
+        };
+
+        PodSerializer::serialize(
+            std::io::Cursor::new(Vec::new()),
+            &Value::Object(obj),
+        )
+        .map_err(|_| "failed to serialize audio format params")?
+        .0
+        .into_inner()
+    };
+
+    let pod = libspa::pod::Pod::from_bytes(&params_bytes)
+        .ok_or("failed to create Pod from serialized audio bytes")?;
+
+    stream
+        .connect(
+            pipewire::spa::utils::Direction::Input,
+            None, // default sink monitor
+            pipewire::stream::StreamFlags::AUTOCONNECT
+                | pipewire::stream::StreamFlags::MAP_BUFFERS,
+            &mut [pod],
+        )
+        .map_err(|_| "failed to connect PipeWire audio stream")?;
+
+    // Spawn Opus encode thread before running the main loop
+    let encode_stop = stop.clone();
+    let rate_ref = negotiated_rate;
+    let channels_ref = negotiated_channels;
+    std::thread::spawn(move || {
+        opus_encode_loop(track, consumer, encode_stop, rate_ref, channels_ref);
+    });
+
+    eprintln!("[screen] PipeWire audio main loop starting (sink monitor)");
+    mainloop.run();
+    eprintln!("[screen] PipeWire audio main loop ended");
+
+    Ok(())
+}
+
+/// Opus encode loop: reads f32 from ring buffer, encodes, writes RTP.
+fn opus_encode_loop(
+    track: Arc<TrackLocalStaticRTP>,
+    mut consumer: ringbuf::HeapCons<f32>,
+    stop: Arc<AtomicBool>,
+    negotiated_rate: Arc<AtomicU32>,
+    negotiated_channels: Arc<AtomicU32>,
+) {
+    // Small tokio runtime for async write_rtp
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            log::error!("[screen] Failed to create audio encode runtime: {}", e);
+            return;
+        }
+    };
+
+    // Wait briefly for format negotiation
+    std::thread::sleep(Duration::from_millis(100));
+
+    let device_rate = negotiated_rate.load(Ordering::Relaxed);
+    let device_channels = negotiated_channels.load(Ordering::Relaxed) as usize;
+
+    let needs_resample = device_rate != OPUS_SAMPLE_RATE;
+    let mut resampler = if needs_resample {
+        let input_frames =
+            (OPUS_FRAME_SAMPLES as f64 * device_rate as f64 / OPUS_SAMPLE_RATE as f64)
+                .ceil() as usize;
+        Some(crate::voice::resampler::AudioResampler::new(
+            device_rate,
+            OPUS_SAMPLE_RATE,
+            input_frames,
+            OPUS_CHANNELS,
+        ))
+    } else {
+        None
+    };
+
+    let mut encoder = match opus::Encoder::new(
+        OPUS_SAMPLE_RATE,
+        opus::Channels::Stereo,
+        opus::Application::Audio, // better for music/system sounds
+    ) {
+        Ok(e) => e,
+        Err(e) => {
+            log::error!("[screen] Failed to create Opus encoder: {}", e);
+            return;
+        }
+    };
+    let _ = encoder.set_bitrate(opus::Bitrate::Bits(128000));
+    let _ = encoder.set_inband_fec(true);
+    let _ = encoder.set_dtx(true);
+
+    let mut opus_buf = vec![0u8; 4000];
+    let mut pcm_buf: Vec<f32> = Vec::new();
+
+    let device_frame_samples = if needs_resample {
+        let input_frames =
+            (OPUS_FRAME_SAMPLES as f64 * device_rate as f64 / OPUS_SAMPLE_RATE as f64)
+                .ceil() as usize;
+        input_frames * device_channels
+    } else {
+        OPUS_FRAME_SAMPLES * device_channels
+    };
+
+    let mut timestamp: u32 = 0;
+    let mut sequence: u16 = 0;
+
+    eprintln!(
+        "[screen] Audio encode loop started (device: {}Hz/{}ch, resample: {})",
+        device_rate, device_channels, needs_resample
+    );
+
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
+
+        std::thread::sleep(Duration::from_millis(5));
+
+        // Drain from ring buffer
+        while consumer.occupied_len() > 0 {
+            if let Some(sample) = consumer.try_pop() {
+                pcm_buf.push(sample);
+            } else {
+                break;
+            }
+        }
+
+        while pcm_buf.len() >= device_frame_samples {
+            let frame: Vec<f32> = pcm_buf.drain(..device_frame_samples).collect();
+
+            // Convert to stereo at 48kHz
+            let stereo_48k = if needs_resample {
+                let stereo = to_stereo(&frame, device_channels);
+                resampler.as_mut().unwrap().process(&stereo)
+            } else {
+                to_stereo(&frame, device_channels)
+            };
+
+            // Opus encode (expects interleaved i16)
+            let pcm_i16: Vec<i16> = stereo_48k
+                .iter()
+                .map(|&s| (s.clamp(-1.0, 1.0) * 32767.0) as i16)
+                .collect();
+
+            let encoded_len = match encoder.encode(&pcm_i16, &mut opus_buf) {
+                Ok(len) => len,
+                Err(e) => {
+                    log::error!("[screen] Opus encode error: {}", e);
+                    continue;
+                }
+            };
+
+            let rtp_packet = webrtc::rtp::packet::Packet {
+                header: webrtc::rtp::header::Header {
+                    version: 2,
+                    padding: false,
+                    extension: false,
+                    marker: false,
+                    payload_type: 111,
+                    sequence_number: sequence,
+                    timestamp,
+                    ssrc: 0,
+                    ..Default::default()
+                },
+                payload: bytes::Bytes::copy_from_slice(&opus_buf[..encoded_len]),
+            };
+
+            sequence = sequence.wrapping_add(1);
+            timestamp = timestamp.wrapping_add(OPUS_FRAME_SAMPLES as u32);
+
+            rt.block_on(async {
+                if let Err(e) = track.write_rtp(&rtp_packet).await {
+                    if !e.to_string().contains("closed") {
+                        log::warn!("[screen] Audio RTP write error: {}", e);
+                    }
+                }
+            });
+        }
+    }
+
+    eprintln!("[screen] Audio encode loop exited");
+}
+
+/// Convert any channel count to stereo interleaved.
+fn to_stereo(samples: &[f32], channels: usize) -> Vec<f32> {
+    if channels == 2 {
+        return samples.to_vec();
+    }
+    if channels == 1 {
+        let mut stereo = Vec::with_capacity(samples.len() * 2);
+        for &s in samples {
+            stereo.push(s);
+            stereo.push(s);
+        }
+        return stereo;
+    }
+    // Multi-channel → take first two
+    let frames = samples.len() / channels;
+    let mut stereo = Vec::with_capacity(frames * 2);
+    for i in 0..frames {
+        stereo.push(samples[i * channels]);
+        stereo.push(samples[i * channels + 1]);
+    }
+    stereo
+}
+
 /// Result of alpha-based crop detection.
 #[derive(Clone, Copy)]
 enum CropResult {
@@ -611,8 +1042,8 @@ fn detect_alpha_crop(data: &[u8], w: usize, h: usize, stride: usize) -> CropResu
     CropResult::Cropped(left, top, cw, ch)
 }
 
-/// Downscale frame and encode as JPEG, returning base64 data URL.
-fn make_preview_jpeg(data: &[u8], w: usize, h: usize, is_bgra: bool) -> Option<String> {
+/// Downscale frame and encode as JPEG, returning raw JPEG bytes.
+fn make_preview_jpeg(data: &[u8], w: usize, h: usize, is_bgra: bool) -> Option<Vec<u8>> {
     use image::codecs::jpeg::JpegEncoder;
     use std::io::Cursor;
 
@@ -649,7 +1080,7 @@ fn make_preview_jpeg(data: &[u8], w: usize, h: usize, is_bgra: bool) -> Option<S
     }
 
     let mut buf = Cursor::new(Vec::new());
-    let encoder = JpegEncoder::new_with_quality(&mut buf, 40);
+    let encoder = JpegEncoder::new_with_quality(&mut buf, 55);
     if image::ImageEncoder::write_image(
         encoder,
         &rgb,
@@ -660,9 +1091,7 @@ fn make_preview_jpeg(data: &[u8], w: usize, h: usize, is_bgra: bool) -> Option<S
         return None;
     }
 
-    use base64::Engine;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
-    Some(format!("data:image/jpeg;base64,{}", b64))
+    Some(buf.into_inner())
 }
 
 /// Convert BGRA pixels to I420 (YUV420p) using fixed-point BT.601 coefficients.

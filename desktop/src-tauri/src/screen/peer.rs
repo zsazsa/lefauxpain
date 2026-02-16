@@ -10,6 +10,7 @@ use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::rtp_transceiver::rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType};
+use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 use webrtc::track::track_local::TrackLocal;
 
@@ -23,6 +24,7 @@ pub enum ScreenPeerEvent {
 pub struct ScreenPeer {
     pc: Arc<RTCPeerConnection>,
     pub video_track: Arc<TrackLocalStaticSample>,
+    pub audio_track: Arc<TrackLocalStaticRTP>,
 }
 
 impl ScreenPeer {
@@ -105,6 +107,31 @@ impl ScreenPeer {
             while rtp_sender.read(&mut buf).await.is_ok() {}
         });
 
+        // Create audio track using TrackLocalStaticRTP (we build RTP packets ourselves)
+        let audio_track = Arc::new(TrackLocalStaticRTP::new(
+            RTCRtpCodecCapability {
+                mime_type: "audio/opus".to_string(),
+                clock_rate: 48000,
+                channels: 2,
+                sdp_fmtp_line: "minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=128000"
+                    .to_string(),
+                ..Default::default()
+            },
+            "audio".to_string(),
+            "screen".to_string(),
+        ));
+
+        // Add audio track as send-only
+        let audio_rtp_sender = pc
+            .add_track(Arc::clone(&audio_track) as Arc<dyn TrackLocal + Send + Sync>)
+            .await?;
+
+        // Drain RTCP for audio
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; 1500];
+            while audio_rtp_sender.read(&mut buf).await.is_ok() {}
+        });
+
         // Event channel
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
@@ -135,7 +162,7 @@ impl ScreenPeer {
             })
         }));
 
-        Ok((Self { pc, video_track }, event_rx))
+        Ok((Self { pc, video_track, audio_track }, event_rx))
     }
 
     pub async fn handle_offer(&self, sdp: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {

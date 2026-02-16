@@ -249,43 +249,90 @@ func (s *SFU) ScreenShares() []ScreenShareState {
 	return states
 }
 
-func (s *SFU) HandleScreenAnswer(userID string, sdp string) {
+func (s *SFU) HandleScreenAnswer(userID string, sdp string, role string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// With role, we can route directly to the right screen room
+	if role == "presenter" {
+		for _, sr := range s.screenRooms {
+			if sr.PresenterID == userID {
+				sr.HandleAnswer(userID, sdp, role)
+				return
+			}
+		}
+		return
+	}
+	if role == "viewer" {
+		for _, sr := range s.screenRooms {
+			sr.mu.RLock()
+			_, isViewer := sr.viewers[userID]
+			sr.mu.RUnlock()
+			if isViewer {
+				sr.HandleAnswer(userID, sdp, role)
+				return
+			}
+		}
+		return
+	}
+
+	// Backward compat: no role → old logic
 	for _, sr := range s.screenRooms {
 		if sr.PresenterID == userID {
-			sr.HandleAnswer(userID, sdp)
+			sr.HandleAnswer(userID, sdp, role)
 			return
 		}
 	}
-	// Check viewers
 	for _, sr := range s.screenRooms {
 		sr.mu.RLock()
 		_, isViewer := sr.viewers[userID]
 		sr.mu.RUnlock()
 		if isViewer {
-			sr.HandleAnswer(userID, sdp)
+			sr.HandleAnswer(userID, sdp, role)
 			return
 		}
 	}
 }
 
-func (s *SFU) HandleScreenICE(userID string, candidate webrtc.ICECandidateInit) {
+func (s *SFU) HandleScreenICE(userID string, candidate webrtc.ICECandidateInit, role string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	if role == "presenter" {
+		for _, sr := range s.screenRooms {
+			if sr.PresenterID == userID {
+				sr.HandleICE(userID, candidate, role)
+				return
+			}
+		}
+		return
+	}
+	if role == "viewer" {
+		for _, sr := range s.screenRooms {
+			sr.mu.RLock()
+			_, isViewer := sr.viewers[userID]
+			sr.mu.RUnlock()
+			if isViewer {
+				sr.HandleICE(userID, candidate, role)
+				return
+			}
+		}
+		return
+	}
+
+	// Backward compat: no role
 	for _, sr := range s.screenRooms {
 		if sr.PresenterID == userID {
-			sr.HandleICE(userID, candidate)
+			sr.HandleICE(userID, candidate, role)
 			return
 		}
 	}
-	// Check viewers
 	for _, sr := range s.screenRooms {
 		sr.mu.RLock()
 		_, isViewer := sr.viewers[userID]
 		sr.mu.RUnlock()
 		if isViewer {
-			sr.HandleICE(userID, candidate)
+			sr.HandleICE(userID, candidate, role)
 			return
 		}
 	}

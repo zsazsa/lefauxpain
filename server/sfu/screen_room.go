@@ -107,6 +107,7 @@ func (sr *ScreenRoom) SetupPresenter() error {
 		if sr.sfu.Signal != nil {
 			sr.sfu.Signal(sr.PresenterID, "webrtc_screen_ice", map[string]any{
 				"candidate": c.ToJSON(),
+				"role":      "presenter",
 			})
 		}
 	})
@@ -136,7 +137,8 @@ func (sr *ScreenRoom) SetupPresenter() error {
 
 	if sr.sfu.Signal != nil {
 		sr.sfu.Signal(sr.PresenterID, "webrtc_screen_offer", map[string]string{
-			"sdp": offer.SDP,
+			"sdp":  offer.SDP,
+			"role": "presenter",
 		})
 	}
 
@@ -199,6 +201,7 @@ func (sr *ScreenRoom) AddViewer(userID string) error {
 		if sr.sfu.Signal != nil {
 			sr.sfu.Signal(userID, "webrtc_screen_ice", map[string]any{
 				"candidate": c.ToJSON(),
+				"role":      "viewer",
 			})
 		}
 	})
@@ -232,7 +235,8 @@ func (sr *ScreenRoom) AddViewer(userID string) error {
 
 	if sr.sfu.Signal != nil {
 		sr.sfu.Signal(userID, "webrtc_screen_offer", map[string]string{
-			"sdp": offer.SDP,
+			"sdp":  offer.SDP,
+			"role": "viewer",
 		})
 	}
 
@@ -294,15 +298,28 @@ func (sr *ScreenRoom) Stop() {
 	}
 }
 
-func (sr *ScreenRoom) HandleAnswer(userID string, sdp string) {
+func (sr *ScreenRoom) HandleAnswer(userID string, sdp string, role string) {
 	sr.mu.RLock()
 	defer sr.mu.RUnlock()
 
 	var pc *webrtc.PeerConnection
-	if userID == sr.PresenterID {
+	var isViewer bool
+	switch {
+	case role == "presenter":
 		pc = sr.presenterPC
-	} else if viewer, ok := sr.viewers[userID]; ok {
-		pc = viewer.pc
+	case role == "viewer":
+		if viewer, ok := sr.viewers[userID]; ok {
+			pc = viewer.pc
+			isViewer = true
+		}
+	default:
+		// Backward compat: no role → use old logic
+		if userID == sr.PresenterID {
+			pc = sr.presenterPC
+		} else if viewer, ok := sr.viewers[userID]; ok {
+			pc = viewer.pc
+			isViewer = true
+		}
 	}
 
 	if pc == nil {
@@ -319,7 +336,7 @@ func (sr *ScreenRoom) HandleAnswer(userID string, sdp string) {
 	}
 
 	// Handle deferred renegotiation for viewers
-	if userID != sr.PresenterID {
+	if isViewer {
 		if viewer, ok := sr.viewers[userID]; ok {
 			viewer.mu.Lock()
 			needsRenego := viewer.needsRenegotiation
@@ -334,15 +351,25 @@ func (sr *ScreenRoom) HandleAnswer(userID string, sdp string) {
 	}
 }
 
-func (sr *ScreenRoom) HandleICE(userID string, candidate webrtc.ICECandidateInit) {
+func (sr *ScreenRoom) HandleICE(userID string, candidate webrtc.ICECandidateInit, role string) {
 	sr.mu.RLock()
 	defer sr.mu.RUnlock()
 
 	var pc *webrtc.PeerConnection
-	if userID == sr.PresenterID {
+	switch {
+	case role == "presenter":
 		pc = sr.presenterPC
-	} else if viewer, ok := sr.viewers[userID]; ok {
-		pc = viewer.pc
+	case role == "viewer":
+		if viewer, ok := sr.viewers[userID]; ok {
+			pc = viewer.pc
+		}
+	default:
+		// Backward compat: no role → use old logic
+		if userID == sr.PresenterID {
+			pc = sr.presenterPC
+		} else if viewer, ok := sr.viewers[userID]; ok {
+			pc = viewer.pc
+		}
 	}
 
 	if pc == nil {
@@ -405,7 +432,8 @@ func (sr *ScreenRoom) renegotiateViewer(viewer *ScreenViewer) {
 	}
 	if sr.sfu.Signal != nil {
 		sr.sfu.Signal(viewer.UserID, "webrtc_screen_offer", map[string]string{
-			"sdp": offer.SDP,
+			"sdp":  offer.SDP,
+			"role": "viewer",
 		})
 	}
 }

@@ -21,14 +21,19 @@ export function getIsPresenting() {
 export async function startScreenShare() {
   if (isDesktop) {
     // Desktop: use native Rust screen capture via Tauri IPC
+    let result: any;
     try {
-      await tauriInvoke("screen_start");
+      result = await tauriInvoke("screen_start");
     } catch (err) {
       console.error("[screen] screen_start failed:", err);
       return;
     }
     isPresenting = true;
     setDesktopPresenting(true);
+    // MJPEG server runs on localhost — set preview URL for the <img> tag
+    if (result?.preview_port) {
+      setDesktopPreviewUrl(`http://127.0.0.1:${result.preview_port}/preview`);
+    }
     send("screen_share_start", {});
     return;
   }
@@ -121,12 +126,12 @@ export function unsubscribeScreenShare() {
   setWatchingScreenShare(null);
 }
 
-export async function handleScreenOffer(sdp: string) {
+export async function handleScreenOffer(sdp: string, role?: string) {
   if (isDesktop && isPresenting) {
     // Desktop presenter: forward SDP to Rust, get answer back
     try {
       const result = await tauriInvoke("screen_handle_offer", { sdp });
-      send("webrtc_screen_answer", { sdp: result.sdp });
+      send("webrtc_screen_answer", { sdp: result.sdp, role: "presenter" });
     } catch (err) {
       console.error("[screen] screen_handle_offer failed:", err);
     }
@@ -141,7 +146,10 @@ export async function handleScreenOffer(sdp: string) {
 
     screenPC.onicecandidate = (event) => {
       if (event.candidate) {
-        send("webrtc_screen_ice", { candidate: event.candidate.toJSON() });
+        send("webrtc_screen_ice", {
+          candidate: event.candidate.toJSON(),
+          ...(role && { role }),
+        });
       }
     };
 
@@ -192,10 +200,13 @@ export async function handleScreenOffer(sdp: string) {
   await screenPC.setRemoteDescription({ type: "offer", sdp });
   const answer = await screenPC.createAnswer();
   await screenPC.setLocalDescription(answer);
-  send("webrtc_screen_answer", { sdp: answer.sdp });
+  send("webrtc_screen_answer", {
+    sdp: answer.sdp,
+    ...(role && { role }),
+  });
 }
 
-export function handleScreenICE(candidate: RTCIceCandidateInit) {
+export function handleScreenICE(candidate: RTCIceCandidateInit, role?: string) {
   if (isDesktop && isPresenting) {
     // Desktop presenter: forward ICE to Rust
     tauriInvoke("screen_handle_ice", {

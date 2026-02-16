@@ -175,6 +175,8 @@ fn main() {
                         settings.set_enable_media_capabilities(true);
                         settings.set_media_playback_requires_user_gesture(false);
                         settings.set_enable_webrtc(true);
+                        settings.set_enable_developer_extras(true);
+                        settings.set_enable_write_console_messages_to_stdout(true);
                         eprintln!("[tauri] WebRTC enabled: {}", settings.enables_webrtc());
                     }
                     // Auto-grant microphone permission requests

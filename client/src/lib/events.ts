@@ -30,7 +30,6 @@ import {
   setScreenShares,
   watchingScreenShare,
   setWatchingScreenShare,
-  setDesktopPreviewUrl,
 } from "../stores/voice";
 import { setNotificationList, addNotification } from "../stores/notifications";
 import { handleWebRTCOffer, handleWebRTCICE } from "./webrtc";
@@ -91,18 +90,13 @@ function initDesktopVoiceEvents() {
         console.log("[voice] Native connection state:", event.payload.state);
       });
 
-      // screen:ice_candidate → forward to server over WS
+      // screen:ice_candidate → forward to server over WS (presenter role)
       tauriEvent.listen("screen:ice_candidate", (event: any) => {
         const { candidate, sdpMid, sdpMLineIndex } = event.payload;
         send("webrtc_screen_ice", {
           candidate: { candidate, sdpMid, sdpMLineIndex },
+          role: "presenter",
         });
-      });
-
-      // screen:preview → JPEG data URL for local preview
-      tauriEvent.listen("screen:preview", (event: any) => {
-        console.log("[screen] Preview event received, payload length:", event.payload?.length);
-        setDesktopPreviewUrl(event.payload);
       });
 
       console.log("[voice] Desktop voice event listeners registered");
@@ -154,11 +148,8 @@ function initDesktopVoiceEvents() {
         sdpMid: payload.sdpMid,
         sdpMLineIndex: payload.sdpMLineIndex,
       },
+      role: "presenter",
     });
-  });
-
-  tauriListen("screen:preview", (payload: any) => {
-    setDesktopPreviewUrl(payload);
   });
 
   console.log("[voice] Desktop voice event listeners registered (fallback)");
@@ -285,11 +276,11 @@ export function initEventHandlers() {
         break;
 
       case "webrtc_screen_offer":
-        handleScreenOffer(msg.d.sdp);
+        handleScreenOffer(msg.d.sdp, msg.d.role);
         break;
 
       case "webrtc_screen_ice":
-        handleScreenICE(msg.d.candidate);
+        handleScreenICE(msg.d.candidate, msg.d.role);
         break;
 
       case "screen_share_error":

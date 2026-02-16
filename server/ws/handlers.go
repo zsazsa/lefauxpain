@@ -726,11 +726,13 @@ type ScreenShareUnsubscribeData struct {
 }
 
 type WebRTCScreenAnswerData struct {
-	SDP string `json:"sdp"`
+	SDP  string `json:"sdp"`
+	Role string `json:"role"`
 }
 
 type WebRTCScreenICEData struct {
 	Candidate webrtc.ICECandidateInit `json:"candidate"`
+	Role      string                  `json:"role"`
 }
 
 type ScreenSharePayload struct {
@@ -844,7 +846,7 @@ func (h *Hub) handleWebRTCScreenAnswer(c *Client, data json.RawMessage) {
 		return
 	}
 
-	h.SFU.HandleScreenAnswer(c.UserID, d.SDP)
+	h.SFU.HandleScreenAnswer(c.UserID, d.SDP, d.Role)
 }
 
 func (h *Hub) handleWebRTCScreenICE(c *Client, data json.RawMessage) {
@@ -857,7 +859,7 @@ func (h *Hub) handleWebRTCScreenICE(c *Client, data json.RawMessage) {
 		return
 	}
 
-	h.SFU.HandleScreenICE(c.UserID, d.Candidate)
+	h.SFU.HandleScreenICE(c.UserID, d.Candidate, d.Role)
 }
 
 func (h *Hub) handleVoiceServerMute(c *Client, data json.RawMessage) {
