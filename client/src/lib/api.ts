@@ -69,6 +69,10 @@ export function deleteUser(id: string) {
   return request(`/admin/users/${id}`, { method: "DELETE" });
 }
 
+export function approveUser(id: string) {
+  return request(`/admin/users/${id}/approve`, { method: "POST" });
+}
+
 export function setUserAdmin(id: string, isAdmin: boolean) {
   return request(`/admin/users/${id}/admin`, {
     method: "POST",

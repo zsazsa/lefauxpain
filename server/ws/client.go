@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -105,7 +106,7 @@ func (c *Client) authenticate() (*db.User, error) {
 
 	if msg.Op != "authenticate" {
 		c.conn.Close(websocket.StatusPolicyViolation, "expected authenticate")
-		return nil, err
+		return nil, fmt.Errorf("expected authenticate, got %q", msg.Op)
 	}
 
 	var authData AuthenticateData
@@ -117,7 +118,15 @@ func (c *Client) authenticate() (*db.User, error) {
 	user, err := c.hub.DB.GetUserByToken(authData.Token)
 	if err != nil || user == nil {
 		c.conn.Close(websocket.StatusPolicyViolation, "invalid token")
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("invalid token")
+	}
+
+	if !user.Approved {
+		c.conn.Close(websocket.StatusPolicyViolation, "account pending approval")
+		return nil, fmt.Errorf("user %s not approved", user.ID)
 	}
 
 	return user, nil

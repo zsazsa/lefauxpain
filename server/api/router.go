@@ -28,6 +28,11 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	registerRL := NewIPRateLimiter(3, time.Minute)
 	loginRL := NewIPRateLimiter(5, time.Minute)
 
+	// Health check (unauthenticated — used by desktop app to verify server)
+	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"app": "voicechat"})
+	})
+
 	// Auth routes
 	mux.HandleFunc("/api/v1/auth/register", registerRL.Wrap(authHandler.Register))
 	mux.HandleFunc("/api/v1/auth/login", loginRL.Wrap(authHandler.Login))
@@ -60,6 +65,10 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 		}
 		if strings.HasSuffix(r.URL.Path, "/password") {
 			adminHandler.SetPassword(w, r)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/approve") {
+			adminHandler.ApproveUser(w, r)
 			return
 		}
 		adminHandler.DeleteUser(w, r)

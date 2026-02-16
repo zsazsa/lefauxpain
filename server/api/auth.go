@@ -17,8 +17,9 @@ type AuthHandler struct {
 }
 
 type authRequest struct {
-	Username string  `json:"username"`
-	Password *string `json:"password"`
+	Username     string  `json:"username"`
+	Password     *string `json:"password"`
+	KnockMessage *string `json:"knock_message"`
 }
 
 type authResponse struct {
@@ -84,17 +85,24 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		passwordHash = &s
 	}
 
-	// First user is admin
+	// First user is admin and auto-approved; others need approval
 	userCount, err := h.DB.UserCount()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	isAdmin := userCount == 0
+	isFirstUser := userCount == 0
+	isAdmin := isFirstUser
+	approved := isFirstUser
 
 	userID := uuid.New().String()
-	if err := h.DB.CreateUser(userID, req.Username, passwordHash, isAdmin); err != nil {
+	if err := h.DB.CreateUser(userID, req.Username, passwordHash, isAdmin, approved, req.KnockMessage); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if !approved {
+		writeJSON(w, http.StatusAccepted, map[string]bool{"pending": true})
 		return
 	}
 
@@ -143,6 +151,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
+	}
+
+	if !user.Approved {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "account pending approval", "pending": true})
+		return
 	}
 
 	token := uuid.New().String()

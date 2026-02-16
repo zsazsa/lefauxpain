@@ -35,6 +35,11 @@ func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		if !user.Approved {
+			writeError(w, http.StatusForbidden, "account pending approval")
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), userContextKey, user)
 		next(w, r.WithContext(ctx))
 	}

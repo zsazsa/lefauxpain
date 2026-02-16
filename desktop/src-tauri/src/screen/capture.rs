@@ -128,10 +128,13 @@ async fn run_capture(
         eprintln!("[screen] PipeWire thread exited");
     });
 
-    // Step 3: VP8 encode loop on spawn_blocking (Encoder is not Send)
+    // Step 3: H.264 encode loop on spawn_blocking (Encoder is not Send)
     let track_clone = Arc::clone(&track);
     let enc_stop = stop.clone();
     tokio::task::spawn_blocking(move || {
+        use openh264::encoder::{Encoder, EncoderConfig};
+        use openh264::formats::YUVBuffer;
+
         let rt = tokio::runtime::Handle::current();
 
         // Wait for first frame to get actual dimensions
@@ -146,23 +149,17 @@ async fn run_capture(
         eprintln!("[screen] First frame: {}x{}, bgra={}, data_len={}",
             first_frame.width, first_frame.height, first_frame.is_bgra, first_frame.data.len());
 
-        let mut encoder = match vpx_encode::Encoder::new(vpx_encode::Config {
-            width: w as u32,
-            height: h as u32,
-            timebase: [1, 1000],
-            bitrate: BITRATE_KBPS,
-            codec: vpx_encode::VideoCodecId::VP8,
-        }) {
+        let config = EncoderConfig::new().set_bitrate_bps(BITRATE_KBPS * 1000);
+        let mut encoder = match Encoder::with_api_config(openh264::OpenH264API::from_source(), config) {
             Ok(e) => e,
             Err(e) => {
-                eprintln!("[screen] VP8 encoder init failed: {}", e);
+                eprintln!("[screen] H.264 encoder init failed: {:?}", e);
                 return;
             }
         };
 
         eprintln!("[screen] Encode loop started ({}x{})", w, h);
 
-        let mut pts: i64 = 0;
         let mut last_preview = Instant::now() - PREVIEW_INTERVAL;
 
         // Process the first frame
@@ -187,7 +184,7 @@ async fn run_capture(
             let fh = (frame.height as usize) & !1;
 
             // Skip frames whose dimensions don't match the encoder (crop changed,
-            // window resized, etc.) — avoids feeding wrong-sized I420 data to VP8.
+            // window resized, etc.) — avoids feeding wrong-sized I420 data to H.264.
             if fw != w || fh != h {
                 continue;
             }
@@ -206,11 +203,13 @@ async fn run_capture(
                 rgba_to_i420(&frame.data, fw, fh)
             };
 
-            match encoder.encode(pts, &i420) {
-                Ok(packets) => {
-                    for packet in packets {
+            let yuv = YUVBuffer::from_vec(i420, fw, fh);
+            match encoder.encode(&yuv) {
+                Ok(bitstream) => {
+                    let data = bitstream.to_vec();
+                    if !data.is_empty() {
                         let sample = Sample {
-                            data: bytes::Bytes::copy_from_slice(packet.data),
+                            data: bytes::Bytes::from(data),
                             duration: FRAME_DURATION,
                             ..Default::default()
                         };
@@ -223,11 +222,9 @@ async fn run_capture(
                     }
                 }
                 Err(e) => {
-                    eprintln!("[screen] VP8 encode error: {}", e);
+                    eprintln!("[screen] H.264 encode error: {:?}", e);
                 }
             }
-
-            pts += FRAME_DURATION.as_millis() as i64;
         }
 
         eprintln!("[screen] Encode loop exited");

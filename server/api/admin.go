@@ -16,11 +16,13 @@ type AdminHandler struct {
 }
 
 type adminUserPayload struct {
-	ID        string  `json:"id"`
-	Username  string  `json:"username"`
-	AvatarURL *string `json:"avatar_url"`
-	IsAdmin   bool    `json:"is_admin"`
-	CreatedAt string  `json:"created_at"`
+	ID           string  `json:"id"`
+	Username     string  `json:"username"`
+	AvatarURL    *string `json:"avatar_url"`
+	IsAdmin      bool    `json:"is_admin"`
+	Approved     bool    `json:"approved"`
+	KnockMessage *string `json:"knock_message,omitempty"`
+	CreatedAt    string  `json:"created_at"`
 }
 
 func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
@@ -44,11 +46,13 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	payloads := make([]adminUserPayload, len(users))
 	for i, u := range users {
 		payloads[i] = adminUserPayload{
-			ID:        u.ID,
-			Username:  u.Username,
-			AvatarURL: u.AvatarURL,
-			IsAdmin:   u.IsAdmin,
-			CreatedAt: u.CreatedAt,
+			ID:           u.ID,
+			Username:     u.Username,
+			AvatarURL:    u.AvatarURL,
+			IsAdmin:      u.IsAdmin,
+			Approved:     u.Approved,
+			KnockMessage: u.KnockMessage,
+			CreatedAt:    u.CreatedAt,
 		}
 	}
 
@@ -176,4 +180,32 @@ func (h *AdminHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (h *AdminHandler) ApproveUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user := UserFromContext(r.Context())
+	if user == nil || !user.IsAdmin {
+		writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+
+	// Extract user ID from path: /api/v1/admin/users/{id}/approve
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
+	targetID := strings.TrimSuffix(path, "/approve")
+	if targetID == "" {
+		writeError(w, http.StatusBadRequest, "user id required")
+		return
+	}
+
+	if err := h.DB.ApproveUser(targetID); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "approved"})
 }

@@ -65,8 +65,20 @@ func New(stunServer string, publicIP string) *SFU {
 		webrtc.WithSettingEngine(se),
 	)
 
-	// Screen share media engine: VP8 video + Opus audio
+	// Screen share media engine: H.264 + VP8 video + Opus audio
 	screenME := &webrtc.MediaEngine{}
+	// H.264 (preferred — better quality per bit for screen content)
+	if err := screenME.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType:    webrtc.MimeTypeH264,
+			ClockRate:   90000,
+			SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+		},
+		PayloadType: 102,
+	}, webrtc.RTPCodecTypeVideo); err != nil {
+		log.Printf("sfu: register H.264 codec: %v", err)
+	}
+	// VP8 fallback
 	if err := screenME.RegisterCodec(webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType:    webrtc.MimeTypeVP8,

@@ -5,6 +5,7 @@ import (
 	"log"
 	"sync"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -16,6 +17,7 @@ type ScreenRoom struct {
 	presenterPC *webrtc.PeerConnection
 	videoTrack  *webrtc.TrackLocalStaticRTP
 	audioTrack  *webrtc.TrackLocalStaticRTP
+	videoSSRC   uint32 // presenter's video track SSRC for PLI requests
 	viewers     map[string]*ScreenViewer
 	stopped     bool
 }
@@ -74,6 +76,7 @@ func (sr *ScreenRoom) SetupPresenter() error {
 		sr.mu.Lock()
 		if track.Kind() == webrtc.RTPCodecTypeVideo {
 			sr.videoTrack = localTrack
+			sr.videoSSRC = uint32(track.SSRC())
 		} else {
 			sr.audioTrack = localTrack
 		}
@@ -202,6 +205,10 @@ func (sr *ScreenRoom) AddViewer(userID string) error {
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("sfu/screen: viewer %s state: %s", userID, state)
+		if state == webrtc.PeerConnectionStateConnected {
+			// Viewer is ready to receive — request a keyframe from presenter
+			sr.requestKeyframe()
+		}
 		if state == webrtc.PeerConnectionStateFailed ||
 			state == webrtc.PeerConnectionStateClosed {
 			sr.RemoveViewer(userID)
@@ -230,6 +237,24 @@ func (sr *ScreenRoom) AddViewer(userID string) error {
 	}
 
 	return nil
+}
+
+// requestKeyframe sends a PLI to the presenter to force a keyframe.
+func (sr *ScreenRoom) requestKeyframe() {
+	sr.mu.RLock()
+	pc := sr.presenterPC
+	ssrc := sr.videoSSRC
+	sr.mu.RUnlock()
+
+	if pc == nil || ssrc == 0 {
+		return
+	}
+
+	if err := pc.WriteRTCP([]rtcp.Packet{
+		&rtcp.PictureLossIndication{MediaSSRC: ssrc},
+	}); err != nil {
+		log.Printf("sfu/screen: send PLI to presenter: %v", err)
+	}
 }
 
 func (sr *ScreenRoom) RemoveViewer(userID string) {

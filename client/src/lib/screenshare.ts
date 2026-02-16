@@ -167,11 +167,22 @@ export async function handleScreenOffer(sdp: string) {
           }
         }
       });
+
+      // Prefer H.264 for screen content (better quality per bit)
+      const transceivers = screenPC.getTransceivers();
+      const videoTx = transceivers.find(
+        (t) => t.sender.track?.kind === "video",
+      );
+      if (videoTx) {
+        const codecs = RTCRtpReceiver.getCapabilities("video")?.codecs || [];
+        const h264 = codecs.filter((c) => c.mimeType === "video/H264");
+        const rest = codecs.filter((c) => c.mimeType !== "video/H264");
+        if (h264.length > 0) videoTx.setCodecPreferences([...h264, ...rest]);
+      }
     } else {
       // Viewer: receive tracks
       const stream = new MediaStream();
       screenPC.ontrack = (event) => {
-        console.log("[screen] ontrack:", event.track.kind, event.track.id);
         stream.addTrack(event.track);
         setScreenShareStream(new MediaStream(stream.getTracks()));
       };

@@ -23,8 +23,7 @@ tauri-plugin-opener = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "=2.0.1"
-vpx-encode = "0.6"
-env-libvpx-sys = { version = "5", features = ["generate"] }
+openh264 = { version = "0.6", features = ["source"] }
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 ashpd = "0.9"
 pipewire = "0.8"

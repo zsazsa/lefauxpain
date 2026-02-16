@@ -29,17 +29,17 @@ impl ScreenPeer {
     pub async fn new() -> Result<(Self, mpsc::UnboundedReceiver<ScreenPeerEvent>), Box<dyn std::error::Error + Send + Sync>> {
         let mut media_engine = MediaEngine::default();
 
-        // VP8 video codec — matches SFU's screenME (PT 96, 90kHz)
+        // H.264 video codec — matches SFU's screenME (PT 102, 90kHz, Baseline)
         media_engine.register_codec(
             RTCRtpCodecParameters {
                 capability: RTCRtpCodecCapability {
-                    mime_type: "video/VP8".to_string(),
+                    mime_type: "video/H264".to_string(),
                     clock_rate: 90000,
                     channels: 0,
-                    sdp_fmtp_line: String::new(),
+                    sdp_fmtp_line: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f".to_string(),
                     ..Default::default()
                 },
-                payload_type: 96,
+                payload_type: 102,
                 ..Default::default()
             },
             RTPCodecType::Video,
@@ -84,10 +84,10 @@ impl ScreenPeer {
         // Create video track using TrackLocalStaticSample (handles RTP packetization)
         let video_track = Arc::new(TrackLocalStaticSample::new(
             RTCRtpCodecCapability {
-                mime_type: "video/VP8".to_string(),
+                mime_type: "video/H264".to_string(),
                 clock_rate: 90000,
                 channels: 0,
-                sdp_fmtp_line: String::new(),
+                sdp_fmtp_line: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f".to_string(),
                 ..Default::default()
             },
             "video".to_string(),

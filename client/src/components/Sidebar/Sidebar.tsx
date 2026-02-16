@@ -390,7 +390,7 @@ export default function Sidebar(props: SidebarProps) {
       {/* User bar */}
       <div
         style={{
-          padding: "8px 12px",
+          padding: "14px 12px",
           "background-color": "var(--bg-primary)",
           "border-top": "1px solid var(--border-gold)",
           display: "flex",

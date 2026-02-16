@@ -12,6 +12,8 @@ type User struct {
 	IsAdmin      bool    `json:"is_admin"`
 	AvatarPath   *string `json:"-"`
 	AvatarURL    *string `json:"avatar_url"`
+	Approved     bool    `json:"approved"`
+	KnockMessage *string `json:"knock_message,omitempty"`
 	CreatedAt    string  `json:"created_at"`
 }
 
@@ -23,10 +25,10 @@ type Channel struct {
 	CreatedAt string `json:"created_at"`
 }
 
-func (d *DB) CreateUser(id, username string, passwordHash *string, isAdmin bool) error {
+func (d *DB) CreateUser(id, username string, passwordHash *string, isAdmin, approved bool, knockMessage *string) error {
 	_, err := d.Exec(
-		`INSERT INTO users (id, username, password_hash, is_admin) VALUES (?, ?, ?, ?)`,
-		id, username, passwordHash, isAdmin,
+		`INSERT INTO users (id, username, password_hash, is_admin, approved, knock_message) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, username, passwordHash, isAdmin, approved, knockMessage,
 	)
 	if err != nil {
 		return fmt.Errorf("create user: %w", err)
@@ -37,9 +39,9 @@ func (d *DB) CreateUser(id, username string, passwordHash *string, isAdmin bool)
 func (d *DB) GetUserByUsername(username string) (*User, error) {
 	u := &User{}
 	err := d.QueryRow(
-		`SELECT id, username, password_hash, is_admin, avatar_path, created_at FROM users WHERE username = ?`,
+		`SELECT id, username, password_hash, is_admin, avatar_path, approved, knock_message, created_at FROM users WHERE username = ?`,
 		username,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.Approved, &u.KnockMessage, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -52,9 +54,9 @@ func (d *DB) GetUserByUsername(username string) (*User, error) {
 func (d *DB) GetUserByID(id string) (*User, error) {
 	u := &User{}
 	err := d.QueryRow(
-		`SELECT id, username, password_hash, is_admin, avatar_path, created_at FROM users WHERE id = ?`,
+		`SELECT id, username, password_hash, is_admin, avatar_path, approved, knock_message, created_at FROM users WHERE id = ?`,
 		id,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.Approved, &u.KnockMessage, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -87,12 +89,12 @@ func (d *DB) CreateToken(token, userID string) error {
 func (d *DB) GetUserByToken(token string) (*User, error) {
 	u := &User{}
 	err := d.QueryRow(
-		`SELECT u.id, u.username, u.password_hash, u.is_admin, u.avatar_path, u.created_at
+		`SELECT u.id, u.username, u.password_hash, u.is_admin, u.avatar_path, u.approved, u.knock_message, u.created_at
 		 FROM users u
 		 JOIN tokens t ON t.user_id = u.id
 		 WHERE t.token = ? AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))`,
 		token,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.Approved, &u.KnockMessage, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -103,7 +105,7 @@ func (d *DB) GetUserByToken(token string) (*User, error) {
 }
 
 func (d *DB) GetAllUsers() ([]User, error) {
-	rows, err := d.Query(`SELECT id, username, password_hash, is_admin, avatar_path, created_at FROM users ORDER BY created_at`)
+	rows, err := d.Query(`SELECT id, username, password_hash, is_admin, avatar_path, approved, knock_message, created_at FROM users ORDER BY created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("get all users: %w", err)
 	}
@@ -112,8 +114,37 @@ func (d *DB) GetAllUsers() ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.Approved, &u.KnockMessage, &u.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	if users == nil {
+		users = []User{}
+	}
+	return users, rows.Err()
+}
+
+func (d *DB) ApproveUser(id string) error {
+	_, err := d.Exec(`UPDATE users SET approved = TRUE WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("approve user: %w", err)
+	}
+	return nil
+}
+
+func (d *DB) GetPendingUsers() ([]User, error) {
+	rows, err := d.Query(`SELECT id, username, password_hash, is_admin, avatar_path, approved, knock_message, created_at FROM users WHERE approved = FALSE ORDER BY created_at`)
+	if err != nil {
+		return nil, fmt.Errorf("get pending users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.Approved, &u.KnockMessage, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan pending user: %w", err)
 		}
 		users = append(users, u)
 	}

@@ -110,6 +110,10 @@ var migrations = []string{
 	DROP TABLE messages;
 	ALTER TABLE messages_new RENAME TO messages;
 	CREATE INDEX idx_messages_channel_time ON messages(channel_id, created_at DESC);`,
+
+	// Version 4: Admin approval system ("Knock Knock")
+	`ALTER TABLE users ADD COLUMN approved BOOLEAN NOT NULL DEFAULT TRUE;
+	ALTER TABLE users ADD COLUMN knock_message TEXT;`,
 }
 
 func (d *DB) migrate() error {

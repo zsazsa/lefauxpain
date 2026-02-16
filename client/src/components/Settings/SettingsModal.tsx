@@ -9,7 +9,7 @@ import {
 } from "../../stores/settings";
 import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop, isTauri } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
-import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword } from "../../lib/api";
+import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, approveUser } from "../../lib/api";
 import { currentUser } from "../../stores/auth";
 import { allUsers, removeAllUser } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
@@ -25,6 +25,8 @@ type AdminUser = {
   username: string;
   avatar_url: string | null;
   is_admin: boolean;
+  approved: boolean;
+  knock_message: string | null;
   created_at: string;
 };
 
@@ -76,6 +78,29 @@ export default function SettingsModal() {
       setAdminUsers(users);
     } catch (e: any) {
       setAdminError(e.message || "Failed to load users");
+    }
+  };
+
+  const pendingUsers = () => adminUsers().filter((u) => !u.approved);
+  const approvedUsers = () => adminUsers().filter((u) => u.approved);
+
+  const handleApproveUser = async (id: string) => {
+    try {
+      await approveUser(id);
+      setAdminUsers((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, approved: true } : u))
+      );
+    } catch {
+      // Error
+    }
+  };
+
+  const handleRejectUser = async (id: string) => {
+    try {
+      await deleteUser(id);
+      setAdminUsers((prev) => prev.filter((u) => u.id !== id));
+    } catch {
+      // Error
     }
   };
 
@@ -781,8 +806,6 @@ export default function SettingsModal() {
 
               {/* Admin tab */}
               <Show when={activeTab() === "admin" && currentUser()?.is_admin}>
-                <div style={sectionHeaderStyle}>Users</div>
-
                 {adminError() && (
                   <div style={{ color: "var(--danger)", "font-size": "11px", "margin-bottom": "8px" }}>
                     {adminError()}
@@ -793,7 +816,85 @@ export default function SettingsModal() {
                   <div style={{ color: "var(--text-muted)", "font-size": "12px" }}>Loading...</div>
                 </Show>
 
-                <For each={adminUsers()}>
+                {/* Pending section */}
+                <Show when={pendingUsers().length > 0}>
+                  <div style={sectionHeaderStyle}>Pending</div>
+                  <For each={pendingUsers()}>
+                    {(user) => (
+                      <div style={{ "border-bottom": "1px solid rgba(201,168,76,0.1)", padding: "8px 0" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            "align-items": "center",
+                            "justify-content": "space-between",
+                          }}
+                        >
+                          <div style={{ display: "flex", "align-items": "center", gap: "8px", "min-width": "0" }}>
+                            <span style={{ "font-size": "12px", color: "var(--text-primary)" }}>
+                              {user.username}
+                            </span>
+                            <span
+                              style={{
+                                "font-size": "10px",
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              {new Date(user.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", gap: "4px", "flex-shrink": "0" }}>
+                            <button
+                              onClick={() => handleApproveUser(user.id)}
+                              style={{
+                                "font-size": "11px",
+                                padding: "2px 6px",
+                                color: "var(--success)",
+                                border: "1px solid var(--success)",
+                                "background-color": "transparent",
+                              }}
+                            >
+                              [approve]
+                            </button>
+                            <button
+                              onClick={() => handleRejectUser(user.id)}
+                              style={{
+                                "font-size": "11px",
+                                padding: "2px 6px",
+                                color: "var(--danger)",
+                                border: "1px solid var(--danger)",
+                                "background-color": "transparent",
+                              }}
+                            >
+                              [reject]
+                            </button>
+                          </div>
+                        </div>
+                        <Show when={user.knock_message}>
+                          <div
+                            style={{
+                              "margin-top": "4px",
+                              padding: "6px 8px",
+                              "background-color": "var(--bg-primary)",
+                              border: "1px solid rgba(201,168,76,0.15)",
+                              "font-size": "12px",
+                              color: "var(--text-secondary)",
+                              "font-style": "italic",
+                              "white-space": "pre-wrap",
+                              "word-break": "break-word",
+                            }}
+                          >
+                            {user.knock_message}
+                          </div>
+                        </Show>
+                      </div>
+                    )}
+                  </For>
+                  <div style={{ height: "16px" }} />
+                </Show>
+
+                <div style={sectionHeaderStyle}>Users</div>
+
+                <For each={approvedUsers()}>
                   {(user) => {
                     const isSelf = () => user.id === currentUser()?.id;
                     return (
