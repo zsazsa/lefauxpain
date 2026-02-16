@@ -149,7 +149,12 @@ async fn run_capture(
         eprintln!("[screen] First frame: {}x{}, bgra={}, data_len={}",
             first_frame.width, first_frame.height, first_frame.is_bgra, first_frame.data.len());
 
-        let config = EncoderConfig::new().set_bitrate_bps(BITRATE_KBPS * 1000);
+        let config = EncoderConfig::new()
+            .set_bitrate_bps(BITRATE_KBPS * 1000)
+            .usage_type(openh264::encoder::UsageType::ScreenContentRealTime)
+            .max_frame_rate(30.0)
+            .enable_skip_frame(false)
+            .rate_control_mode(openh264::encoder::RateControlMode::Bitrate);
         let mut encoder = match Encoder::with_api_config(openh264::OpenH264API::from_source(), config) {
             Ok(e) => e,
             Err(e) => {
