@@ -52,6 +52,12 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	// Upload (authenticated + rate limited)
 	mux.HandleFunc("/api/v1/upload", uploadRL.Wrap(authMW.Wrap(uploadHandler.Upload)))
 
+	// Media library (authenticated + rate limited, 500MB max)
+	mediaHandler := &MediaHandler{DB: database, Store: store, Hub: hub, MaxSize: 10 * 1024 * 1024 * 1024}
+	mediaRL := NewIPRateLimiter(2, time.Minute)
+	mux.HandleFunc("/api/v1/media/upload", mediaRL.Wrap(authMW.Wrap(mediaHandler.Upload)))
+	mux.HandleFunc("/api/v1/media/", authMW.Wrap(mediaHandler.Delete))
+
 	// Auth - change password (authenticated)
 	mux.HandleFunc("/api/v1/auth/password", authMW.Wrap(authHandler.ChangePassword))
 

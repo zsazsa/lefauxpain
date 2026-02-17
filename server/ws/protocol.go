@@ -18,13 +18,31 @@ type AuthenticateData struct {
 
 // Server → Client ready event
 type ReadyData struct {
-	User          *UserPayload           `json:"user"`
-	Channels      []ChannelPayload       `json:"channels"`
-	VoiceStates   []VoiceStatePayload    `json:"voice_states"`
-	OnlineUsers   []UserPayload          `json:"online_users"`
-	AllUsers      []UserPayload          `json:"all_users"`
-	Notifications []NotificationPayload  `json:"notifications"`
-	ScreenShares  []sfu.ScreenShareState `json:"screen_shares"`
+	User           *UserPayload           `json:"user"`
+	Channels       []ChannelPayload       `json:"channels"`
+	VoiceStates    []VoiceStatePayload    `json:"voice_states"`
+	OnlineUsers    []UserPayload          `json:"online_users"`
+	AllUsers       []UserPayload          `json:"all_users"`
+	Notifications  []NotificationPayload  `json:"notifications"`
+	ScreenShares   []sfu.ScreenShareState `json:"screen_shares"`
+	MediaList      []MediaItemPayload     `json:"media_list"`
+	MediaPlayback  *MediaPlaybackPayload  `json:"media_playback"`
+}
+
+type MediaItemPayload struct {
+	ID        string `json:"id"`
+	Filename  string `json:"filename"`
+	URL       string `json:"url"`
+	MimeType  string `json:"mime_type"`
+	SizeBytes int64  `json:"size_bytes"`
+	CreatedAt string `json:"created_at"`
+}
+
+type MediaPlaybackPayload struct {
+	VideoID   string  `json:"video_id"`
+	Playing   bool    `json:"playing"`
+	Position  float64 `json:"position"`
+	UpdatedAt float64 `json:"updated_at"` // Unix timestamp in seconds (with fractional)
 }
 
 type NotificationPayload struct {

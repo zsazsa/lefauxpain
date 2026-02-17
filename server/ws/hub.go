@@ -5,21 +5,31 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/kalman/voicechat/db"
 	"github.com/kalman/voicechat/sfu"
 	"nhooyr.io/websocket"
 )
 
+type MediaPlaybackState struct {
+	VideoID   string
+	Playing   bool
+	Position  float64 // seconds into video
+	UpdatedAt float64 // unix timestamp (seconds, fractional)
+}
+
 type Hub struct {
-	DB         *db.DB
-	SFU        *sfu.SFU
-	DevMode    bool
-	clients    map[string]*Client // userID → client
-	mu         sync.RWMutex
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan []byte
+	DB             *db.DB
+	SFU            *sfu.SFU
+	DevMode        bool
+	clients        map[string]*Client // userID → client
+	mu             sync.RWMutex
+	register       chan *Client
+	unregister     chan *Client
+	broadcast      chan []byte
+	mediaPlayback  *MediaPlaybackState
+	mediaMu        sync.RWMutex
 }
 
 func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
@@ -144,6 +154,42 @@ func (h *Hub) SendTo(userID string, msg []byte) {
 	}
 }
 
+func (h *Hub) GetMediaPlayback() *MediaPlaybackPayload {
+	h.mediaMu.RLock()
+	defer h.mediaMu.RUnlock()
+	if h.mediaPlayback == nil {
+		return nil
+	}
+	return &MediaPlaybackPayload{
+		VideoID:   h.mediaPlayback.VideoID,
+		Playing:   h.mediaPlayback.Playing,
+		Position:  h.mediaPlayback.Position,
+		UpdatedAt: h.mediaPlayback.UpdatedAt,
+	}
+}
+
+func (h *Hub) SetMediaPlayback(state *MediaPlaybackState) {
+	h.mediaMu.Lock()
+	h.mediaPlayback = state
+	h.mediaMu.Unlock()
+}
+
+func (h *Hub) ClearMediaPlaybackIfVideo(videoID string) {
+	h.mediaMu.Lock()
+	if h.mediaPlayback != nil && h.mediaPlayback.VideoID == videoID {
+		h.mediaPlayback = nil
+	}
+	h.mediaMu.Unlock()
+
+	// Broadcast null playback state
+	msg, _ := NewMessage("media_playback", nil)
+	h.BroadcastAll(msg)
+}
+
+func nowUnix() float64 {
+	return float64(time.Now().UnixMilli()) / 1000.0
+}
+
 func (h *Hub) DisconnectUser(userID string) {
 	h.mu.RLock()
 	client, ok := h.clients[userID]
@@ -227,6 +273,14 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleMarkNotificationRead(client, msg.Data)
 	case "mark_all_notifications_read":
 		h.handleMarkAllNotificationsRead(client)
+	case "media_play":
+		h.handleMediaPlay(client, msg.Data)
+	case "media_pause":
+		h.handleMediaPause(client, msg.Data)
+	case "media_seek":
+		h.handleMediaSeek(client, msg.Data)
+	case "media_stop":
+		h.handleMediaStop(client)
 	case "ping":
 		pong, _ := NewMessage("pong", nil)
 		client.Send(pong)

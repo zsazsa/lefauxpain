@@ -899,3 +899,87 @@ func (h *Hub) handleVoiceServerMute(c *Client, data json.RawMessage) {
 	})
 	h.BroadcastAll(msg)
 }
+
+// --- Media playback handlers ---
+
+type MediaPlayData struct {
+	VideoID  string  `json:"video_id"`
+	Position float64 `json:"position"`
+}
+
+type MediaPauseData struct {
+	Position float64 `json:"position"`
+}
+
+type MediaSeekData struct {
+	Position float64 `json:"position"`
+}
+
+func (h *Hub) handleMediaPlay(c *Client, data json.RawMessage) {
+	var d MediaPlayData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	state := &MediaPlaybackState{
+		VideoID:   d.VideoID,
+		Playing:   true,
+		Position:  d.Position,
+		UpdatedAt: nowUnix(),
+	}
+	h.SetMediaPlayback(state)
+
+	payload := h.GetMediaPlayback()
+	msg, _ := NewMessage("media_playback", payload)
+	h.BroadcastAll(msg)
+}
+
+func (h *Hub) handleMediaPause(c *Client, data json.RawMessage) {
+	var d MediaPauseData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	h.mediaMu.Lock()
+	if h.mediaPlayback != nil {
+		h.mediaPlayback.Playing = false
+		h.mediaPlayback.Position = d.Position
+		h.mediaPlayback.UpdatedAt = nowUnix()
+	}
+	h.mediaMu.Unlock()
+
+	payload := h.GetMediaPlayback()
+	if payload == nil {
+		return
+	}
+	msg, _ := NewMessage("media_playback", payload)
+	h.BroadcastAll(msg)
+}
+
+func (h *Hub) handleMediaSeek(c *Client, data json.RawMessage) {
+	var d MediaSeekData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	h.mediaMu.Lock()
+	if h.mediaPlayback != nil {
+		h.mediaPlayback.Position = d.Position
+		h.mediaPlayback.UpdatedAt = nowUnix()
+	}
+	h.mediaMu.Unlock()
+
+	payload := h.GetMediaPlayback()
+	if payload == nil {
+		return
+	}
+	msg, _ := NewMessage("media_playback", payload)
+	h.BroadcastAll(msg)
+}
+
+func (h *Hub) handleMediaStop(c *Client) {
+	h.SetMediaPlayback(nil)
+
+	msg, _ := NewMessage("media_playback", nil)
+	h.BroadcastAll(msg)
+}

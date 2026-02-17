@@ -24,6 +24,11 @@ var allowedMIME = map[string]string{
 	"image/webp": ".webp",
 }
 
+var videoMIME = map[string]string{
+	"video/mp4":  ".mp4",
+	"video/webm": ".webm",
+}
+
 type FileStore struct {
 	DataDir string
 }
@@ -174,6 +179,57 @@ func DetectMIME(file multipart.File) (string, error) {
 	ct := http.DetectContentType(buf[:n])
 	ct = strings.Split(ct, ";")[0]
 	return strings.TrimSpace(ct), nil
+}
+
+func (fs *FileStore) IsVideoMIME(mime string) bool {
+	_, ok := videoMIME[mime]
+	return ok
+}
+
+// StoreVideo stores a video file using hash-based deduplication (no thumbnails or dimensions).
+func (fs *FileStore) StoreVideo(file multipart.File, mimeType string) (string, error) {
+	ext, ok := videoMIME[mimeType]
+	if !ok {
+		return "", fmt.Errorf("unsupported video MIME type: %s", mimeType)
+	}
+
+	tmpFile, err := os.CreateTemp("", "video-*")
+	if err != nil {
+		return "", fmt.Errorf("create temp: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tmpFile, hasher), file); err != nil {
+		return "", fmt.Errorf("copy file: %w", err)
+	}
+
+	hash := fmt.Sprintf("%x", hasher.Sum(nil))
+
+	relDir := filepath.Join("uploads", hash[:2], hash[2:4])
+	absDir := filepath.Join(fs.DataDir, relDir)
+	if err := os.MkdirAll(absDir, 0755); err != nil {
+		return "", fmt.Errorf("create upload dir: %w", err)
+	}
+
+	relPath := filepath.Join(relDir, hash+ext)
+	absPath := filepath.Join(fs.DataDir, relPath)
+
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		tmpFile.Seek(0, 0)
+		dst, err := os.Create(absPath)
+		if err != nil {
+			return "", fmt.Errorf("create file: %w", err)
+		}
+		if _, err := io.Copy(dst, tmpFile); err != nil {
+			dst.Close()
+			return "", fmt.Errorf("write file: %w", err)
+		}
+		dst.Close()
+	}
+
+	return relPath, nil
 }
 
 func (fs *FileStore) RemoveFile(relPath string) error {

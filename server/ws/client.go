@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/kalman/voicechat/db"
@@ -207,6 +208,23 @@ func (c *Client) sendReady() error {
 		screenShares = []sfu.ScreenShareState{}
 	}
 
+	// Get media library
+	dbMedia, _ := c.hub.DB.GetAllMedia()
+	mediaPayloads := make([]MediaItemPayload, len(dbMedia))
+	for i, m := range dbMedia {
+		mediaPayloads[i] = MediaItemPayload{
+			ID:        m.ID,
+			Filename:  m.Filename,
+			URL:       "/" + strings.ReplaceAll(m.Path, "\\", "/"),
+			MimeType:  m.MimeType,
+			SizeBytes: m.SizeBytes,
+			CreatedAt: m.CreatedAt,
+		}
+	}
+
+	// Get current media playback state
+	mediaPlayback := c.hub.GetMediaPlayback()
+
 	msg, err := NewMessage("ready", ReadyData{
 		User: &UserPayload{
 			ID:          c.User.ID,
@@ -220,6 +238,8 @@ func (c *Client) sendReady() error {
 		AllUsers:      allUsers,
 		Notifications: notifPayloads,
 		ScreenShares:  screenShares,
+		MediaList:     mediaPayloads,
+		MediaPlayback: mediaPlayback,
 	})
 	if err != nil {
 		return err

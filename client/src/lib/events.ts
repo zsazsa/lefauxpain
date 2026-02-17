@@ -32,6 +32,14 @@ import {
   setWatchingScreenShare,
 } from "../stores/voice";
 import { setNotificationList, addNotification } from "../stores/notifications";
+import {
+  setMediaList,
+  addMediaItem,
+  removeMediaItem,
+  setMediaPlayback,
+  setWatchingMedia,
+  mediaPlayback,
+} from "../stores/media";
 import { handleWebRTCOffer, handleWebRTCICE } from "./webrtc";
 import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./screenshare";
 import { playJoinSound, playLeaveSound } from "./sounds";
@@ -170,6 +178,8 @@ export function initEventHandlers() {
         setVoiceStateList(msg.d.voice_states || []);
         setNotificationList(msg.d.notifications || []);
         setScreenShares(msg.d.screen_shares || []);
+        setMediaList(msg.d.media_list || []);
+        setMediaPlayback(msg.d.media_playback || null);
         break;
 
       case "message_create":
@@ -289,6 +299,27 @@ export function initEventHandlers() {
 
       case "notification_create":
         addNotification(msg.d);
+        break;
+
+      case "media_added":
+        addMediaItem(msg.d);
+        break;
+
+      case "media_removed":
+        removeMediaItem(msg.d.id);
+        // If the removed video was playing, stop watching
+        if (mediaPlayback()?.video_id === msg.d.id) {
+          setMediaPlayback(null);
+          setWatchingMedia(false);
+        }
+        break;
+
+      case "media_playback":
+        setMediaPlayback(msg.d || null);
+        // If playback stopped (null), close player for everyone
+        if (!msg.d) {
+          setWatchingMedia(false);
+        }
         break;
     }
   });

@@ -109,3 +109,23 @@ export async function uploadFile(file: File) {
   }
   return res.json();
 }
+
+export async function uploadMedia(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const token = getToken();
+  const res = await fetch(`${BASE}/media/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: "upload failed" }));
+    throw new Error(data.error);
+  }
+  return res.json();
+}
+
+export async function deleteMedia(id: string) {
+  return request(`/media/${id}`, { method: "DELETE" });
+}

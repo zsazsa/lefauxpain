@@ -1,7 +1,7 @@
 import { createSignal, Show, For } from "solid-js";
 import { send } from "../../lib/ws";
 import { replyingTo, setReplyingTo, getChannelMessages } from "../../stores/messages";
-import { uploadFile } from "../../lib/api";
+import { uploadFile, uploadMedia } from "../../lib/api";
 import { onlineUsers, allUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { isMobile } from "../../stores/responsive";
@@ -177,8 +177,49 @@ export default function MessageInput(props: MessageInputProps) {
   const handleDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragActive(false);
-    if (e.dataTransfer?.files) {
-      handleFiles(Array.from(e.dataTransfer.files));
+    if (!e.dataTransfer?.files) return;
+    const files = Array.from(e.dataTransfer.files);
+
+    // Split: images → auto-send as message, videos → upload to media library
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    const videoFiles = files.filter((f) => f.type.startsWith("video/"));
+
+    if (imageFiles.length > 0) {
+      // Upload images then auto-send as message with no text
+      (async () => {
+        setUploading(true);
+        try {
+          const ids: string[] = [];
+          for (const file of imageFiles) {
+            const res = await uploadFile(file);
+            ids.push(res.id);
+          }
+          if (ids.length > 0) {
+            send("send_message", {
+              channel_id: props.channelId,
+              content: null,
+              reply_to_id: null,
+              attachment_ids: ids,
+            });
+          }
+        } catch {
+          // ignore
+        } finally {
+          setUploading(false);
+        }
+      })();
+    }
+
+    if (videoFiles.length > 0) {
+      (async () => {
+        for (const file of videoFiles) {
+          try {
+            await uploadMedia(file);
+          } catch {
+            // ignore
+          }
+        }
+      })();
     }
   };
 
@@ -339,13 +380,23 @@ export default function MessageInput(props: MessageInputProps) {
         </button>
         <input
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           multiple
           ref={fileInputRef}
           style={{ display: "none" }}
           onChange={(e) => {
             if (e.currentTarget.files) {
-              handleFiles(Array.from(e.currentTarget.files));
+              const files = Array.from(e.currentTarget.files);
+              const images = files.filter((f) => f.type.startsWith("image/"));
+              const videos = files.filter((f) => f.type.startsWith("video/"));
+              if (images.length > 0) handleFiles(images);
+              if (videos.length > 0) {
+                (async () => {
+                  for (const file of videos) {
+                    try { await uploadMedia(file); } catch {}
+                  }
+                })();
+              }
               e.currentTarget.value = "";
             }
           }}

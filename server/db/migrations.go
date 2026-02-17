@@ -114,6 +114,17 @@ var migrations = []string{
 	// Version 4: Admin approval system ("Knock Knock")
 	`ALTER TABLE users ADD COLUMN approved BOOLEAN NOT NULL DEFAULT TRUE;
 	ALTER TABLE users ADD COLUMN knock_message TEXT;`,
+
+	// Version 5: Media library for synchronized video playback
+	`CREATE TABLE media (
+		id          TEXT PRIMARY KEY,
+		filename    TEXT NOT NULL,
+		path        TEXT NOT NULL,
+		mime_type   TEXT NOT NULL,
+		size_bytes  INTEGER NOT NULL,
+		uploaded_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at  DATETIME DEFAULT (datetime('now'))
+	);`,
 }
 
 func (d *DB) migrate() error {
