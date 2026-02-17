@@ -4,7 +4,7 @@ version = "1.1.7"
 edition = "2021"
 
 [features]
-default = ["vaapi", "nvenc"]
+default = ["vaapi"]
 vaapi = ["cros-codecs"]
 nvenc = ["nvidia-video-codec-sdk", "cudarc"]
 
