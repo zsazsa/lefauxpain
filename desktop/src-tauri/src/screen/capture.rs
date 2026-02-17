@@ -8,10 +8,10 @@ use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 use webrtc::track::track_local::TrackLocalWriter;
 
-const FRAME_DURATION: Duration = Duration::from_millis(33); // ~30 FPS
+const FRAME_DURATION: Duration = Duration::from_millis(16); // ~60 FPS
 const BITRATE_KBPS: u32 = 5000;
-const PREVIEW_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS preview
-const PREVIEW_MAX_WIDTH: u32 = 480;
+const PREVIEW_INTERVAL: Duration = Duration::from_millis(16); // ~60 FPS preview
+const PREVIEW_MAX_WIDTH: u32 = 960;
 
 use super::encoder::FrameData;
 
@@ -169,7 +169,9 @@ async fn run_capture(
 
         let mut last_preview = Instant::now() - PREVIEW_INTERVAL;
         let mut frame_count: u32 = 0;
-        const IDR_INTERVAL: u32 = 60; // Force IDR keyframe every ~2s at 30fps
+        const IDR_INTERVAL: u32 = 120; // Force IDR keyframe every ~2s at 60fps
+        let mut fps_timer = Instant::now();
+        let mut fps_count: u32 = 0;
 
         // Process the first frame
         let mut pending = Some(first_frame);
@@ -198,18 +200,33 @@ async fn run_capture(
                 continue;
             }
 
-            // Send JPEG preview thumbnail periodically via watch channel
+            // Send JPEG preview thumbnail periodically — off-thread to avoid
+            // blocking the encode loop
             if last_preview.elapsed() >= PREVIEW_INTERVAL {
                 last_preview = Instant::now();
-                if let Some(jpeg_bytes) = make_preview_jpeg(&frame.data, fw, fh, frame.is_bgra) {
-                    preview_tx.send_replace(Some(jpeg_bytes));
-                }
+                let preview_data = frame.data.clone();
+                let is_bgra = frame.is_bgra;
+                let ptx = preview_tx.clone();
+                std::thread::spawn(move || {
+                    if let Some(jpeg_bytes) = make_preview_jpeg(&preview_data, fw, fh, is_bgra) {
+                        ptx.send_replace(Some(jpeg_bytes));
+                    }
+                });
             }
 
             // Force periodic IDR keyframes so late-joining viewers can decode
             frame_count += 1;
             if frame_count % IDR_INTERVAL == 0 {
                 encoder.force_keyframe();
+            }
+
+            // FPS counter
+            fps_count += 1;
+            if fps_timer.elapsed() >= Duration::from_secs(5) {
+                let elapsed = fps_timer.elapsed().as_secs_f64();
+                eprintln!("[screen] Encode FPS: {:.1}", fps_count as f64 / elapsed);
+                fps_count = 0;
+                fps_timer = Instant::now();
             }
 
             match encoder.encode(&FrameData {
@@ -410,6 +427,11 @@ fn pipewire_capture_loop(
                     "[screen] First buffer: content={}x{}, stride={}, buf_rows={}, size={}",
                     w, h, stride, buf_h, size
                 );
+            }
+
+            // Skip expensive crop+copy if encode loop is backed up
+            if state.tx.capacity() == 0 {
+                return;
             }
 
             // Detect crop via alpha channel (GNOME window capture blacks out

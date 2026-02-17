@@ -28,7 +28,7 @@ impl SoftwareEncoder {
         let config = EncoderConfig::new()
             .set_bitrate_bps(bitrate_kbps * 1000)
             .usage_type(UsageType::ScreenContentRealTime)
-            .max_frame_rate(30.0)
+            .max_frame_rate(60.0)
             .enable_skip_frame(false)
             .rate_control_mode(RateControlMode::Bitrate);
         let encoder = Encoder::with_api_config(OpenH264API::from_source(), config)?;
@@ -66,7 +66,18 @@ pub fn create_encoder(
     height: u32,
     bitrate_kbps: u32,
 ) -> Result<Box<dyn ScreenEncoder>, Box<dyn std::error::Error>> {
-    // Phase 2 will add: match VaapiEncoder::try_new(...) { ... }
+    #[cfg(feature = "nvenc")]
+    {
+        if let Some(enc) = super::nvenc::NvencEncoder::try_new(width, height, bitrate_kbps) {
+            return Ok(Box::new(enc));
+        }
+    }
+    #[cfg(feature = "vaapi")]
+    {
+        if let Some(enc) = super::vaapi::VaapiEncoder::try_new(width, height, bitrate_kbps) {
+            return Ok(Box::new(enc));
+        }
+    }
     eprintln!("[screen] Using software encoder (openh264)");
     Ok(Box::new(SoftwareEncoder::new(width, height, bitrate_kbps)?))
 }

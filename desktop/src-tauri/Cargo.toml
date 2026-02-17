@@ -3,6 +3,11 @@ name = "lefauxpain-desktop"
 version = "1.1.6"
 edition = "2021"
 
+[features]
+default = ["vaapi", "nvenc"]
+vaapi = ["cros-codecs"]
+nvenc = ["nvidia-video-codec-sdk", "cudarc"]
+
 [dependencies]
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
@@ -28,6 +33,15 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 ashpd = "0.9"
 pipewire = "0.8"
 libspa = "0.8"
+cros-codecs = { version = "0.0.5", features = ["vaapi"], optional = true }
+nvidia-video-codec-sdk = { version = "0.4", optional = true }
+cudarc = { version = "0.16", optional = true }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+# Optimize dependencies even in dev builds — critical for real-time
+# encode/decode (openh264, opus, rubato, image) which are unusably slow
+# at opt-level 0. Our own code stays unoptimized for fast rebuilds.
+[profile.dev.package."*"]
+opt-level = 3

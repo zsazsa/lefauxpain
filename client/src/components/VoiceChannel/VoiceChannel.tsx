@@ -219,8 +219,8 @@ export default function VoiceChannel(props: VoiceChannelProps) {
                 <img
                   src={desktopPreviewUrl() || ""}
                   style={{
-                    "max-width": "100%",
-                    "max-height": "100%",
+                    width: "100%",
+                    height: "100%",
                     "object-fit": "contain",
                     "min-height": "0",
                   }}

@@ -116,8 +116,8 @@ export default function ScreenShareView(props: ScreenShareViewProps) {
           muted={muted()}
           onClick={handleFullscreen}
           style={{
-            "max-width": "100%",
-            "max-height": "100%",
+            width: "100%",
+            height: "100%",
             "object-fit": "contain",
             cursor: "pointer",
             "background-color": "#000",
