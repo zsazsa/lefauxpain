@@ -95,17 +95,20 @@ type UserOfflineData struct {
 // Radio payload types
 
 type RadioStationPayload struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	CreatedBy *string `json:"created_by"`
-	Position  int     `json:"position"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	CreatedBy    *string  `json:"created_by"`
+	Position     int      `json:"position"`
+	PlaybackMode string   `json:"playback_mode"`
+	ManagerIDs   []string `json:"manager_ids"`
 }
 
 type RadioPlaylistPayload struct {
-	ID     string              `json:"id"`
-	Name   string              `json:"name"`
-	UserID string              `json:"user_id"`
-	Tracks []RadioTrackPayload `json:"tracks"`
+	ID        string              `json:"id"`
+	Name      string              `json:"name"`
+	UserID    string              `json:"user_id"`
+	StationID string              `json:"station_id"`
+	Tracks    []RadioTrackPayload `json:"tracks"`
 }
 
 type RadioTrackPayload struct {

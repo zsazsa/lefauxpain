@@ -5,6 +5,8 @@ export type RadioStation = {
   name: string;
   created_by: string | null;
   position: number;
+  playback_mode: string;
+  manager_ids: string[];
 };
 
 export type RadioTrack = {
@@ -19,6 +21,7 @@ export type RadioPlaylist = {
   id: string;
   name: string;
   user_id: string;
+  station_id: string;
   tracks: RadioTrack[];
 };
 
@@ -72,6 +75,23 @@ export function removeRadioStation(stationId: string) {
   if (tunedStationId() === stationId) {
     setTunedStationId(null);
   }
+}
+
+export function renameRadioStation(stationId: string, name: string) {
+  setRadioStations((prev) =>
+    prev.map((s) => (s.id === stationId ? { ...s, name } : s))
+  );
+}
+
+export function updateRadioStation(stationId: string, name: string, managerIds: string[], playbackMode?: string) {
+  setRadioStations((prev) =>
+    prev.map((s) => {
+      if (s.id !== stationId) return s;
+      const updated = { ...s, name, manager_ids: managerIds };
+      if (playbackMode !== undefined) updated.playback_mode = playbackMode;
+      return updated;
+    })
+  );
 }
 
 export function addRadioPlaylist(playlist: RadioPlaylist) {

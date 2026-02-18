@@ -186,6 +186,20 @@ var migrations = []string{
 	DROP TABLE notifications;
 	ALTER TABLE notifications_new RENAME TO notifications;
 	CREATE INDEX idx_notifications_user ON notifications(user_id, read, created_at DESC);`,
+
+	// Version 10: Associate playlists with radio stations
+	`ALTER TABLE radio_playlists ADD COLUMN station_id TEXT REFERENCES radio_stations(id) ON DELETE CASCADE;`,
+
+	// Version 11: Radio station managers
+	`CREATE TABLE radio_station_managers (
+		station_id TEXT NOT NULL REFERENCES radio_stations(id) ON DELETE CASCADE,
+		user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		PRIMARY KEY (station_id, user_id)
+	);
+	CREATE INDEX idx_radio_station_managers_user ON radio_station_managers(user_id);`,
+
+	// Version 12: Per-station playback mode
+	`ALTER TABLE radio_stations ADD COLUMN playback_mode TEXT NOT NULL DEFAULT 'play_all';`,
 }
 
 func (d *DB) migrate() error {

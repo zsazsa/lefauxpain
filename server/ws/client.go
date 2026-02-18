@@ -250,13 +250,20 @@ func (c *Client) sendReady() error {
 
 	// Get radio stations
 	dbStations, _ := c.hub.DB.GetAllRadioStations()
+	allStationManagers, _ := c.hub.DB.GetAllRadioStationManagers()
 	stationPayloads := make([]RadioStationPayload, len(dbStations))
 	for i, s := range dbStations {
+		mgrs := allStationManagers[s.ID]
+		if mgrs == nil {
+			mgrs = []string{}
+		}
 		stationPayloads[i] = RadioStationPayload{
-			ID:        s.ID,
-			Name:      s.Name,
-			CreatedBy: s.CreatedBy,
-			Position:  s.Position,
+			ID:           s.ID,
+			Name:         s.Name,
+			CreatedBy:    s.CreatedBy,
+			Position:     s.Position,
+			PlaybackMode: s.PlaybackMode,
+			ManagerIDs:   mgrs,
 		}
 	}
 
@@ -281,11 +288,16 @@ func (c *Client) sendReady() error {
 				Position: t.Position,
 			}
 		}
+		sid := ""
+		if p.StationID != nil {
+			sid = *p.StationID
+		}
 		playlistPayloads[i] = RadioPlaylistPayload{
-			ID:     p.ID,
-			Name:   p.Name,
-			UserID: p.UserID,
-			Tracks: trackPayloads,
+			ID:        p.ID,
+			Name:      p.Name,
+			UserID:    p.UserID,
+			StationID: sid,
+			Tracks:    trackPayloads,
 		}
 	}
 

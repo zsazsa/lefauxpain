@@ -50,6 +50,8 @@ import {
   setRadioStations,
   addRadioStation,
   removeRadioStation,
+  renameRadioStation,
+  updateRadioStation,
   setRadioPlayback,
   setRadioPlaylists,
   setRadioListeners,
@@ -381,11 +383,19 @@ export function initEventHandlers() {
         break;
 
       case "radio_station_create":
-        addRadioStation(msg.d);
+        addRadioStation({ ...msg.d, manager_ids: msg.d.manager_ids || [], playback_mode: msg.d.playback_mode || "play_all" });
         break;
 
       case "radio_station_delete":
         removeRadioStation(msg.d.station_id);
+        break;
+
+      case "radio_station_rename":
+        renameRadioStation(msg.d.id, msg.d.name);
+        break;
+
+      case "radio_station_update":
+        updateRadioStation(msg.d.id, msg.d.name, msg.d.manager_ids || [], msg.d.playback_mode);
         break;
 
       case "radio_playback":

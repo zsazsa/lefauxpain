@@ -442,6 +442,12 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleCreateRadioStation(client, msg.Data)
 	case "delete_radio_station":
 		h.handleDeleteRadioStation(client, msg.Data)
+	case "rename_radio_station":
+		h.handleRenameRadioStation(client, msg.Data)
+	case "add_radio_station_manager":
+		h.handleAddRadioStationManager(client, msg.Data)
+	case "remove_radio_station_manager":
+		h.handleRemoveRadioStationManager(client, msg.Data)
 	case "create_radio_playlist":
 		h.handleCreateRadioPlaylist(client, msg.Data)
 	case "delete_radio_playlist":
@@ -462,6 +468,8 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleRadioStop(client, msg.Data)
 	case "radio_track_ended":
 		h.handleRadioTrackEnded(client, msg.Data)
+	case "set_radio_station_mode":
+		h.handleSetRadioStationMode(client, msg.Data)
 	case "radio_tune":
 		h.handleRadioTune(client, msg.Data)
 	case "radio_untune":
