@@ -13,6 +13,7 @@ type Message struct {
 	ReplyToID *string `json:"reply_to_id"`
 	CreatedAt string  `json:"created_at"`
 	EditedAt  *string `json:"edited_at"`
+	DeletedAt *string `json:"deleted_at"`
 }
 
 type MessageWithAuthor struct {
@@ -27,6 +28,7 @@ type ReplyContext struct {
 	AuthorUsername  string  `json:"author_username"`
 	AuthorAvatarURL *string `json:"author_avatar_url"`
 	Content         *string `json:"content"`
+	DeletedAt       *string `json:"deleted_at"`
 }
 
 func (d *DB) CreateMessage(id, channelID, authorID string, content *string, replyToID *string) (*Message, error) {
@@ -44,9 +46,9 @@ func (d *DB) CreateMessage(id, channelID, authorID string, content *string, repl
 func (d *DB) GetMessageByID(id string) (*Message, error) {
 	m := &Message{}
 	err := d.QueryRow(
-		`SELECT id, channel_id, author_id, content, reply_to_id, created_at, edited_at
+		`SELECT id, channel_id, author_id, content, reply_to_id, created_at, edited_at, deleted_at
 		 FROM messages WHERE id = ?`, id,
-	).Scan(&m.ID, &m.ChannelID, &m.AuthorID, &m.Content, &m.ReplyToID, &m.CreatedAt, &m.EditedAt)
+	).Scan(&m.ID, &m.ChannelID, &m.AuthorID, &m.Content, &m.ReplyToID, &m.CreatedAt, &m.EditedAt, &m.DeletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -66,7 +68,7 @@ func (d *DB) GetMessages(channelID string, limit int, before *string) ([]Message
 
 	if before != nil {
 		rows, err = d.Query(
-			`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at,
+			`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at, m.deleted_at,
 			        COALESCE(u.username, 'Deleted User'), u.avatar_path
 			 FROM messages m
 			 LEFT JOIN users u ON u.id = m.author_id
@@ -77,7 +79,7 @@ func (d *DB) GetMessages(channelID string, limit int, before *string) ([]Message
 		)
 	} else {
 		rows, err = d.Query(
-			`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at,
+			`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at, m.deleted_at,
 			        COALESCE(u.username, 'Deleted User'), u.avatar_path
 			 FROM messages m
 			 LEFT JOIN users u ON u.id = m.author_id
@@ -97,7 +99,7 @@ func (d *DB) GetMessages(channelID string, limit int, before *string) ([]Message
 		var m MessageWithAuthor
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &m.AuthorID, &m.Content, &m.ReplyToID,
-			&m.CreatedAt, &m.EditedAt, &m.AuthorUsername, &m.AuthorAvatarURL,
+			&m.CreatedAt, &m.EditedAt, &m.DeletedAt, &m.AuthorUsername, &m.AuthorAvatarURL,
 		); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
@@ -116,7 +118,7 @@ func (d *DB) GetMessagesAround(channelID string, messageID string, limit int) ([
 	half := limit / 2
 
 	rows, err := d.Query(
-		`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at,
+		`SELECT m.id, m.channel_id, m.author_id, m.content, m.reply_to_id, m.created_at, m.edited_at, m.deleted_at,
 		        COALESCE(u.username, 'Deleted User'), u.avatar_path
 		 FROM messages m
 		 LEFT JOIN users u ON u.id = m.author_id
@@ -139,7 +141,7 @@ func (d *DB) GetMessagesAround(channelID string, messageID string, limit int) ([
 		var m MessageWithAuthor
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &m.AuthorID, &m.Content, &m.ReplyToID,
-			&m.CreatedAt, &m.EditedAt, &m.AuthorUsername, &m.AuthorAvatarURL,
+			&m.CreatedAt, &m.EditedAt, &m.DeletedAt, &m.AuthorUsername, &m.AuthorAvatarURL,
 		); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
@@ -183,18 +185,21 @@ func (d *DB) EditMessage(id, content string) error {
 }
 
 func (d *DB) DeleteMessage(id string) error {
-	_, err := d.Exec(`DELETE FROM messages WHERE id = ?`, id)
+	_, err := d.Exec(
+		`UPDATE messages SET content = NULL, deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL`,
+		id,
+	)
 	return err
 }
 
 func (d *DB) GetReplyContext(messageID string) (*ReplyContext, error) {
 	rc := &ReplyContext{}
 	err := d.QueryRow(
-		`SELECT m.id, m.author_id, COALESCE(u.username, 'Deleted User'), u.avatar_path, m.content
+		`SELECT m.id, m.author_id, COALESCE(u.username, 'Deleted User'), u.avatar_path, m.content, m.deleted_at
 		 FROM messages m
 		 LEFT JOIN users u ON u.id = m.author_id
 		 WHERE m.id = ?`, messageID,
-	).Scan(&rc.ID, &rc.AuthorID, &rc.AuthorUsername, &rc.AuthorAvatarURL, &rc.Content)
+	).Scan(&rc.ID, &rc.AuthorID, &rc.AuthorUsername, &rc.AuthorAvatarURL, &rc.Content, &rc.DeletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

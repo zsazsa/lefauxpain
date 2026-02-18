@@ -67,6 +67,7 @@ type ReplyToPayload struct {
 	ID      string      `json:"id"`
 	Author  UserPayload `json:"author"`
 	Content *string     `json:"content"`
+	Deleted bool        `json:"deleted"`
 }
 
 type AttachmentPayload struct {
@@ -241,6 +242,7 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 					Username: rc.AuthorUsername,
 				},
 				Content: rc.Content,
+				Deleted: rc.DeletedAt != nil,
 			}
 		}
 	}
@@ -272,7 +274,7 @@ func (h *Hub) handleEditMessage(c *Client, data json.RawMessage) {
 	}
 
 	msg, err := h.DB.GetMessageByID(d.MessageID)
-	if err != nil || msg == nil {
+	if err != nil || msg == nil || msg.DeletedAt != nil {
 		return
 	}
 	if msg.AuthorID == nil || *msg.AuthorID != c.UserID {
@@ -343,7 +345,7 @@ func (h *Hub) handleAddReaction(c *Client, data json.RawMessage) {
 	}
 
 	msg, _ := h.DB.GetMessageByID(d.MessageID)
-	if msg == nil {
+	if msg == nil || msg.DeletedAt != nil {
 		return
 	}
 

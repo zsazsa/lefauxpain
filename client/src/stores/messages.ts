@@ -20,6 +20,7 @@ export type ReplyTo = {
   id: string;
   author: { id: string; username: string; avatar_url?: string | null };
   content: string | null;
+  deleted?: boolean;
 };
 
 export type Message = {
@@ -33,6 +34,7 @@ export type Message = {
   mentions: string[];
   created_at: string;
   edited_at: string | null;
+  deleted?: boolean;
 };
 
 // Messages per channel
@@ -79,8 +81,24 @@ export function updateMessage(
 export function deleteMessage(id: string, channelId: string) {
   setMessagesByChannel((prev) => ({
     ...prev,
-    [channelId]: (prev[channelId] || []).filter((m) => m.id !== id),
+    [channelId]: (prev[channelId] || []).map((m) =>
+      m.id === id
+        ? { ...m, deleted: true, content: null, attachments: [], reactions: [] }
+        : m
+    ),
   }));
+  // Also update any reply_to references pointing to this message
+  setMessagesByChannel((prev) => {
+    const updated: Record<string, Message[]> = {};
+    for (const [chId, msgs] of Object.entries(prev)) {
+      updated[chId] = msgs.map((m) =>
+        m.reply_to?.id === id
+          ? { ...m, reply_to: { ...m.reply_to, deleted: true, content: null } }
+          : m
+      );
+    }
+    return updated;
+  });
 }
 
 export function addReaction(

@@ -19,6 +19,7 @@ import {
 import { watchingScreenShare } from "./stores/voice";
 import { watchingMedia, selectedMediaId } from "./stores/media";
 import MediaPlayer from "./components/MediaPlayer/MediaPlayer";
+import Lightbox from "./components/Lightbox";
 import { isMobile, sidebarOpen, setSidebarOpen, initResponsive } from "./stores/responsive";
 import { startUpdateChecker } from "./stores/updateChecker";
 import { t, applyTheme } from "./stores/theme";
@@ -99,6 +100,7 @@ function App() {
             }}
           >
         <SettingsModal />
+        <Lightbox />
 
         {/* Sidebar wrapper */}
         {() => {

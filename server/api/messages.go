@@ -23,6 +23,7 @@ type messageResponse struct {
 	Mentions    []string            `json:"mentions"`
 	CreatedAt   string              `json:"created_at"`
 	EditedAt    *string             `json:"edited_at"`
+	Deleted     bool                `json:"deleted"`
 }
 
 type authorPayload struct {
@@ -35,6 +36,7 @@ type replyPayload struct {
 	ID      string        `json:"id"`
 	Author  authorPayload `json:"author"`
 	Content *string       `json:"content"`
+	Deleted bool          `json:"deleted"`
 }
 
 type attachPayload struct {
@@ -105,6 +107,7 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 						ID:      rc.ID,
 						Author:  authorPayload{ID: rcAuthorID, Username: rc.AuthorUsername},
 						Content: rc.Content,
+						Deleted: rc.DeletedAt != nil,
 					}
 				}
 			}
@@ -118,6 +121,7 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 				Content:     m.Content, ReplyTo: reply,
 				Attachments: attachPayloads, Reactions: reactions,
 				Mentions: mentions, CreatedAt: m.CreatedAt, EditedAt: m.EditedAt,
+				Deleted: m.DeletedAt != nil,
 			}
 		}
 		writeJSON(w, http.StatusOK, result)
@@ -178,6 +182,7 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 						Username: rc.AuthorUsername,
 					},
 					Content: rc.Content,
+					Deleted: rc.DeletedAt != nil,
 				}
 			}
 		}
@@ -201,6 +206,7 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			Mentions:    mentions,
 			CreatedAt:   m.CreatedAt,
 			EditedAt:    m.EditedAt,
+			Deleted:     m.DeletedAt != nil,
 		}
 	}
 

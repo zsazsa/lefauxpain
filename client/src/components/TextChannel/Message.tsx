@@ -2,9 +2,10 @@ import { Show, For, createSignal } from "solid-js";
 import type { Message } from "../../stores/messages";
 import { setReplyingTo } from "../../stores/messages";
 import { currentUser } from "../../stores/auth";
-import { lookupUsername } from "../../stores/users";
+import { lookupUsername, onlineUsers, allUsers } from "../../stores/users";
 import { send } from "../../lib/ws";
 import { isMobile } from "../../stores/responsive";
+import { openLightbox } from "../../stores/lightbox";
 import ReactionBar from "./ReactionBar";
 
 interface MessageProps {
@@ -106,16 +107,52 @@ const [activeMessageId, setActiveMessageId] = createSignal<string | null>(null);
 
 export default function MessageItem(props: MessageProps) {
   const [hovered, setHovered] = createSignal(false);
+  const [editing, setEditing] = createSignal(false);
+  const [editText, setEditText] = createSignal("");
+  let editRef: HTMLInputElement | undefined;
 
   const handleDelete = () => {
     send("delete_message", { message_id: props.message.id });
   };
+
+  const isOwn = () => currentUser()?.id === props.message.author.id;
 
   const canDelete = () => {
     const user = currentUser();
     if (!user) return false;
     return props.message.author.id === user.id || user.is_admin;
   };
+
+  // Convert <@uuid> → @username for editing
+  const mentionsToDisplay = (content: string) =>
+    content.replace(/<@([0-9a-fA-F-]{36})>/g, (_, id) => `@${lookupUsername(id) || id}`);
+
+  // Convert @username → <@uuid> for saving
+  const displayToMentions = (content: string) => {
+    return content.replace(/@(\w+)/g, (match, name) => {
+      // Look up user by username
+      const user = [...onlineUsers(), ...allUsers()].find(
+        (u) => u.username.toLowerCase() === name.toLowerCase()
+      );
+      return user ? `<@${user.id}>` : match;
+    });
+  };
+
+  const startEdit = () => {
+    setEditText(mentionsToDisplay(props.message.content || ""));
+    setEditing(true);
+    requestAnimationFrame(() => editRef?.focus());
+  };
+
+  const submitEdit = () => {
+    const newContent = displayToMentions(editText().trim());
+    if (newContent && newContent !== props.message.content) {
+      send("edit_message", { message_id: props.message.id, content: newContent });
+    }
+    setEditing(false);
+  };
+
+  const cancelEdit = () => setEditing(false);
 
   const showActions = () => {
     if (isMobile()) {
@@ -187,12 +224,17 @@ export default function MessageItem(props: MessageProps) {
             {"\u256D\u2500"}
           </span>
           <span style={{ "margin-left": "4px", "min-width": "0", "word-break": "break-word" }}>
-            <span style={{ color: "var(--text-secondary)" }}>
-              {props.message.reply_to!.author.username || lookupUsername(props.message.reply_to!.author.id) || "unknown"}:
-            </span>{" "}
-            {props.message.reply_to!.content
-              ? renderContent(props.message.reply_to!.content.slice(0, 60) + (props.message.reply_to!.content.length > 60 ? "..." : ""))
-              : "[attachment]"}
+            {props.message.reply_to!.deleted
+              ? <span style={{ "font-style": "italic" }}>[message was deleted]</span>
+              : <>
+                  <span style={{ color: "var(--text-secondary)" }}>
+                    {props.message.reply_to!.author.username || lookupUsername(props.message.reply_to!.author.id) || "unknown"}:
+                  </span>{" "}
+                  {props.message.reply_to!.content
+                    ? renderContent(props.message.reply_to!.content.slice(0, 60) + (props.message.reply_to!.content.length > 60 ? "..." : ""))
+                    : "[attachment]"}
+                </>
+            }
           </span>
         </div>
       </Show>
@@ -208,19 +250,55 @@ export default function MessageItem(props: MessageProps) {
         <span style={{ color: "var(--border-gold)", "flex-shrink": "0", margin: "0 6px" }}>
           {">"}
         </span>
-        <span style={{ color: "var(--text-primary)", "word-break": "break-word", "min-width": "0" }}>
-          <Show when={props.message.content}>
-            {renderContent(props.message.content!)}
-          </Show>
-          <Show when={props.message.edited_at}>
-            <span style={{ color: "var(--text-muted)", "font-size": "11px" }}> (edited)</span>
-          </Show>
-          {/* Inline reactions */}
-          <Show when={props.message.reactions.length > 0}>
-            <span style={{ "margin-left": "6px" }}>
-              <ReactionBar message={props.message} />
-            </span>
-          </Show>
+        <span style={{ color: props.message.deleted ? "var(--text-muted)" : "var(--text-primary)", "word-break": "break-word", "min-width": "0", flex: "1" }}>
+          {(() => {
+            if (props.message.deleted) {
+              return <span style={{ "font-style": "italic" }}>[message was deleted]</span>;
+            }
+            if (editing()) {
+              return (
+                <span style={{ display: "inline-flex", "align-items": "center", width: "100%" }}>
+                  <input
+                    ref={editRef}
+                    type="text"
+                    value={editText()}
+                    onInput={(e) => setEditText(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); submitEdit(); }
+                      if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+                    }}
+                    style={{
+                      flex: "1",
+                      "font-size": "13px",
+                      color: "var(--text-primary)",
+                      "background-color": "var(--bg-secondary)",
+                      border: "1px solid var(--border-gold)",
+                      padding: "1px 6px",
+                      "caret-color": "var(--accent)",
+                    }}
+                  />
+                  <span style={{ color: "var(--text-muted)", "font-size": "10px", "margin-left": "6px", "white-space": "nowrap" }}>
+                    enter to save · esc to cancel
+                  </span>
+                </span>
+              );
+            }
+            return (
+              <>
+                <Show when={props.message.content}>
+                  {renderContent(props.message.content!)}
+                </Show>
+                <Show when={props.message.edited_at}>
+                  <span style={{ color: "var(--text-muted)", "font-size": "10px", "font-style": "italic" }}> edited</span>
+                </Show>
+                <Show when={props.message.reactions.length > 0}>
+                  <span style={{ "margin-left": "6px" }}>
+                    <ReactionBar message={props.message} />
+                  </span>
+                </Show>
+              </>
+            );
+          })()}
         </span>
       </div>
 
@@ -229,26 +307,28 @@ export default function MessageItem(props: MessageProps) {
         <div style={{ "padding-left": "7ch", "margin-top": "2px", display: "flex", "flex-wrap": "wrap", gap: "4px" }}>
           <For each={props.message.attachments}>
             {(att) => (
-              <a href={att.url} target="_blank" rel="noopener">
-                <img
-                  src={att.thumb_url || att.url}
-                  alt={att.filename}
-                  style={{
-                    "max-width": "400px",
-                    "max-height": "300px",
-                    "border-radius": "2px",
-                    border: "1px solid var(--border-gold)",
-                    cursor: "pointer",
-                  }}
-                />
-              </a>
+              <img
+                src={att.thumb_url || att.url}
+                alt={att.filename}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openLightbox(att.url);
+                }}
+                style={{
+                  "max-width": "400px",
+                  "max-height": "300px",
+                  "border-radius": "2px",
+                  border: "1px solid var(--border-gold)",
+                  cursor: "pointer",
+                }}
+              />
             )}
           </For>
         </div>
       </Show>
 
       {/* Mobile inline actions */}
-      <Show when={isMobile() && showActions()}>
+      <Show when={!props.message.deleted && isMobile() && showActions()}>
         <div
           style={{
             display: "flex",
@@ -288,6 +368,20 @@ export default function MessageItem(props: MessageProps) {
           >
             [react]
           </button>
+          <Show when={isOwn() && props.message.content}>
+            <button
+              onClick={(e) => handleActionClick(e, startEdit)}
+              style={{
+                padding: "3px 8px",
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--border-gold)",
+                "background-color": "var(--bg-secondary)",
+              }}
+            >
+              [edit]
+            </button>
+          </Show>
           <Show when={canDelete()}>
             <button
               onClick={(e) => handleActionClick(e, handleDelete)}
@@ -306,7 +400,7 @@ export default function MessageItem(props: MessageProps) {
       </Show>
 
       {/* Desktop hover actions */}
-      <Show when={!isMobile() && showActions()}>
+      <Show when={!props.message.deleted && !isMobile() && showActions()}>
         <div
           style={{
             position: "absolute",
@@ -346,6 +440,19 @@ export default function MessageItem(props: MessageProps) {
           >
             [+]
           </button>
+          <Show when={isOwn() && props.message.content}>
+            <button
+              onClick={startEdit}
+              title="Edit"
+              style={{
+                padding: "2px 6px",
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+              }}
+            >
+              [edit]
+            </button>
+          </Show>
           <Show when={canDelete()}>
             <button
               onClick={handleDelete}

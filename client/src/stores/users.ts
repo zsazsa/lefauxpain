@@ -25,6 +25,10 @@ export function addOnlineUser(user: User) {
     if (prev.find((u) => u.id === user.id)) return prev;
     return [...prev, user];
   });
+  setAllUsers((prev) => {
+    if (prev.find((u) => u.id === user.id)) return prev;
+    return [...prev, user];
+  });
   mergeKnownUsers([user]);
 }
 

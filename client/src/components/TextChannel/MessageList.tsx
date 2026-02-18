@@ -1,8 +1,43 @@
-import { createEffect, createSignal, For, onCleanup, onMount } from "solid-js";
+import { createEffect, createSignal, For, Index, onCleanup, onMount } from "solid-js";
 import { getChannelMessages, setMessages, prependMessages, scrollToMessageId, setScrollToMessageId } from "../../stores/messages";
 import { getMessages, getMessagesAround } from "../../lib/api";
 import { mergeKnownUsers } from "../../stores/users";
 import MessageItem from "./Message";
+
+function getDateKey(dateStr: string): string {
+  const normalized = dateStr.replace(" ", "T");
+  const d = new Date(normalized.endsWith("Z") ? normalized : normalized + "Z");
+  return d.toLocaleDateString([], { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function formatDateLabel(dateStr: string): string {
+  const normalized = dateStr.replace(" ", "T");
+  const d = new Date(normalized.endsWith("Z") ? normalized : normalized + "Z");
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (d.toDateString() === now.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+}
+
+function DateSeparator(props: { label: string }) {
+  return (
+    <div style={{
+      display: "flex",
+      "align-items": "center",
+      gap: "12px",
+      padding: "8px 16px 4px",
+      "font-size": "11px",
+      color: "var(--text-muted)",
+    }}>
+      <div style={{ flex: "1", height: "1px", "background-color": "var(--border-gold)", opacity: "0.3" }} />
+      <span style={{ "flex-shrink": "0", "letter-spacing": "0.5px" }}>{props.label}</span>
+      <div style={{ flex: "1", height: "1px", "background-color": "var(--border-gold)", opacity: "0.3" }} />
+    </div>
+  );
+}
 
 interface MessageListProps {
   channelId: string;
@@ -159,12 +194,20 @@ export default function MessageList(props: MessageListProps) {
       )}
       <div style={{ "margin-top": "auto" }}>
         <For each={messages()}>
-          {(msg) => (
-            <MessageItem
-              message={msg}
-              highlighted={highlightId() === msg.id}
-            />
-          )}
+          {(msg, i) => {
+            const msgs = messages();
+            const prev = i() > 0 ? msgs[i() - 1] : null;
+            const showDate = !prev || getDateKey(prev.created_at) !== getDateKey(msg.created_at);
+            return (
+              <>
+                {showDate && <DateSeparator label={formatDateLabel(msg.created_at)} />}
+                <MessageItem
+                  message={msg}
+                  highlighted={highlightId() === msg.id}
+                />
+              </>
+            );
+          }}
         </For>
       </div>
     </div>

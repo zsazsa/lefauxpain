@@ -125,6 +125,9 @@ var migrations = []string{
 		uploaded_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		created_at  DATETIME DEFAULT (datetime('now'))
 	);`,
+
+	// Version 6: Soft delete for messages
+	`ALTER TABLE messages ADD COLUMN deleted_at DATETIME;`,
 }
 
 func (d *DB) migrate() error {

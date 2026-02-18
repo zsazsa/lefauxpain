@@ -1,4 +1,4 @@
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, Show, For, onCleanup } from "solid-js";
 import { send } from "../../lib/ws";
 import { replyingTo, setReplyingTo, getChannelMessages } from "../../stores/messages";
 import { uploadFile, uploadMedia } from "../../lib/api";
@@ -11,9 +11,14 @@ interface MessageInputProps {
   channelName: string;
 }
 
+type PendingAttachment = {
+  id: string;
+  previewUrl: string;
+};
+
 export default function MessageInput(props: MessageInputProps) {
   const [text, setText] = createSignal("");
-  const [attachmentIds, setAttachmentIds] = createSignal<string[]>([]);
+  const [attachments, setAttachments] = createSignal<PendingAttachment[]>([]);
   const [uploading, setUploading] = createSignal(false);
   const [dragActive, setDragActive] = createSignal(false);
   const [mentionQuery, setMentionQuery] = createSignal<string | null>(null);
@@ -21,25 +26,19 @@ export default function MessageInput(props: MessageInputProps) {
   let fileInputRef: HTMLInputElement | undefined;
   let inputRef: HTMLInputElement | undefined;
   let typingTimeout: number | null = null;
-  // Maps display name -> userId for mentions inserted in the current message
   const pendingMentions = new Map<string, string>();
 
-  // Build a de-duplicated user list: online users first, then offline
+  // Cleanup preview URLs on unmount
+  onCleanup(() => {
+    attachments().forEach((a) => URL.revokeObjectURL(a.previewUrl));
+  });
+
   const mentionableUsers = () => {
     const map = new Map<string, { id: string; username: string }>();
-    for (const u of onlineUsers()) {
-      map.set(u.id, u);
-    }
-    for (const u of allUsers()) {
-      if (!map.has(u.id)) {
-        map.set(u.id, u);
-      }
-    }
-    for (const m of getChannelMessages(props.channelId)) {
-      if (!map.has(m.author.id)) {
-        map.set(m.author.id, m.author);
-      }
-    }
+    for (const u of onlineUsers()) map.set(u.id, u);
+    for (const u of allUsers()) if (!map.has(u.id)) map.set(u.id, u);
+    for (const m of getChannelMessages(props.channelId))
+      if (!map.has(m.author.id)) map.set(m.author.id, m.author);
     return Array.from(map.values());
   };
 
@@ -53,7 +52,6 @@ export default function MessageInput(props: MessageInputProps) {
     return users.filter((u) => u.username.toLowerCase().includes(lower)).slice(0, 10);
   };
 
-  // Find @query from cursor position
   function updateMentionQuery(value: string, cursorPos: number) {
     const before = value.slice(0, cursorPos);
     const match = before.match(/@(\w*)$/);
@@ -79,7 +77,7 @@ export default function MessageInput(props: MessageInputProps) {
     requestAnimationFrame(() => {
       if (inputRef) {
         inputRef.focus();
-        const pos = atIndex + username.length + 2; // @username + space
+        const pos = atIndex + username.length + 2;
         inputRef.setSelectionRange(pos, pos);
       }
     });
@@ -87,11 +85,10 @@ export default function MessageInput(props: MessageInputProps) {
 
   const handleSend = () => {
     let content = text().trim();
-    const attIds = attachmentIds();
+    const atts = attachments();
 
-    if (!content && attIds.length === 0) return;
+    if (!content && atts.length === 0) return;
 
-    // Replace @username with <@userId> for all pending mentions
     for (const [username, userId] of pendingMentions) {
       content = content.replaceAll(`@${username}`, `<@${userId}>`);
     }
@@ -100,18 +97,19 @@ export default function MessageInput(props: MessageInputProps) {
       channel_id: props.channelId,
       content: content || null,
       reply_to_id: replyingTo()?.id || null,
-      attachment_ids: attIds,
+      attachment_ids: atts.map((a) => a.id),
     });
 
+    // Cleanup preview URLs
+    atts.forEach((a) => URL.revokeObjectURL(a.previewUrl));
     setText("");
-    setAttachmentIds([]);
+    setAttachments([]);
     setReplyingTo(null);
     setMentionQuery(null);
     pendingMentions.clear();
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    // Mention autocomplete navigation
     if (mentionQuery() !== null && filteredUsers().length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -142,7 +140,6 @@ export default function MessageInput(props: MessageInputProps) {
       return;
     }
 
-    // Typing indicator (throttled to 3s)
     if (!typingTimeout) {
       send("typing_start", { channel_id: props.channelId });
       typingTimeout = window.setTimeout(() => {
@@ -164,8 +161,9 @@ export default function MessageInput(props: MessageInputProps) {
     setUploading(true);
     try {
       for (const file of imageFiles) {
+        const previewUrl = URL.createObjectURL(file);
         const res = await uploadFile(file);
-        setAttachmentIds((prev) => [...prev, res.id]);
+        setAttachments((prev) => [...prev, { id: res.id, previewUrl }]);
       }
     } catch {
       // ignore
@@ -174,58 +172,30 @@ export default function MessageInput(props: MessageInputProps) {
     }
   };
 
+  const removeAttachment = (id: string) => {
+    const att = attachments().find((a) => a.id === id);
+    if (att) URL.revokeObjectURL(att.previewUrl);
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
   const handleDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragActive(false);
     if (!e.dataTransfer?.files) return;
     const files = Array.from(e.dataTransfer.files);
 
-    // Split: images → auto-send as message, videos → upload to media library
     const imageFiles = files.filter((f) => f.type.startsWith("image/"));
     const videoFiles = files.filter((f) => f.type.startsWith("video/"));
 
-    if (imageFiles.length > 0) {
-      // Upload images then auto-send as message with no text
-      (async () => {
-        setUploading(true);
-        try {
-          const ids: string[] = [];
-          for (const file of imageFiles) {
-            const res = await uploadFile(file);
-            ids.push(res.id);
-          }
-          if (ids.length > 0) {
-            send("send_message", {
-              channel_id: props.channelId,
-              content: null,
-              reply_to_id: null,
-              attachment_ids: ids,
-            });
-          }
-        } catch {
-          // ignore
-        } finally {
-          setUploading(false);
-        }
-      })();
-    }
+    if (imageFiles.length > 0) handleFiles(imageFiles);
 
     if (videoFiles.length > 0) {
       (async () => {
         for (const file of videoFiles) {
-          try {
-            await uploadMedia(file);
-          } catch {
-            // ignore
-          }
+          try { await uploadMedia(file); } catch {}
         }
       })();
     }
-  };
-
-  const prompt = () => {
-    const name = currentUser()?.username || "anon";
-    return `${name}@${props.channelName}`;
   };
 
   return (
@@ -315,19 +285,56 @@ export default function MessageInput(props: MessageInputProps) {
         </div>
       </Show>
 
-      {/* Attachment preview */}
-      <Show when={attachmentIds().length > 0}>
+      {/* Attachment previews with thumbnails */}
+      <Show when={attachments().length > 0}>
         <div
           style={{
-            padding: "4px 12px",
+            display: "flex",
+            gap: "8px",
+            padding: "8px 12px",
             "background-color": "var(--bg-secondary)",
-            "font-size": "12px",
-            color: "var(--text-muted)",
             "border-left": "1px solid var(--border-gold)",
             "border-right": "1px solid var(--border-gold)",
+            "flex-wrap": "wrap",
           }}
         >
-          [{attachmentIds().length} file(s) attached]
+          <For each={attachments()}>
+            {(att) => (
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <img
+                  src={att.previewUrl}
+                  style={{
+                    "max-width": "80px",
+                    "max-height": "80px",
+                    "border-radius": "2px",
+                    border: "1px solid var(--border-gold)",
+                    display: "block",
+                  }}
+                />
+                <button
+                  onClick={() => removeAttachment(att.id)}
+                  style={{
+                    position: "absolute",
+                    top: "-4px",
+                    right: "-4px",
+                    width: "16px",
+                    height: "16px",
+                    "border-radius": "50%",
+                    "background-color": "var(--danger)",
+                    color: "#fff",
+                    "font-size": "10px",
+                    "line-height": "16px",
+                    "text-align": "center",
+                    padding: "0",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  x
+                </button>
+              </div>
+            )}
+          </For>
         </div>
       </Show>
 
@@ -358,6 +365,21 @@ export default function MessageInput(props: MessageInputProps) {
           value={text()}
           onInput={handleInput}
           onKeyDown={handleKeyDown}
+          onPaste={(e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            const imageFiles: File[] = [];
+            for (const item of items) {
+              if (item.type.startsWith("image/")) {
+                const file = item.getAsFile();
+                if (file) imageFiles.push(file);
+              }
+            }
+            if (imageFiles.length > 0) {
+              e.preventDefault();
+              handleFiles(imageFiles);
+            }
+          }}
           disabled={uploading()}
           style={{
             flex: "1",
