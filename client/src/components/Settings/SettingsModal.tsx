@@ -34,7 +34,7 @@ type AdminUser = {
   created_at: string;
 };
 
-type Tab = "account" | "display" | "audio" | "admin" | "app";
+type Tab = "account" | "display" | "audio" | "admin" | "app" | "about";
 
 export default function SettingsModal() {
   const [activeTab, setActiveTab] = createSignal<Tab>("account");
@@ -352,6 +352,7 @@ export default function SettingsModal() {
     if (isTauri) {
       list.push({ id: "app", label: "App" });
     }
+    list.push({ id: "about", label: "About" });
     return list;
   };
 
@@ -1105,6 +1106,28 @@ export default function SettingsModal() {
               </Show>
 
               {/* App tab (desktop only) */}
+              <Show when={activeTab() === "about"}>
+                <div style={sectionHeaderStyle}>Le Faux Pain</div>
+                <div style={{ "font-size": "12px", color: "var(--text-secondary)", "line-height": "1.6" }}>
+                  <p style={{ margin: "0 0 12px" }}>
+                    Created by <span style={{ color: "var(--text-primary)", "font-weight": "600" }}>Kalman</span>
+                  </p>
+                  <p style={{ margin: "0" }}>
+                    Source code:{" "}
+                    <a
+                      href="https://github.com/zsazsa/lefauxpain"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "var(--cyan)", "text-decoration": "none" }}
+                      onMouseOver={(e) => e.currentTarget.style.textDecoration = "underline"}
+                      onMouseOut={(e) => e.currentTarget.style.textDecoration = "none"}
+                    >
+                      github.com/zsazsa/lefauxpain
+                    </a>
+                  </p>
+                </div>
+              </Show>
+
               <Show when={activeTab() === "app" && isTauri}>
                 <Show when={appVersion()}>
                   <div style={{ "font-size": "12px", color: "var(--text-muted)", "margin-bottom": "16px" }}>
