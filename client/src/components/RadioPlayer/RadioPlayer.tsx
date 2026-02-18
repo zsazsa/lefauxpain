@@ -2,7 +2,6 @@ import { createEffect, createSignal, For, Show, onCleanup, onMount } from "solid
 import { send } from "../../lib/ws";
 import {
   radioStations,
-  radioPlayback,
   radioPlaylists,
   tunedStationId,
   setTunedStationId,
@@ -11,12 +10,11 @@ import {
   updatePlaylistTracks,
   type RadioPlayback,
   type RadioPlaylist,
-  type RadioTrack,
 } from "../../stores/radio";
 import { currentUser } from "../../stores/auth";
-import { lookupUsername } from "../../stores/users";
-import { allUsers } from "../../stores/users";
+import { lookupUsername, allUsers } from "../../stores/users";
 import { uploadRadioTrack, deleteRadioTrack } from "../../lib/api";
+import { isMobile } from "../../stores/responsive";
 import Waveform from "./Waveform";
 
 export default function RadioPlayer() {
@@ -28,7 +26,6 @@ export default function RadioPlayer() {
   let analyser: AnalyserNode | null = null;
   let sourceNode: MediaElementAudioSourceNode | null = null;
   const [currentTime, setCurrentTime] = createSignal(0);
-  const [scrubbing, setScrubbing] = createSignal(false);
   const [autoplayBlocked, setAutoplayBlocked] = createSignal(false);
 
   const [pos, setPos] = createSignal({ x: 16, y: 60 });
@@ -160,7 +157,7 @@ export default function RadioPlayer() {
 
   let rafId = 0;
   const tickProgress = () => {
-    if (audioRef && !scrubbing()) setCurrentTime(audioRef.currentTime);
+    if (audioRef) setCurrentTime(audioRef.currentTime);
     // Draw EQ bars on canvas
     if (eqCanvasRef && analyser && minimized()) {
       const parent = eqCanvasRef.parentElement;
@@ -431,11 +428,12 @@ export default function RadioPlayer() {
     <div
       ref={containerRef}
       style={{
-        position: "fixed",
-        top: expanded() ? "0" : `${pos().y}px`,
-        right: expanded() ? "0" : `${pos().x}px`,
-        width: expanded() ? "100%" : `${size().w}px`,
-        height: containerHeight(),
+        ...(expanded()
+          ? { position: "fixed", top: "0", right: "0", width: "100%", height: "100%" }
+          : isMobile()
+            ? { position: "relative", width: "100%", height: containerHeight(), "flex-shrink": "0" }
+            : { position: "fixed", top: `${pos().y}px`, right: `${pos().x}px`, width: `${size().w}px`, height: containerHeight() }
+        ),
         "z-index": "50",
         "background-color": "var(--bg-secondary)",
         border: expanded() ? "none" : "1px solid var(--border-gold)",

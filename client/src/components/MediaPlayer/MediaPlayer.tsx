@@ -6,6 +6,7 @@ import {
   setWatchingMedia,
   selectedMediaId,
 } from "../../stores/media";
+import { isMobile } from "../../stores/responsive";
 
 export default function MediaPlayer() {
   let videoRef: HTMLVideoElement | undefined;
@@ -146,11 +147,12 @@ export default function MediaPlayer() {
     <div
       ref={containerRef}
       style={{
-        position: "fixed",
-        top: expanded() ? "0" : `${pos().y}px`,
-        right: expanded() ? "0" : `${pos().x}px`,
-        width: expanded() ? "100%" : `${size().w}px`,
-        height: expanded() ? "100%" : `${size().h}px`,
+        ...(expanded()
+          ? { position: "fixed", top: "0", right: "0", width: "100%", height: "100%" }
+          : isMobile()
+            ? { position: "relative", width: "100%", height: "40vh", "flex-shrink": "0" }
+            : { position: "fixed", top: `${pos().y}px`, right: `${pos().x}px`, width: `${size().w}px`, height: `${size().h}px` }
+        ),
         "z-index": "50",
         "background-color": "var(--bg-secondary)",
         border: expanded() ? "none" : "1px solid var(--border-gold)",
