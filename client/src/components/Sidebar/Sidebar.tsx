@@ -14,8 +14,8 @@ import { setSettingsOpen, setSettingsTab } from "../../stores/settings";
 import { updateStatus, updateVersion } from "../../stores/updateChecker";
 import { unreadCount } from "../../stores/notifications";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
-import { connState, ping, send } from "../../lib/ws";
-import { mediaList, mediaPlayback, setWatchingMedia } from "../../stores/media";
+import { connState, ping } from "../../lib/ws";
+import { mediaList, mediaPlayback, setWatchingMedia, setSelectedMediaId } from "../../stores/media";
 import { deleteMedia } from "../../lib/api";
 import ChannelItem from "./ChannelItem";
 import CreateChannel from "./CreateChannel";
@@ -301,7 +301,7 @@ export default function Sidebar(props: SidebarProps) {
                 >
                   <span
                     onClick={() => {
-                      send("media_play", { video_id: item.id, position: 0 });
+                      setSelectedMediaId(item.id);
                       setWatchingMedia(true);
                       if (isMobile()) setSidebarOpen(false);
                     }}

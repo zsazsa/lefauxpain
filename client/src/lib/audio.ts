@@ -1,10 +1,10 @@
-// Per-user audio chain: MediaStream → GainNode → AnalyserNode → destination
+// Per-user audio playback via <audio> elements + Web Audio API analyser
 
 import { settings } from "../stores/settings";
 
 type UserAudioNode = {
+  audio: HTMLAudioElement;
   source: MediaStreamAudioSourceNode;
-  gain: GainNode;
   analyser: AnalyserNode;
   volume: number; // 0.0 - 2.0
   localMuted: boolean;
@@ -28,27 +28,31 @@ export function setupAudioPipeline(stream: MediaStream, trackId: string) {
     ctx.resume();
   }
 
-  // Apply output device if set
   const s = settings();
-  if (s.outputDeviceId && "setSinkId" in ctx) {
-    (ctx as any).setSinkId(s.outputDeviceId).catch(() => {});
+
+  // Use an <audio> element for playback — works reliably on all platforms
+  // including Windows where Web Audio API alone may not activate remote streams
+  const audio = new Audio();
+  audio.srcObject = stream;
+  audio.autoplay = true;
+  audio.volume = Math.min(s.masterVolume, 1.0);
+  audio.play().catch(() => {});
+
+  // Apply output device if set
+  if (s.outputDeviceId && "setSinkId" in audio) {
+    (audio as any).setSinkId(s.outputDeviceId).catch(() => {});
   }
 
+  // Web Audio API analyser for speaking detection (not connected to destination)
   const source = ctx.createMediaStreamSource(stream);
-  const gain = ctx.createGain();
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 256;
-
-  // Apply master volume
-  gain.gain.value = s.masterVolume;
-
-  source.connect(gain);
-  gain.connect(analyser);
-  analyser.connect(ctx.destination);
+  source.connect(analyser);
+  // Do NOT connect analyser to destination — <audio> element handles playback
 
   userNodes.set(trackId, {
+    audio,
     source,
-    gain,
     analyser,
     volume: s.masterVolume,
     localMuted: false,
@@ -57,8 +61,9 @@ export function setupAudioPipeline(stream: MediaStream, trackId: string) {
 
 export function cleanupAudioPipeline() {
   userNodes.forEach((node) => {
+    node.audio.pause();
+    node.audio.srcObject = null;
     node.source.disconnect();
-    node.gain.disconnect();
     node.analyser.disconnect();
   });
   userNodes.clear();
@@ -69,7 +74,7 @@ export function setUserVolume(trackId: string, volume: number) {
   if (!node) return;
   node.volume = volume;
   if (!node.localMuted) {
-    node.gain.gain.value = volume;
+    node.audio.volume = Math.min(volume, 1.0);
   }
 }
 
@@ -77,13 +82,13 @@ export function setUserLocalMute(trackId: string, muted: boolean) {
   const node = userNodes.get(trackId);
   if (!node) return;
   node.localMuted = muted;
-  node.gain.gain.value = muted ? 0 : node.volume;
+  node.audio.volume = muted ? 0 : Math.min(node.volume, 1.0);
 }
 
 export function setAllIncomingGain(multiplier: number) {
   userNodes.forEach((node) => {
     if (!node.localMuted) {
-      node.gain.gain.value = multiplier === 0 ? 0 : node.volume;
+      node.audio.volume = multiplier === 0 ? 0 : Math.min(node.volume, 1.0);
     }
   });
 }
@@ -92,14 +97,16 @@ export function applyMasterVolume(volume: number) {
   userNodes.forEach((node) => {
     node.volume = volume;
     if (!node.localMuted) {
-      node.gain.gain.value = volume;
+      node.audio.volume = Math.min(volume, 1.0);
     }
   });
 }
 
 export async function setSpeaker(deviceId: string) {
-  const ctx = getAudioContext();
-  if ("setSinkId" in ctx) {
-    await (ctx as any).setSinkId(deviceId);
-  }
+  // Apply to all existing audio elements
+  userNodes.forEach((node) => {
+    if ("setSinkId" in node.audio) {
+      (node.audio as any).setSinkId(deviceId).catch(() => {});
+    }
+  });
 }

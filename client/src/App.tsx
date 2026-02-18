@@ -17,7 +17,7 @@ import {
   selectedChannel,
 } from "./stores/channels";
 import { watchingScreenShare } from "./stores/voice";
-import { watchingMedia } from "./stores/media";
+import { watchingMedia, selectedMediaId } from "./stores/media";
 import MediaPlayer from "./components/MediaPlayer/MediaPlayer";
 import { isMobile, sidebarOpen, setSidebarOpen, initResponsive } from "./stores/responsive";
 import { startUpdateChecker } from "./stores/updateChecker";
@@ -187,10 +187,11 @@ function App() {
                 : "Offline"}
             </div>
           </Show>
+          {/* Floating PiP media player */}
+          <Show when={watchingMedia() && selectedMediaId()}>
+            <MediaPlayer />
+          </Show>
           {() => {
-            if (watchingMedia()) {
-              return <MediaPlayer />;
-            }
             const watching = watchingScreenShare();
             if (watching) {
               return <ScreenShareView userId={watching.user_id} channelId={watching.channel_id} />;

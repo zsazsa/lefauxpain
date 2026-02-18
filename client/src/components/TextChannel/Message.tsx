@@ -38,31 +38,63 @@ function usernameColor(userId: string): string {
   return USERNAME_COLORS[Math.abs(hash) % USERNAME_COLORS.length];
 }
 
-// Render content with mention highlighting
+// Render content with mention highlighting and clickable links
 function renderContent(content: string): any {
-  const mentionRe = /<@([0-9a-fA-F-]{36})>/g;
+  // Match mentions OR https/http URLs
+  const tokenRe = /<@([0-9a-fA-F-]{36})>|(https?:\/\/[^\s<>"'`]+)/gi;
   const result: any[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = mentionRe.exec(content)) !== null) {
+
+  while ((m = tokenRe.exec(content)) !== null) {
     if (m.index > lastIndex) {
       result.push(content.slice(lastIndex, m.index));
     }
-    const userId = m[1];
-    const name = lookupUsername(userId) || "unknown";
-    result.push(
-      <span
-        style={{
-          "background-color": "var(--mention-bg)",
-          color: "var(--mention-text)",
-          padding: "0 3px",
-        }}
-      >
-        @{name}
-      </span>
-    );
-    lastIndex = mentionRe.lastIndex;
+
+    if (m[1]) {
+      // Mention
+      const userId = m[1];
+      const name = lookupUsername(userId) || "unknown";
+      result.push(
+        <span
+          style={{
+            "background-color": "var(--mention-bg)",
+            color: "var(--mention-text)",
+            padding: "0 3px",
+          }}
+        >
+          @{name}
+        </span>
+      );
+    } else if (m[2]) {
+      // URL — strip trailing punctuation that's likely part of the sentence
+      let url = m[2];
+      let trailing = "";
+      while (url.length > 1 && /[.,;:!?)>\]]+$/.test(url)) {
+        trailing = url[url.length - 1] + trailing;
+        url = url.slice(0, -1);
+      }
+      // Adjust regex position to account for stripped chars
+      tokenRe.lastIndex -= trailing.length;
+
+      result.push(
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: "var(--accent)",
+            "text-decoration": "underline",
+          }}
+        >
+          {url}
+        </a>
+      );
+    }
+
+    lastIndex = tokenRe.lastIndex;
   }
+
   if (lastIndex < content.length) {
     result.push(content.slice(lastIndex));
   }
@@ -125,21 +157,43 @@ export default function MessageItem(props: MessageProps) {
         "line-height": "1.5",
       }}
     >
-      {/* Reply connector */}
+      {/* Reply connector — ╭─ aligned with username below */}
       <Show when={props.message.reply_to}>
         <div
+          onClick={(e) => {
+            e.stopPropagation();
+            const el = document.querySelector(`[data-message-id="${props.message.reply_to!.id}"]`);
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              el.animate(
+                [{ backgroundColor: "rgba(201,168,76,0.15)" }, { backgroundColor: "transparent" }],
+                { duration: 1500 }
+              );
+            }
+          }}
           style={{
-            color: "var(--text-muted)",
-            "padding-left": "7ch",
+            display: "flex",
+            "align-items": "baseline",
             "font-size": "12px",
+            cursor: "pointer",
+            color: "var(--text-muted)",
           }}
         >
-          <span style={{ color: "var(--border-gold)" }}>{"\u2570\u2500"} </span>
-          <span style={{ color: "var(--text-secondary)" }}>
-            {props.message.reply_to!.author.username}:
-          </span>{" "}
-          {props.message.reply_to!.content?.slice(0, 60) || "[attachment]"}
-          {(props.message.reply_to!.content?.length || 0) > 60 ? "..." : ""}
+          {/* Invisible spacer matching the timestamp width */}
+          <span style={{ visibility: "hidden", "flex-shrink": "0" }}>
+            [{formatTime(props.message.created_at)}]
+          </span>
+          <span style={{ color: "var(--border-gold)", "flex-shrink": "0", "margin-left": "12px" }}>
+            {"\u256D\u2500"}
+          </span>
+          <span style={{ "margin-left": "4px", "min-width": "0", "word-break": "break-word" }}>
+            <span style={{ color: "var(--text-secondary)" }}>
+              {props.message.reply_to!.author.username || lookupUsername(props.message.reply_to!.author.id) || "unknown"}:
+            </span>{" "}
+            {props.message.reply_to!.content
+              ? renderContent(props.message.reply_to!.content.slice(0, 60) + (props.message.reply_to!.content.length > 60 ? "..." : ""))
+              : "[attachment]"}
+          </span>
         </div>
       </Show>
 

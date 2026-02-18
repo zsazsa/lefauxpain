@@ -200,10 +200,12 @@ func (r *Room) addTrackToOthers(fromUserID string, track *webrtc.TrackLocalStati
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	log.Printf("sfu: addTrackToOthers from %s, other peers: %d", fromUserID, len(r.peers)-1)
 	for uid, peer := range r.peers {
 		if uid == fromUserID {
 			continue
 		}
+		log.Printf("sfu: adding track from %s to %s (signaling=%s)", fromUserID, uid, peer.pc.SignalingState())
 		sender, err := peer.pc.AddTrack(track)
 		if err != nil {
 			log.Printf("sfu: add track to peer %s: %v", uid, err)
@@ -246,6 +248,7 @@ func (r *Room) renegotiatePeer(peer *Peer) {
 		return
 	}
 	if r.sfu.Signal != nil {
+		log.Printf("sfu: sent renegotiation offer to %s", peer.UserID)
 		r.sfu.Signal(peer.UserID, "webrtc_offer", map[string]string{
 			"sdp": offer.SDP,
 		})
@@ -257,9 +260,11 @@ func (r *Room) HandleAnswer(userID string, sdp string) {
 	peer, ok := r.peers[userID]
 	r.mu.RUnlock()
 	if !ok {
+		log.Printf("sfu: HandleAnswer: peer %s not found", userID)
 		return
 	}
 
+	log.Printf("sfu: HandleAnswer from %s (signaling=%s)", userID, peer.pc.SignalingState())
 	err := peer.pc.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeAnswer,
 		SDP:  sdp,
@@ -268,6 +273,7 @@ func (r *Room) HandleAnswer(userID string, sdp string) {
 		log.Printf("sfu: set remote desc for %s: %v", userID, err)
 		return
 	}
+	log.Printf("sfu: HandleAnswer success for %s, now signaling=%s", userID, peer.pc.SignalingState())
 
 	// If renegotiation was deferred while we were waiting for this answer,
 	// trigger it now that signaling state is back to stable.

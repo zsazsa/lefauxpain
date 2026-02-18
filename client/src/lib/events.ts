@@ -39,8 +39,9 @@ import {
   setMediaPlayback,
   setWatchingMedia,
   mediaPlayback,
+  selectedMediaId,
 } from "../stores/media";
-import { handleWebRTCOffer, handleWebRTCICE } from "./webrtc";
+import { handleWebRTCOffer, handleWebRTCICE, joinVoice } from "./webrtc";
 import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./screenshare";
 import { playJoinSound, playLeaveSound } from "./sounds";
 import { isDesktop } from "./devices";
@@ -180,6 +181,14 @@ export function initEventHandlers() {
         setScreenShares(msg.d.screen_shares || []);
         setMediaList(msg.d.media_list || []);
         setMediaPlayback(msg.d.media_playback || null);
+        // Auto-rejoin voice if we were in a channel before refresh
+        {
+          const savedChannel = sessionStorage.getItem("voice_channel");
+          if (savedChannel) {
+            sessionStorage.removeItem("voice_channel");
+            setTimeout(() => joinVoice(savedChannel), 500);
+          }
+        }
         break;
 
       case "message_create":
@@ -307,8 +316,8 @@ export function initEventHandlers() {
 
       case "media_removed":
         removeMediaItem(msg.d.id);
-        // If the removed video was playing, stop watching
-        if (mediaPlayback()?.video_id === msg.d.id) {
+        // If the removed video was selected, close player
+        if (selectedMediaId() === msg.d.id) {
           setMediaPlayback(null);
           setWatchingMedia(false);
         }
@@ -316,10 +325,6 @@ export function initEventHandlers() {
 
       case "media_playback":
         setMediaPlayback(msg.d || null);
-        // If playback stopped (null), close player for everyone
-        if (!msg.d) {
-          setWatchingMedia(false);
-        }
         break;
     }
   });

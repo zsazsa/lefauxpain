@@ -12,6 +12,9 @@ let prevBytesSent = 0;
 let prevTimestamp = 0;
 // Track whether we're in a desktop voice session (Rust handles WebRTC)
 let desktopVoiceActive = false;
+// Queue ICE candidates received before remote description is set
+let pendingIceCandidates: RTCIceCandidateInit[] = [];
+let remoteDescriptionSet = false;
 
 function startStatsPolling() {
   stopStatsPolling();
@@ -99,6 +102,7 @@ export async function joinVoice(channelId: string) {
       return;
     }
     desktopVoiceActive = true;
+    sessionStorage.setItem("voice_channel", channelId);
     playJoinSound();
     setJoinedVoiceChannel(channelId);
     send("join_voice", { channel_id: channelId });
@@ -121,7 +125,14 @@ export async function joinVoice(channelId: string) {
     localStream = await navigator.mediaDevices.getUserMedia({
       audio: audioConstraints,
     });
-    console.log("[voice] getUserMedia succeeded, tracks:", localStream.getAudioTracks().map(t => t.label));
+    const tracks = localStream.getAudioTracks();
+    console.log("[voice] getUserMedia succeeded, tracks:", tracks.map(t => ({
+      label: t.label,
+      enabled: t.enabled,
+      muted: t.muted,
+      readyState: t.readyState,
+      settings: t.getSettings(),
+    })));
   } catch (err) {
     console.error("[voice] Failed to get microphone:", err);
     return;
@@ -130,12 +141,15 @@ export async function joinVoice(channelId: string) {
   // Start speaking detection on local stream
   startSpeakingDetection(localStream);
 
+  sessionStorage.setItem("voice_channel", channelId);
   playJoinSound();
   setJoinedVoiceChannel(channelId);
   send("join_voice", { channel_id: channelId });
 }
 
 export function leaveVoice() {
+  sessionStorage.removeItem("voice_channel");
+
   if (isDesktop && desktopVoiceActive) {
     // Desktop: tell Rust to tear down
     send("leave_voice", {});
@@ -162,6 +176,8 @@ export function leaveVoice() {
     peerConnection.close();
     peerConnection = null;
   }
+  pendingIceCandidates = [];
+  remoteDescriptionSet = false;
 
   if (localStream) {
     localStream.getTracks().forEach((t) => t.stop());
@@ -219,6 +235,11 @@ export async function handleWebRTCOffer(sdp: string) {
       console.log("[voice] ontrack: streams:", event.streams.length, "track:", event.track.kind, event.track.id);
       if (event.streams.length > 0) {
         setupAudioPipeline(event.streams[0], event.track.id);
+      } else {
+        // Pion may not associate streams in renegotiation — create one from the track
+        console.log("[voice] ontrack: no streams, creating MediaStream from track");
+        const stream = new MediaStream([event.track]);
+        setupAudioPipeline(stream, event.track.id);
       }
     };
 
@@ -243,10 +264,24 @@ export async function handleWebRTCOffer(sdp: string) {
     startStatsPolling();
   }
 
+  // Reset flag — candidates received during this negotiation must be queued
+  remoteDescriptionSet = false;
+
   peerConnection
     .setRemoteDescription({ type: "offer", sdp })
     .then(() => {
       console.log("[voice] Remote description set, creating answer...");
+      // Flush any ICE candidates that arrived before remote description was set
+      remoteDescriptionSet = true;
+      if (pendingIceCandidates.length > 0) {
+        console.log(`[voice] Flushing ${pendingIceCandidates.length} queued ICE candidates`);
+        for (const c of pendingIceCandidates) {
+          peerConnection!.addIceCandidate(c).catch((err) => {
+            console.error("[voice] addIceCandidate (queued) failed:", err);
+          });
+        }
+        pendingIceCandidates = [];
+      }
       return peerConnection!.createAnswer();
     })
     .then((answer) => {
@@ -276,12 +311,17 @@ export async function handleWebRTCICE(candidate: RTCIceCandidateInit) {
   }
 
   // Browser path
-  console.log("[voice] Received ICE candidate from server");
-  if (peerConnection) {
-    peerConnection.addIceCandidate(candidate).catch((err) => {
-      console.error("[voice] addIceCandidate failed:", err);
-    });
+  if (!peerConnection) return;
+
+  if (!remoteDescriptionSet) {
+    console.log("[voice] Queueing ICE candidate (remote description not set yet)");
+    pendingIceCandidates.push(candidate);
+    return;
   }
+
+  peerConnection.addIceCandidate(candidate).catch((err) => {
+    console.error("[voice] addIceCandidate failed:", err);
+  });
 }
 
 export function toggleMute(): boolean {

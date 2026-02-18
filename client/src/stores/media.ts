@@ -19,6 +19,7 @@ export type MediaPlayback = {
 const [mediaList, setMediaList] = createSignal<MediaItem[]>([]);
 const [mediaPlayback, setMediaPlayback] = createSignal<MediaPlayback | null>(null);
 const [watchingMedia, setWatchingMedia] = createSignal(false);
+const [selectedMediaId, setSelectedMediaId] = createSignal<string | null>(null);
 
 export {
   mediaList,
@@ -27,6 +28,8 @@ export {
   setMediaPlayback,
   watchingMedia,
   setWatchingMedia,
+  selectedMediaId,
+  setSelectedMediaId,
 };
 
 export function addMediaItem(item: MediaItem) {
