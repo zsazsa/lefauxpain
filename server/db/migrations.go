@@ -128,6 +128,46 @@ var migrations = []string{
 
 	// Version 6: Soft delete for messages
 	`ALTER TABLE messages ADD COLUMN deleted_at DATETIME;`,
+
+	// Version 7: Channel managers and soft-delete channels
+	`ALTER TABLE channels ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL;
+	ALTER TABLE channels ADD COLUMN deleted_at DATETIME;
+
+	CREATE TABLE channel_managers (
+		channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+		user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		PRIMARY KEY (channel_id, user_id)
+	);
+	CREATE INDEX idx_channel_managers_user ON channel_managers(user_id);`,
+
+	// Version 8: Radio stations and playlists
+	`CREATE TABLE radio_stations (
+		id          TEXT PRIMARY KEY,
+		name        TEXT NOT NULL,
+		created_by  TEXT REFERENCES users(id) ON DELETE SET NULL,
+		position    INTEGER NOT NULL,
+		created_at  DATETIME DEFAULT (datetime('now'))
+	);
+
+	CREATE TABLE radio_playlists (
+		id          TEXT PRIMARY KEY,
+		name        TEXT NOT NULL,
+		user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at  DATETIME DEFAULT (datetime('now'))
+	);
+
+	CREATE TABLE radio_tracks (
+		id          TEXT PRIMARY KEY,
+		playlist_id TEXT NOT NULL REFERENCES radio_playlists(id) ON DELETE CASCADE,
+		filename    TEXT NOT NULL,
+		path        TEXT NOT NULL,
+		mime_type   TEXT NOT NULL,
+		size_bytes  INTEGER NOT NULL,
+		duration    REAL,
+		position    INTEGER NOT NULL,
+		created_at  DATETIME DEFAULT (datetime('now'))
+	);
+	CREATE INDEX idx_radio_tracks_playlist ON radio_tracks(playlist_id, position);`,
 }
 
 func (d *DB) migrate() error {

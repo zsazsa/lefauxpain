@@ -129,3 +129,23 @@ export async function uploadMedia(file: File) {
 export async function deleteMedia(id: string) {
   return request(`/media/${id}`, { method: "DELETE" });
 }
+
+export async function uploadRadioTrack(playlistId: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const token = getToken();
+  const res = await fetch(`${BASE}/radio/playlists/${playlistId}/tracks`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: "upload failed" }));
+    throw new Error(data.error);
+  }
+  return res.json();
+}
+
+export async function deleteRadioTrack(trackId: string) {
+  return request(`/radio/tracks/${trackId}`, { method: "DELETE" });
+}

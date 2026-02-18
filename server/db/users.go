@@ -18,11 +18,13 @@ type User struct {
 }
 
 type Channel struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	Position  int    `json:"position"`
-	CreatedAt string `json:"created_at"`
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Type      string  `json:"type"`
+	Position  int     `json:"position"`
+	CreatedBy *string `json:"created_by"`
+	DeletedAt *string `json:"deleted_at"`
+	CreatedAt string  `json:"created_at"`
 }
 
 func (d *DB) CreateUser(id, username string, passwordHash *string, isAdmin, approved bool, knockMessage *string) error {
@@ -183,7 +185,7 @@ func (d *DB) SetAdmin(id string, isAdmin bool) error {
 }
 
 func (d *DB) GetAllChannels() ([]Channel, error) {
-	rows, err := d.Query(`SELECT id, name, type, position, created_at FROM channels ORDER BY position`)
+	rows, err := d.Query(`SELECT id, name, type, position, created_by, created_at FROM channels WHERE deleted_at IS NULL ORDER BY position`)
 	if err != nil {
 		return nil, fmt.Errorf("get channels: %w", err)
 	}
@@ -192,7 +194,7 @@ func (d *DB) GetAllChannels() ([]Channel, error) {
 	var channels []Channel
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Position, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Position, &c.CreatedBy, &c.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan channel: %w", err)
 		}
 		channels = append(channels, c)

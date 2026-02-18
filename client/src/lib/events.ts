@@ -5,6 +5,10 @@ import {
   addChannel,
   removeChannel,
   reorderChannelList,
+  updateChannel,
+  setDeletedChannels,
+  deletedChannels,
+  channels,
 } from "../stores/channels";
 import {
   addMessage,
@@ -41,6 +45,17 @@ import {
   mediaPlayback,
   selectedMediaId,
 } from "../stores/media";
+import {
+  setRadioStations,
+  addRadioStation,
+  removeRadioStation,
+  setRadioPlayback,
+  setRadioPlaylists,
+  addRadioPlaylist,
+  removeRadioPlaylist,
+  updatePlaylistTracks,
+  updateRadioPlaybackForStation,
+} from "../stores/radio";
 import { handleWebRTCOffer, handleWebRTCICE, joinVoice } from "./webrtc";
 import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./screenshare";
 import { playJoinSound, playLeaveSound } from "./sounds";
@@ -181,6 +196,20 @@ export function initEventHandlers() {
         setScreenShares(msg.d.screen_shares || []);
         setMediaList(msg.d.media_list || []);
         setMediaPlayback(msg.d.media_playback || null);
+        setDeletedChannels(msg.d.deleted_channels || []);
+        setRadioStations(msg.d.radio_stations || []);
+        setRadioPlaylists(msg.d.radio_playlists || []);
+        // Convert radio_playback object to our store format
+        {
+          const pb = msg.d.radio_playback || {};
+          const mapped: Record<string, any> = {};
+          for (const [sid, state] of Object.entries(pb)) {
+            if (state && !(state as any).stopped) {
+              mapped[sid] = state;
+            }
+          }
+          setRadioPlayback(mapped);
+        }
         // Auto-rejoin voice if we were in a channel before refresh
         {
           const savedChannel = sessionStorage.getItem("voice_channel");
@@ -236,11 +265,21 @@ export function initEventHandlers() {
       }
 
       case "channel_create":
-        addChannel(msg.d);
+        addChannel({ ...msg.d, manager_ids: msg.d.manager_ids || [] });
         break;
 
-      case "channel_delete":
+      case "channel_delete": {
+        // If admin, move to deleted channels list
+        const ch = channels().find((c) => c.id === msg.d.channel_id);
+        if (ch && currentUser()?.is_admin) {
+          setDeletedChannels((prev) => [...prev, ch]);
+        }
         removeChannel(msg.d.channel_id);
+        break;
+      }
+
+      case "channel_update":
+        updateChannel(msg.d.id, msg.d.name, msg.d.manager_ids || []);
         break;
 
       case "channel_reorder":
@@ -325,6 +364,34 @@ export function initEventHandlers() {
 
       case "media_playback":
         setMediaPlayback(msg.d || null);
+        break;
+
+      case "radio_station_create":
+        addRadioStation(msg.d);
+        break;
+
+      case "radio_station_delete":
+        removeRadioStation(msg.d.station_id);
+        break;
+
+      case "radio_playback":
+        if (msg.d && !msg.d.stopped) {
+          updateRadioPlaybackForStation(msg.d.station_id, msg.d);
+        } else if (msg.d) {
+          updateRadioPlaybackForStation(msg.d.station_id, null);
+        }
+        break;
+
+      case "radio_playlist_created":
+        addRadioPlaylist(msg.d);
+        break;
+
+      case "radio_playlist_deleted":
+        removeRadioPlaylist(msg.d.playlist_id);
+        break;
+
+      case "radio_playlist_tracks":
+        updatePlaylistTracks(msg.d.playlist_id, msg.d.tracks || []);
         break;
     }
   });

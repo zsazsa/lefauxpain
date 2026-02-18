@@ -117,6 +117,26 @@ type ChannelReorderPayload struct {
 	ChannelIDs []string `json:"channel_ids"`
 }
 
+type RenameChannelData struct {
+	ChannelID string `json:"channel_id"`
+	Name      string `json:"name"`
+}
+
+type RestoreChannelData struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type ChannelManagerData struct {
+	ChannelID string `json:"channel_id"`
+	UserID    string `json:"user_id"`
+}
+
+type ChannelUpdatePayload struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	ManagerIDs []string `json:"manager_ids"`
+}
+
 var mentionRegex = regexp.MustCompile(`<@([a-f0-9-]{36})>`)
 
 func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
@@ -394,6 +414,17 @@ func (h *Hub) handleTypingStart(c *Client, data json.RawMessage) {
 	h.BroadcastExcept(broadcast, c.UserID)
 }
 
+func (h *Hub) canManageChannel(c *Client, channelID string) bool {
+	if c.User.IsAdmin {
+		return true
+	}
+	isManager, err := h.DB.IsChannelManager(channelID, c.UserID)
+	if err != nil {
+		return false
+	}
+	return isManager
+}
+
 func (h *Hub) handleCreateChannel(c *Client, data json.RawMessage) {
 	var d CreateChannelData
 	if err := json.Unmarshal(data, &d); err != nil {
@@ -408,17 +439,18 @@ func (h *Hub) handleCreateChannel(c *Client, data json.RawMessage) {
 	}
 
 	chID := uuid.New().String()
-	ch, err := h.DB.CreateChannel(chID, d.Name, d.Type)
+	ch, err := h.DB.CreateChannel(chID, d.Name, d.Type, c.UserID)
 	if err != nil {
 		log.Printf("create channel: %v", err)
 		return
 	}
 
 	broadcast, _ := NewMessage("channel_create", ChannelPayload{
-		ID:       ch.ID,
-		Name:     ch.Name,
-		Type:     ch.Type,
-		Position: ch.Position,
+		ID:         ch.ID,
+		Name:       ch.Name,
+		Type:       ch.Type,
+		Position:   ch.Position,
+		ManagerIDs: []string{c.UserID},
 	})
 	h.BroadcastAll(broadcast)
 }
@@ -429,8 +461,24 @@ func (h *Hub) handleDeleteChannel(c *Client, data json.RawMessage) {
 		return
 	}
 
-	if !c.User.IsAdmin {
+	if !h.canManageChannel(c, d.ChannelID) {
 		return
+	}
+
+	// Kick all voice users and stop screen share if this is a voice channel
+	if h.SFU != nil {
+		if room := h.SFU.GetRoom(d.ChannelID); room != nil {
+			for _, userID := range room.PeerIDs() {
+				room.RemovePeer(userID)
+				vsMsg, _ := NewMessage("voice_state_update", VoiceStatePayload{
+					UserID:    userID,
+					ChannelID: "",
+				})
+				h.BroadcastAll(vsMsg)
+			}
+		}
+		// Stop screen share in this channel
+		h.SFU.StopScreenShare(d.ChannelID)
 	}
 
 	if err := h.DB.DeleteChannel(d.ChannelID); err != nil {
@@ -440,6 +488,141 @@ func (h *Hub) handleDeleteChannel(c *Client, data json.RawMessage) {
 
 	broadcast, _ := NewMessage("channel_delete", ChannelDeletePayload{
 		ChannelID: d.ChannelID,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleRenameChannel(c *Client, data json.RawMessage) {
+	var d RenameChannelData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	name := strings.TrimSpace(d.Name)
+	if name == "" || len(name) > 32 {
+		return
+	}
+
+	if !h.canManageChannel(c, d.ChannelID) {
+		return
+	}
+
+	if err := h.DB.RenameChannel(d.ChannelID, name); err != nil {
+		log.Printf("rename channel: %v", err)
+		return
+	}
+
+	managerIDs, _ := h.DB.GetChannelManagers(d.ChannelID)
+	if managerIDs == nil {
+		managerIDs = []string{}
+	}
+
+	broadcast, _ := NewMessage("channel_update", ChannelUpdatePayload{
+		ID:         d.ChannelID,
+		Name:       name,
+		ManagerIDs: managerIDs,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleRestoreChannel(c *Client, data json.RawMessage) {
+	var d RestoreChannelData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	if !c.User.IsAdmin {
+		return
+	}
+
+	if err := h.DB.RestoreChannel(d.ChannelID); err != nil {
+		log.Printf("restore channel: %v", err)
+		return
+	}
+
+	ch, err := h.DB.GetChannelByID(d.ChannelID)
+	if err != nil {
+		log.Printf("get restored channel: %v", err)
+		return
+	}
+
+	managerIDs, _ := h.DB.GetChannelManagers(d.ChannelID)
+	if managerIDs == nil {
+		managerIDs = []string{}
+	}
+
+	broadcast, _ := NewMessage("channel_create", ChannelPayload{
+		ID:         ch.ID,
+		Name:       ch.Name,
+		Type:       ch.Type,
+		Position:   ch.Position,
+		ManagerIDs: managerIDs,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleAddChannelManager(c *Client, data json.RawMessage) {
+	var d ChannelManagerData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	if !h.canManageChannel(c, d.ChannelID) {
+		return
+	}
+
+	if err := h.DB.AddChannelManager(d.ChannelID, d.UserID); err != nil {
+		log.Printf("add channel manager: %v", err)
+		return
+	}
+
+	managerIDs, _ := h.DB.GetChannelManagers(d.ChannelID)
+	if managerIDs == nil {
+		managerIDs = []string{}
+	}
+
+	ch, err := h.DB.GetChannelByID(d.ChannelID)
+	if err != nil {
+		return
+	}
+
+	broadcast, _ := NewMessage("channel_update", ChannelUpdatePayload{
+		ID:         d.ChannelID,
+		Name:       ch.Name,
+		ManagerIDs: managerIDs,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleRemoveChannelManager(c *Client, data json.RawMessage) {
+	var d ChannelManagerData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	if !h.canManageChannel(c, d.ChannelID) {
+		return
+	}
+
+	if err := h.DB.RemoveChannelManager(d.ChannelID, d.UserID); err != nil {
+		log.Printf("remove channel manager: %v", err)
+		return
+	}
+
+	managerIDs, _ := h.DB.GetChannelManagers(d.ChannelID)
+	if managerIDs == nil {
+		managerIDs = []string{}
+	}
+
+	ch, err := h.DB.GetChannelByID(d.ChannelID)
+	if err != nil {
+		return
+	}
+
+	broadcast, _ := NewMessage("channel_update", ChannelUpdatePayload{
+		ID:         d.ChannelID,
+		Name:       ch.Name,
+		ManagerIDs: managerIDs,
 	})
 	h.BroadcastAll(broadcast)
 }
@@ -898,6 +1081,448 @@ func (h *Hub) handleVoiceServerMute(c *Client, data json.RawMessage) {
 		SelfDeafen: vs.SelfDeafen,
 		ServerMute: vs.ServerMute,
 		Speaking:   vs.Speaking,
+	})
+	h.BroadcastAll(msg)
+}
+
+// --- Radio handlers ---
+
+type CreateRadioStationData struct {
+	Name string `json:"name"`
+}
+
+type DeleteRadioStationData struct {
+	StationID string `json:"station_id"`
+}
+
+type CreateRadioPlaylistData struct {
+	Name string `json:"name"`
+}
+
+type DeleteRadioPlaylistData struct {
+	PlaylistID string `json:"playlist_id"`
+}
+
+type ReorderRadioTracksData struct {
+	PlaylistID string   `json:"playlist_id"`
+	TrackIDs   []string `json:"track_ids"`
+}
+
+type RadioPlayData struct {
+	StationID  string `json:"station_id"`
+	PlaylistID string `json:"playlist_id"`
+}
+
+type RadioPauseData struct {
+	StationID string  `json:"station_id"`
+	Position  float64 `json:"position"`
+}
+
+type RadioSeekData struct {
+	StationID string  `json:"station_id"`
+	Position  float64 `json:"position"`
+}
+
+type RadioNextData struct {
+	StationID string `json:"station_id"`
+}
+
+type RadioStopData struct {
+	StationID string `json:"station_id"`
+}
+
+type RadioTrackEndedData struct {
+	StationID string `json:"station_id"`
+}
+
+func (h *Hub) handleCreateRadioStation(c *Client, data json.RawMessage) {
+	var d CreateRadioStationData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	name := strings.TrimSpace(d.Name)
+	if name == "" || len(name) > 32 {
+		return
+	}
+
+	stationID := uuid.New().String()
+	station, err := h.DB.CreateRadioStation(stationID, name, c.UserID)
+	if err != nil {
+		log.Printf("create radio station: %v", err)
+		return
+	}
+
+	broadcast, _ := NewMessage("radio_station_create", RadioStationPayload{
+		ID:        station.ID,
+		Name:      station.Name,
+		CreatedBy: station.CreatedBy,
+		Position:  station.Position,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleDeleteRadioStation(c *Client, data json.RawMessage) {
+	var d DeleteRadioStationData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	station, err := h.DB.GetRadioStationByID(d.StationID)
+	if err != nil || station == nil {
+		return
+	}
+
+	// Only creator or admin can delete
+	if (station.CreatedBy == nil || *station.CreatedBy != c.UserID) && !c.User.IsAdmin {
+		return
+	}
+
+	// Clear playback if active
+	h.ClearRadioPlayback(d.StationID)
+
+	if err := h.DB.DeleteRadioStation(d.StationID); err != nil {
+		log.Printf("delete radio station: %v", err)
+		return
+	}
+
+	broadcast, _ := NewMessage("radio_station_delete", map[string]string{"station_id": d.StationID})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleCreateRadioPlaylist(c *Client, data json.RawMessage) {
+	var d CreateRadioPlaylistData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	name := strings.TrimSpace(d.Name)
+	if name == "" || len(name) > 64 {
+		return
+	}
+
+	playlistID := uuid.New().String()
+	playlist, err := h.DB.CreateRadioPlaylist(playlistID, name, c.UserID)
+	if err != nil {
+		log.Printf("create radio playlist: %v", err)
+		return
+	}
+
+	reply, _ := NewMessage("radio_playlist_created", RadioPlaylistPayload{
+		ID:     playlist.ID,
+		Name:   playlist.Name,
+		UserID: playlist.UserID,
+		Tracks: []RadioTrackPayload{},
+	})
+	c.Send(reply)
+}
+
+func (h *Hub) handleDeleteRadioPlaylist(c *Client, data json.RawMessage) {
+	var d DeleteRadioPlaylistData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	playlist, err := h.DB.GetPlaylistByID(d.PlaylistID)
+	if err != nil || playlist.UserID != c.UserID {
+		return
+	}
+
+	// Stop any station playing this playlist
+	cleared := h.ClearRadioPlaybackByPlaylist(d.PlaylistID)
+	for _, sid := range cleared {
+		msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": sid, "stopped": true})
+		h.BroadcastAll(msg)
+	}
+
+	if err := h.DB.DeleteRadioPlaylist(d.PlaylistID); err != nil {
+		log.Printf("delete radio playlist: %v", err)
+		return
+	}
+
+	reply, _ := NewMessage("radio_playlist_deleted", map[string]string{"playlist_id": d.PlaylistID})
+	c.Send(reply)
+}
+
+func (h *Hub) handleReorderRadioTracks(c *Client, data json.RawMessage) {
+	var d ReorderRadioTracksData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	playlist, err := h.DB.GetPlaylistByID(d.PlaylistID)
+	if err != nil || playlist.UserID != c.UserID {
+		return
+	}
+
+	if err := h.DB.ReorderRadioTracks(d.PlaylistID, d.TrackIDs); err != nil {
+		log.Printf("reorder radio tracks: %v", err)
+		return
+	}
+
+	// Send updated track list back to sender
+	h.sendPlaylistTracks(c, d.PlaylistID)
+}
+
+func (h *Hub) sendPlaylistTracks(c *Client, playlistID string) {
+	tracks, err := h.DB.GetTracksByPlaylist(playlistID)
+	if err != nil {
+		return
+	}
+	trackPayloads := make([]RadioTrackPayload, len(tracks))
+	for i, t := range tracks {
+		trackPayloads[i] = RadioTrackPayload{
+			ID:       t.ID,
+			Filename: t.Filename,
+			URL:      "/" + strings.ReplaceAll(t.Path, "\\", "/"),
+			Duration: t.Duration,
+			Position: t.Position,
+		}
+	}
+	reply, _ := NewMessage("radio_playlist_tracks", map[string]interface{}{
+		"playlist_id": playlistID,
+		"tracks":      trackPayloads,
+	})
+	c.Send(reply)
+}
+
+func (h *Hub) buildTrackPayloads(playlistID string) []RadioTrackPayload {
+	tracks, err := h.DB.GetTracksByPlaylist(playlistID)
+	if err != nil {
+		return nil
+	}
+	payloads := make([]RadioTrackPayload, len(tracks))
+	for i, t := range tracks {
+		payloads[i] = RadioTrackPayload{
+			ID:       t.ID,
+			Filename: t.Filename,
+			URL:      "/" + strings.ReplaceAll(t.Path, "\\", "/"),
+			Duration: t.Duration,
+			Position: t.Position,
+		}
+	}
+	return payloads
+}
+
+func (h *Hub) handleRadioPlay(c *Client, data json.RawMessage) {
+	var d RadioPlayData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	// Verify station exists
+	_, err := h.DB.GetRadioStationByID(d.StationID)
+	if err != nil {
+		return
+	}
+
+	// Verify playlist exists and belongs to user
+	playlist, err := h.DB.GetPlaylistByID(d.PlaylistID)
+	if err != nil || playlist.UserID != c.UserID {
+		return
+	}
+
+	// Load tracks
+	trackPayloads := h.buildTrackPayloads(d.PlaylistID)
+	if len(trackPayloads) == 0 {
+		return
+	}
+
+	state := &RadioPlaybackState{
+		StationID:  d.StationID,
+		PlaylistID: d.PlaylistID,
+		TrackIndex: 0,
+		Playing:    true,
+		Position:   0,
+		UpdatedAt:  nowUnix(),
+		UserID:     c.UserID,
+		Tracks:     trackPayloads,
+	}
+	h.SetRadioPlayback(d.StationID, state)
+
+	msg, _ := NewMessage("radio_playback", &RadioPlaybackPayload{
+		StationID:  d.StationID,
+		PlaylistID: d.PlaylistID,
+		TrackIndex: 0,
+		Track:      trackPayloads[0],
+		Playing:    true,
+		Position:   0,
+		UpdatedAt:  state.UpdatedAt,
+		UserID:     c.UserID,
+	})
+	h.BroadcastAll(msg)
+}
+
+func (h *Hub) handleRadioPause(c *Client, data json.RawMessage) {
+	var d RadioPauseData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	state := h.GetRadioPlayback(d.StationID)
+	if state == nil || state.UserID != c.UserID {
+		return
+	}
+
+	h.radioMu.Lock()
+	state.Playing = false
+	state.Position = d.Position
+	state.UpdatedAt = nowUnix()
+	h.radioMu.Unlock()
+
+	var track RadioTrackPayload
+	if state.TrackIndex >= 0 && state.TrackIndex < len(state.Tracks) {
+		track = state.Tracks[state.TrackIndex]
+	}
+
+	msg, _ := NewMessage("radio_playback", &RadioPlaybackPayload{
+		StationID:  state.StationID,
+		PlaylistID: state.PlaylistID,
+		TrackIndex: state.TrackIndex,
+		Track:      track,
+		Playing:    false,
+		Position:   state.Position,
+		UpdatedAt:  state.UpdatedAt,
+		UserID:     state.UserID,
+	})
+	h.BroadcastAll(msg)
+}
+
+func (h *Hub) handleRadioSeek(c *Client, data json.RawMessage) {
+	var d RadioSeekData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	state := h.GetRadioPlayback(d.StationID)
+	if state == nil || state.UserID != c.UserID {
+		return
+	}
+
+	h.radioMu.Lock()
+	state.Position = d.Position
+	state.UpdatedAt = nowUnix()
+	h.radioMu.Unlock()
+
+	var track RadioTrackPayload
+	if state.TrackIndex >= 0 && state.TrackIndex < len(state.Tracks) {
+		track = state.Tracks[state.TrackIndex]
+	}
+
+	msg, _ := NewMessage("radio_playback", &RadioPlaybackPayload{
+		StationID:  state.StationID,
+		PlaylistID: state.PlaylistID,
+		TrackIndex: state.TrackIndex,
+		Track:      track,
+		Playing:    state.Playing,
+		Position:   state.Position,
+		UpdatedAt:  state.UpdatedAt,
+		UserID:     state.UserID,
+	})
+	h.BroadcastAll(msg)
+}
+
+func (h *Hub) handleRadioNext(c *Client, data json.RawMessage) {
+	var d RadioNextData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	state := h.GetRadioPlayback(d.StationID)
+	if state == nil || state.UserID != c.UserID {
+		return
+	}
+
+	h.radioMu.Lock()
+	nextIndex := state.TrackIndex + 1
+	if nextIndex >= len(state.Tracks) {
+		// Last track — stop
+		h.radioMu.Unlock()
+		h.ClearRadioPlayback(d.StationID)
+		msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": d.StationID, "stopped": true})
+		h.BroadcastAll(msg)
+		return
+	}
+	state.TrackIndex = nextIndex
+	state.Position = 0
+	state.Playing = true
+	state.UpdatedAt = nowUnix()
+	track := state.Tracks[nextIndex]
+	h.radioMu.Unlock()
+
+	msg, _ := NewMessage("radio_playback", &RadioPlaybackPayload{
+		StationID:  state.StationID,
+		PlaylistID: state.PlaylistID,
+		TrackIndex: nextIndex,
+		Track:      track,
+		Playing:    true,
+		Position:   0,
+		UpdatedAt:  state.UpdatedAt,
+		UserID:     state.UserID,
+	})
+	h.BroadcastAll(msg)
+}
+
+func (h *Hub) handleRadioStop(c *Client, data json.RawMessage) {
+	var d RadioStopData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	state := h.GetRadioPlayback(d.StationID)
+	if state == nil {
+		return
+	}
+
+	// Only controller or admin
+	if state.UserID != c.UserID && !c.User.IsAdmin {
+		return
+	}
+
+	h.ClearRadioPlayback(d.StationID)
+	msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": d.StationID, "stopped": true})
+	h.BroadcastAll(msg)
+}
+
+func (h *Hub) handleRadioTrackEnded(c *Client, data json.RawMessage) {
+	var d RadioTrackEndedData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	h.radioMu.Lock()
+	state := h.radioPlayback[d.StationID]
+	if state == nil {
+		h.radioMu.Unlock()
+		return
+	}
+
+	nextIndex := state.TrackIndex + 1
+	if nextIndex >= len(state.Tracks) {
+		// Last track — stop
+		delete(h.radioPlayback, d.StationID)
+		h.radioMu.Unlock()
+		msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": d.StationID, "stopped": true})
+		h.BroadcastAll(msg)
+		return
+	}
+
+	state.TrackIndex = nextIndex
+	state.Position = 0
+	state.Playing = true
+	state.UpdatedAt = nowUnix()
+	track := state.Tracks[nextIndex]
+	h.radioMu.Unlock()
+
+	msg, _ := NewMessage("radio_playback", &RadioPlaybackPayload{
+		StationID:  state.StationID,
+		PlaylistID: state.PlaylistID,
+		TrackIndex: nextIndex,
+		Track:      track,
+		Playing:    true,
+		Position:   0,
+		UpdatedAt:  state.UpdatedAt,
+		UserID:     state.UserID,
 	})
 	h.BroadcastAll(msg)
 }

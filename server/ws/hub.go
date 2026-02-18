@@ -19,6 +19,17 @@ type MediaPlaybackState struct {
 	UpdatedAt float64 // unix timestamp (seconds, fractional)
 }
 
+type RadioPlaybackState struct {
+	StationID  string
+	PlaylistID string
+	TrackIndex int
+	Playing    bool
+	Position   float64
+	UpdatedAt  float64
+	UserID     string
+	Tracks     []RadioTrackPayload // cached track list for the playlist
+}
+
 type Hub struct {
 	DB             *db.DB
 	SFU            *sfu.SFU
@@ -30,17 +41,20 @@ type Hub struct {
 	broadcast      chan []byte
 	mediaPlayback  *MediaPlaybackState
 	mediaMu        sync.RWMutex
+	radioPlayback  map[string]*RadioPlaybackState // stationID → state
+	radioMu        sync.RWMutex
 }
 
 func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
 	return &Hub{
-		DB:         database,
-		SFU:        sfuInstance,
-		DevMode:    devMode,
-		clients:    make(map[string]*Client),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan []byte, 256),
+		DB:            database,
+		SFU:           sfuInstance,
+		DevMode:       devMode,
+		clients:       make(map[string]*Client),
+		register:      make(chan *Client),
+		unregister:    make(chan *Client),
+		broadcast:     make(chan []byte, 256),
+		radioPlayback: make(map[string]*RadioPlaybackState),
 	}
 }
 
@@ -186,6 +200,61 @@ func (h *Hub) ClearMediaPlaybackIfVideo(videoID string) {
 	h.BroadcastAll(msg)
 }
 
+func (h *Hub) GetRadioPlayback(stationID string) *RadioPlaybackState {
+	h.radioMu.RLock()
+	defer h.radioMu.RUnlock()
+	return h.radioPlayback[stationID]
+}
+
+func (h *Hub) SetRadioPlayback(stationID string, state *RadioPlaybackState) {
+	h.radioMu.Lock()
+	h.radioPlayback[stationID] = state
+	h.radioMu.Unlock()
+}
+
+func (h *Hub) ClearRadioPlayback(stationID string) {
+	h.radioMu.Lock()
+	delete(h.radioPlayback, stationID)
+	h.radioMu.Unlock()
+}
+
+func (h *Hub) GetAllRadioPlayback() map[string]*RadioPlaybackPayload {
+	h.radioMu.RLock()
+	defer h.radioMu.RUnlock()
+	result := make(map[string]*RadioPlaybackPayload)
+	for sid, state := range h.radioPlayback {
+		var track RadioTrackPayload
+		if state.TrackIndex >= 0 && state.TrackIndex < len(state.Tracks) {
+			track = state.Tracks[state.TrackIndex]
+		}
+		result[sid] = &RadioPlaybackPayload{
+			StationID:  state.StationID,
+			PlaylistID: state.PlaylistID,
+			TrackIndex: state.TrackIndex,
+			Track:      track,
+			Playing:    state.Playing,
+			Position:   state.Position,
+			UpdatedAt:  state.UpdatedAt,
+			UserID:     state.UserID,
+		}
+	}
+	return result
+}
+
+// ClearRadioPlaybackByPlaylist stops any station playing a given playlist.
+func (h *Hub) ClearRadioPlaybackByPlaylist(playlistID string) []string {
+	h.radioMu.Lock()
+	var cleared []string
+	for sid, state := range h.radioPlayback {
+		if state.PlaylistID == playlistID {
+			delete(h.radioPlayback, sid)
+			cleared = append(cleared, sid)
+		}
+	}
+	h.radioMu.Unlock()
+	return cleared
+}
+
 func nowUnix() float64 {
 	return float64(time.Now().UnixMilli()) / 1000.0
 }
@@ -241,6 +310,14 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleDeleteChannel(client, msg.Data)
 	case "reorder_channels":
 		h.handleReorderChannels(client, msg.Data)
+	case "rename_channel":
+		h.handleRenameChannel(client, msg.Data)
+	case "restore_channel":
+		h.handleRestoreChannel(client, msg.Data)
+	case "add_channel_manager":
+		h.handleAddChannelManager(client, msg.Data)
+	case "remove_channel_manager":
+		h.handleRemoveChannelManager(client, msg.Data)
 	case "join_voice":
 		h.handleJoinVoice(client, msg.Data)
 	case "leave_voice":
@@ -281,6 +358,28 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleMediaSeek(client, msg.Data)
 	case "media_stop":
 		h.handleMediaStop(client)
+	case "create_radio_station":
+		h.handleCreateRadioStation(client, msg.Data)
+	case "delete_radio_station":
+		h.handleDeleteRadioStation(client, msg.Data)
+	case "create_radio_playlist":
+		h.handleCreateRadioPlaylist(client, msg.Data)
+	case "delete_radio_playlist":
+		h.handleDeleteRadioPlaylist(client, msg.Data)
+	case "reorder_radio_tracks":
+		h.handleReorderRadioTracks(client, msg.Data)
+	case "radio_play":
+		h.handleRadioPlay(client, msg.Data)
+	case "radio_pause":
+		h.handleRadioPause(client, msg.Data)
+	case "radio_seek":
+		h.handleRadioSeek(client, msg.Data)
+	case "radio_next":
+		h.handleRadioNext(client, msg.Data)
+	case "radio_stop":
+		h.handleRadioStop(client, msg.Data)
+	case "radio_track_ended":
+		h.handleRadioTrackEnded(client, msg.Data)
 	case "ping":
 		pong, _ := NewMessage("pong", nil)
 		client.Send(pong)

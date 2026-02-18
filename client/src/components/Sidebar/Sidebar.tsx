@@ -22,6 +22,8 @@ import CreateChannel from "./CreateChannel";
 import VoiceControls from "../VoiceChannel/VoiceControls";
 import NotificationDropdown from "../Notifications/NotificationDropdown";
 import { t } from "../../stores/theme";
+import { isAppletEnabled } from "../../stores/applets";
+import RadioSidebar from "./RadioSidebar";
 
 interface SidebarProps {
   onLogout: () => void;
@@ -31,6 +33,11 @@ interface SidebarProps {
 export default function Sidebar(props: SidebarProps) {
   const voiceChannels = () => channels().filter((c) => c.type === "voice");
   const textChannels = () => channels().filter((c) => c.type === "text");
+  const canManage = (ch: { manager_ids: string[] }) => {
+    const user = currentUser();
+    if (!user) return false;
+    return user.is_admin || ch.manager_ids.includes(user.id);
+  };
   const [notifOpen, setNotifOpen] = createSignal(false);
   const [shaking, setShaking] = createSignal(false);
   let headerRef: HTMLDivElement | undefined;
@@ -174,6 +181,7 @@ export default function Sidebar(props: SidebarProps) {
                 <ChannelItem
                   channel={ch}
                   selected={selectedChannelId() === ch.id}
+                  canManage={canManage(ch)}
                   onClick={() => {
                     setSelectedChannelId(ch.id);
                     if (currentVoiceChannelId() !== ch.id) {
@@ -256,6 +264,7 @@ export default function Sidebar(props: SidebarProps) {
               <ChannelItem
                 channel={ch}
                 selected={selectedChannelId() === ch.id}
+                canManage={canManage(ch)}
                 onClick={() => {
                   setSelectedChannelId(ch.id);
                   if (isMobile()) setSidebarOpen(false);
@@ -268,7 +277,7 @@ export default function Sidebar(props: SidebarProps) {
         <CreateChannel />
 
         {/* Media library */}
-        <Show when={mediaList().length > 0}>
+        <Show when={isAppletEnabled("media") && mediaList().length > 0}>
           <div
             style={{
               padding: "8px 16px 4px",
@@ -338,6 +347,11 @@ export default function Sidebar(props: SidebarProps) {
               );
             }}
           </For>
+        </Show>
+
+        {/* Radio stations */}
+        <Show when={isAppletEnabled("radio")}>
+          <RadioSidebar />
         </Show>
 
         {/* Online users */}

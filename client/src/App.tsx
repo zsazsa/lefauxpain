@@ -18,7 +18,9 @@ import {
 } from "./stores/channels";
 import { watchingScreenShare } from "./stores/voice";
 import { watchingMedia, selectedMediaId } from "./stores/media";
+import { tunedStationId } from "./stores/radio";
 import MediaPlayer from "./components/MediaPlayer/MediaPlayer";
+import RadioPlayer from "./components/RadioPlayer/RadioPlayer";
 import Lightbox from "./components/Lightbox";
 import { isMobile, sidebarOpen, setSidebarOpen, initResponsive } from "./stores/responsive";
 import { startUpdateChecker } from "./stores/updateChecker";
@@ -192,6 +194,10 @@ function App() {
           {/* Floating PiP media player */}
           <Show when={watchingMedia() && selectedMediaId()}>
             <MediaPlayer />
+          </Show>
+          {/* Floating radio player */}
+          <Show when={tunedStationId()}>
+            <RadioPlayer />
           </Show>
           {() => {
             const watching = watchingScreenShare();

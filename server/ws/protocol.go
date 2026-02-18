@@ -26,7 +26,11 @@ type ReadyData struct {
 	Notifications  []NotificationPayload  `json:"notifications"`
 	ScreenShares   []sfu.ScreenShareState `json:"screen_shares"`
 	MediaList      []MediaItemPayload     `json:"media_list"`
-	MediaPlayback  *MediaPlaybackPayload  `json:"media_playback"`
+	MediaPlayback   *MediaPlaybackPayload             `json:"media_playback"`
+	DeletedChannels []ChannelPayload                  `json:"deleted_channels,omitempty"`
+	RadioStations   []RadioStationPayload             `json:"radio_stations"`
+	RadioPlayback   map[string]*RadioPlaybackPayload  `json:"radio_playback"`
+	RadioPlaylists  []RadioPlaylistPayload            `json:"radio_playlists"`
 }
 
 type MediaItemPayload struct {
@@ -65,10 +69,11 @@ type UserPayload struct {
 }
 
 type ChannelPayload struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Position int    `json:"position"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Type       string   `json:"type"`
+	Position   int      `json:"position"`
+	ManagerIDs []string `json:"manager_ids"`
 }
 
 type VoiceStatePayload struct {
@@ -87,6 +92,41 @@ type UserOnlineData struct {
 
 type UserOfflineData struct {
 	UserID string `json:"user_id"`
+}
+
+// Radio payload types
+
+type RadioStationPayload struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	CreatedBy *string `json:"created_by"`
+	Position  int     `json:"position"`
+}
+
+type RadioPlaylistPayload struct {
+	ID     string              `json:"id"`
+	Name   string              `json:"name"`
+	UserID string              `json:"user_id"`
+	Tracks []RadioTrackPayload `json:"tracks"`
+}
+
+type RadioTrackPayload struct {
+	ID       string  `json:"id"`
+	Filename string  `json:"filename"`
+	URL      string  `json:"url"`
+	Duration float64 `json:"duration"`
+	Position int     `json:"position"`
+}
+
+type RadioPlaybackPayload struct {
+	StationID  string           `json:"station_id"`
+	PlaylistID string           `json:"playlist_id"`
+	TrackIndex int              `json:"track_index"`
+	Track      RadioTrackPayload `json:"track"`
+	Playing    bool             `json:"playing"`
+	Position   float64          `json:"position"`
+	UpdatedAt  float64          `json:"updated_at"`
+	UserID     string           `json:"user_id"`
 }
 
 func NewMessage(op string, data any) ([]byte, error) {

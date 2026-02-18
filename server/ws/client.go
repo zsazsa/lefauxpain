@@ -139,13 +139,36 @@ func (c *Client) sendReady() error {
 		return err
 	}
 
+	// Get all channel managers in one query
+	allManagers, _ := c.hub.DB.GetAllChannelManagers()
+
 	channelPayloads := make([]ChannelPayload, len(channels))
 	for i, ch := range channels {
+		mgrs := allManagers[ch.ID]
+		if mgrs == nil {
+			mgrs = []string{}
+		}
 		channelPayloads[i] = ChannelPayload{
-			ID:       ch.ID,
-			Name:     ch.Name,
-			Type:     ch.Type,
-			Position: ch.Position,
+			ID:         ch.ID,
+			Name:       ch.Name,
+			Type:       ch.Type,
+			Position:   ch.Position,
+			ManagerIDs: mgrs,
+		}
+	}
+
+	// Get deleted channels for admin users
+	var deletedChannelPayloads []ChannelPayload
+	if c.User.IsAdmin {
+		deletedChannels, _ := c.hub.DB.GetDeletedChannels()
+		for _, ch := range deletedChannels {
+			deletedChannelPayloads = append(deletedChannelPayloads, ChannelPayload{
+				ID:         ch.ID,
+				Name:       ch.Name,
+				Type:       ch.Type,
+				Position:   ch.Position,
+				ManagerIDs: []string{},
+			})
 		}
 	}
 
@@ -225,6 +248,44 @@ func (c *Client) sendReady() error {
 	// Get current media playback state
 	mediaPlayback := c.hub.GetMediaPlayback()
 
+	// Get radio stations
+	dbStations, _ := c.hub.DB.GetAllRadioStations()
+	stationPayloads := make([]RadioStationPayload, len(dbStations))
+	for i, s := range dbStations {
+		stationPayloads[i] = RadioStationPayload{
+			ID:        s.ID,
+			Name:      s.Name,
+			CreatedBy: s.CreatedBy,
+			Position:  s.Position,
+		}
+	}
+
+	// Get radio playback states
+	radioPlayback := c.hub.GetAllRadioPlayback()
+
+	// Get current user's radio playlists with tracks
+	dbPlaylists, _ := c.hub.DB.GetPlaylistsByUser(c.UserID)
+	playlistPayloads := make([]RadioPlaylistPayload, len(dbPlaylists))
+	for i, p := range dbPlaylists {
+		dbTracks, _ := c.hub.DB.GetTracksByPlaylist(p.ID)
+		trackPayloads := make([]RadioTrackPayload, len(dbTracks))
+		for j, t := range dbTracks {
+			trackPayloads[j] = RadioTrackPayload{
+				ID:       t.ID,
+				Filename: t.Filename,
+				URL:      "/" + strings.ReplaceAll(t.Path, "\\", "/"),
+				Duration: t.Duration,
+				Position: t.Position,
+			}
+		}
+		playlistPayloads[i] = RadioPlaylistPayload{
+			ID:     p.ID,
+			Name:   p.Name,
+			UserID: p.UserID,
+			Tracks: trackPayloads,
+		}
+	}
+
 	msg, err := NewMessage("ready", ReadyData{
 		User: &UserPayload{
 			ID:          c.User.ID,
@@ -232,14 +293,18 @@ func (c *Client) sendReady() error {
 			IsAdmin:     c.User.IsAdmin,
 			HasPassword: c.User.PasswordHash != nil,
 		},
-		Channels:      channelPayloads,
-		VoiceStates:   voiceStates,
-		OnlineUsers:   onlineUsers,
-		AllUsers:      allUsers,
-		Notifications: notifPayloads,
-		ScreenShares:  screenShares,
-		MediaList:     mediaPayloads,
-		MediaPlayback: mediaPlayback,
+		Channels:        channelPayloads,
+		VoiceStates:     voiceStates,
+		OnlineUsers:     onlineUsers,
+		AllUsers:        allUsers,
+		Notifications:   notifPayloads,
+		ScreenShares:    screenShares,
+		MediaList:       mediaPayloads,
+		MediaPlayback:   mediaPlayback,
+		DeletedChannels: deletedChannelPayloads,
+		RadioStations:   stationPayloads,
+		RadioPlayback:   radioPlayback,
+		RadioPlaylists:  playlistPayloads,
 	})
 	if err != nil {
 		return err

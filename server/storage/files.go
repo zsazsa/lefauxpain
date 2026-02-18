@@ -29,6 +29,16 @@ var videoMIME = map[string]string{
 	"video/webm": ".webm",
 }
 
+var audioMIME = map[string]string{
+	"audio/mpeg": ".mp3",
+	"audio/ogg":  ".ogg",
+	"audio/wav":  ".wav",
+	"audio/flac": ".flac",
+	"audio/mp4":  ".m4a",
+	"audio/x-m4a": ".m4a",
+	"audio/aac":  ".aac",
+}
+
 type FileStore struct {
 	DataDir string
 }
@@ -194,6 +204,57 @@ func (fs *FileStore) StoreVideo(file multipart.File, mimeType string) (string, e
 	}
 
 	tmpFile, err := os.CreateTemp("", "video-*")
+	if err != nil {
+		return "", fmt.Errorf("create temp: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tmpFile, hasher), file); err != nil {
+		return "", fmt.Errorf("copy file: %w", err)
+	}
+
+	hash := fmt.Sprintf("%x", hasher.Sum(nil))
+
+	relDir := filepath.Join("uploads", hash[:2], hash[2:4])
+	absDir := filepath.Join(fs.DataDir, relDir)
+	if err := os.MkdirAll(absDir, 0755); err != nil {
+		return "", fmt.Errorf("create upload dir: %w", err)
+	}
+
+	relPath := filepath.Join(relDir, hash+ext)
+	absPath := filepath.Join(fs.DataDir, relPath)
+
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		tmpFile.Seek(0, 0)
+		dst, err := os.Create(absPath)
+		if err != nil {
+			return "", fmt.Errorf("create file: %w", err)
+		}
+		if _, err := io.Copy(dst, tmpFile); err != nil {
+			dst.Close()
+			return "", fmt.Errorf("write file: %w", err)
+		}
+		dst.Close()
+	}
+
+	return relPath, nil
+}
+
+func (fs *FileStore) IsAudioMIME(mime string) bool {
+	_, ok := audioMIME[mime]
+	return ok
+}
+
+// StoreAudio stores an audio file using hash-based deduplication.
+func (fs *FileStore) StoreAudio(file multipart.File, mimeType string) (string, error) {
+	ext, ok := audioMIME[mimeType]
+	if !ok {
+		return "", fmt.Errorf("unsupported audio MIME type: %s", mimeType)
+	}
+
+	tmpFile, err := os.CreateTemp("", "audio-*")
 	if err != nil {
 		return "", fmt.Errorf("create temp: %w", err)
 	}

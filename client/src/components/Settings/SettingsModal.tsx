@@ -19,6 +19,9 @@ import {
   checkForUpdates, downloadAndInstall, relaunchApp, appVersion,
 } from "../../stores/updateChecker";
 import { theme, setTheme, themes, t, ThemeId } from "../../stores/theme";
+import { deletedChannels } from "../../stores/channels";
+import { send } from "../../lib/ws";
+import { APPLETS, isAppletEnabled, toggleApplet } from "../../stores/applets";
 
 type PwDevice = { id: string; name: string; default: boolean };
 type AdminUser = {
@@ -535,6 +538,31 @@ export default function SettingsModal() {
                     <option value="english-green">{themes["english-green"].name}</option>
                   </optgroup>
                 </select>
+
+                <div style={{ ...sectionHeaderStyle, "margin-top": "20px" }}>Sidebar Applets</div>
+                <For each={APPLETS}>
+                  {(applet) => (
+                    <label
+                      style={{
+                        display: "flex",
+                        "align-items": "center",
+                        gap: "8px",
+                        padding: "6px 0",
+                        "font-size": "12px",
+                        color: "var(--text-primary)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isAppletEnabled(applet.id)}
+                        onChange={() => toggleApplet(applet.id)}
+                        style={{ "accent-color": "var(--accent)" }}
+                      />
+                      {applet.name}
+                    </label>
+                  )}
+                </For>
               </Show>
 
               {/* Audio tab */}
@@ -1029,6 +1057,50 @@ export default function SettingsModal() {
                     );
                   }}
                 </For>
+
+                {/* Archived Channels */}
+                <Show when={deletedChannels().length > 0}>
+                  <div style={{ ...sectionHeaderStyle, "margin-top": "20px" }}>Archived Channels</div>
+                  <For each={deletedChannels()}>
+                    {(ch) => (
+                      <div
+                        style={{
+                          display: "flex",
+                          "align-items": "center",
+                          "justify-content": "space-between",
+                          padding: "6px 0",
+                          "border-bottom": "1px solid rgba(201,168,76,0.1)",
+                        }}
+                      >
+                        <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+                          <span style={{
+                            "font-size": "14px",
+                            color: ch.type === "voice" ? "var(--success)" : "var(--accent)",
+                          }}>
+                            {ch.type === "voice" ? "\u23E3" : "#"}
+                          </span>
+                          <span style={{ "font-size": "12px", color: "var(--text-secondary)" }}>
+                            {ch.name}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            send("restore_channel", { channel_id: ch.id });
+                          }}
+                          style={{
+                            "font-size": "11px",
+                            padding: "2px 6px",
+                            color: "var(--success)",
+                            border: "1px solid var(--success)",
+                            "background-color": "transparent",
+                          }}
+                        >
+                          [restore]
+                        </button>
+                      </div>
+                    )}
+                  </For>
+                </Show>
               </Show>
 
               {/* App tab (desktop only) */}

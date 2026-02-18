@@ -5,12 +5,14 @@ export type Channel = {
   name: string;
   type: "voice" | "text";
   position: number;
+  manager_ids: string[];
 };
 
 const [channels, setChannels] = createSignal<Channel[]>([]);
 const [selectedChannelId, _setSelectedChannelId] = createSignal<string | null>(
   localStorage.getItem("selectedChannelId")
 );
+const [deletedChannels, setDeletedChannels] = createSignal<Channel[]>([]);
 
 function setSelectedChannelId(id: string | null) {
   _setSelectedChannelId(id);
@@ -21,14 +23,16 @@ function setSelectedChannelId(id: string | null) {
   }
 }
 
-export { channels, selectedChannelId, setSelectedChannelId };
+export { channels, selectedChannelId, setSelectedChannelId, deletedChannels, setDeletedChannels };
 
 export function setChannelList(chs: Channel[]) {
   setChannels(chs.sort((a, b) => a.position - b.position));
 }
 
 export function addChannel(ch: Channel) {
-  setChannels((prev) => [...prev, ch].sort((a, b) => a.position - b.position));
+  // Also remove from deleted list if restoring
+  setDeletedChannels((prev) => prev.filter((c) => c.id !== ch.id));
+  setChannels((prev) => [...prev.filter((c) => c.id !== ch.id), ch].sort((a, b) => a.position - b.position));
 }
 
 export function removeChannel(id: string) {
@@ -36,6 +40,12 @@ export function removeChannel(id: string) {
   if (selectedChannelId() === id) {
     setSelectedChannelId(null);
   }
+}
+
+export function updateChannel(id: string, name: string, managerIds: string[]) {
+  setChannels((prev) =>
+    prev.map((c) => (c.id === id ? { ...c, name, manager_ids: managerIds } : c))
+  );
 }
 
 export function reorderChannelList(ids: string[]) {

@@ -80,6 +80,12 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 		adminHandler.DeleteUser(w, r)
 	}))
 
+	// Radio track upload/delete (authenticated + rate limited)
+	radioHandler := &RadioHandler{DB: database, Store: store, Hub: hub}
+	radioRL := NewIPRateLimiter(5, 30*time.Second)
+	mux.HandleFunc("/api/v1/radio/playlists/", radioRL.Wrap(authMW.Wrap(radioHandler.UploadTrack)))
+	mux.HandleFunc("/api/v1/radio/tracks/", authMW.Wrap(radioHandler.DeleteTrack))
+
 	// Audio device management (authenticated)
 	audioHandler := &AudioHandler{}
 	mux.HandleFunc("/api/v1/audio/devices", authMW.Wrap(audioHandler.ListDevices))
