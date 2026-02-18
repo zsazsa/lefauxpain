@@ -93,6 +93,10 @@ func (h *RadioHandler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 	if d := r.FormValue("duration"); d != "" {
 		duration, _ = strconv.ParseFloat(d, 64)
 	}
+	// Server-side fallback: parse duration from file if client didn't provide it
+	if duration <= 0 {
+		duration = h.Store.GetAudioDuration(relPath, mimeType)
+	}
 
 	trackID := uuid.New().String()
 	track := &db.RadioTrack{
