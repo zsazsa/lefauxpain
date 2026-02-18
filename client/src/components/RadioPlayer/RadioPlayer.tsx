@@ -7,6 +7,7 @@ import {
   tunedStationId,
   setTunedStationId,
   getStationPlayback,
+  getStationListeners,
   updatePlaylistTracks,
   type RadioPlayback,
   type RadioPlaylist,
@@ -20,6 +21,9 @@ export default function RadioPlayer() {
   let audioRef: HTMLAudioElement | undefined;
   let containerRef: HTMLDivElement | undefined;
   let ignoreEvents = false;
+  const [currentTime, setCurrentTime] = createSignal(0);
+  const [scrubbing, setScrubbing] = createSignal(false);
+  const [autoplayBlocked, setAutoplayBlocked] = createSignal(false);
 
   const [pos, setPos] = createSignal({ x: 16, y: 60 });
   const [size, setSize] = createSignal({ w: 360, h: 420 });
@@ -30,6 +34,14 @@ export default function RadioPlayer() {
   const [creatingPlaylist, setCreatingPlaylist] = createSignal(false);
   const [newPlaylistName, setNewPlaylistName] = createSignal("");
   const [uploading, setUploading] = createSignal(false);
+  const [openPlaylists, setOpenPlaylists] = createSignal<Set<string>>(new Set());
+  const togglePlaylist = (id: string) => {
+    setOpenPlaylists((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
   let dragOffset = { x: 0, y: 0 };
   let resizeStart = { x: 0, y: 0, w: 0, h: 0 };
 
@@ -39,14 +51,29 @@ export default function RadioPlayer() {
     const sid = stationId();
     return sid ? getStationPlayback(sid) : null;
   };
-  const isController = () => {
-    const p = pb();
-    return p && p.user_id === currentUser()?.id;
-  };
+  const isMyPlaylist = (pl: RadioPlaylist) => pl.user_id === currentUser()?.id;
+  const myPlaylists = () => radioPlaylists().filter((p) => isMyPlaylist(p));
+  const otherPlaylists = () => radioPlaylists().filter((p) => !isMyPlaylist(p));
   const djName = () => {
     const p = pb();
     return p ? lookupUsername(p.user_id) || "DJ" : null;
   };
+
+  const listeners = () => {
+    const sid = stationId();
+    return sid ? getStationListeners(sid) : [];
+  };
+
+  // Send tune/untune to server when station changes
+  createEffect(() => {
+    const sid = stationId();
+    if (sid) {
+      send("radio_tune", { station_id: sid });
+    } else {
+      send("radio_untune", {});
+    }
+  });
+  onCleanup(() => send("radio_untune", {}));
 
   // --- Drag ---
   const onDragDown = (e: PointerEvent) => {
@@ -92,6 +119,51 @@ export default function RadioPlayer() {
 
   const interacting = () => dragging() || resizing();
 
+  // --- Progress tracking ---
+  let rafId = 0;
+  const tickProgress = () => {
+    if (audioRef && !scrubbing()) setCurrentTime(audioRef.currentTime);
+    rafId = requestAnimationFrame(tickProgress);
+  };
+  rafId = requestAnimationFrame(tickProgress);
+  onCleanup(() => cancelAnimationFrame(rafId));
+
+  const trackDuration = () => pb()?.track?.duration || 0;
+  const progress = () => {
+    const dur = trackDuration();
+    return dur > 0 ? Math.min(currentTime() / dur, 1) : 0;
+  };
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  const seekFromBar = (e: MouseEvent, bar: HTMLElement) => {
+    const rect = bar.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const dur = trackDuration();
+    if (dur > 0 && audioRef) {
+      audioRef.currentTime = frac * dur;
+      setCurrentTime(frac * dur);
+    }
+  };
+
+  const handleBarDown = (e: MouseEvent) => {
+    const bar = e.currentTarget as HTMLElement;
+    setScrubbing(true);
+    seekFromBar(e, bar);
+    const onMove = (ev: MouseEvent) => seekFromBar(ev, bar);
+    const onUp = () => {
+      setScrubbing(false);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   // --- Audio sync ---
   createEffect(() => {
     const audio = audioRef;
@@ -122,7 +194,11 @@ export default function RadioPlayer() {
 
     if (p.playing && audio.paused) {
       ignoreEvents = true;
-      audio.play().catch(() => {}).finally(() => { ignoreEvents = false; });
+      audio.play().then(() => {
+        setAutoplayBlocked(false);
+      }).catch(() => {
+        setAutoplayBlocked(true);
+      }).finally(() => { ignoreEvents = false; });
     } else if (!p.playing && !audio.paused) {
       ignoreEvents = true;
       audio.pause();
@@ -140,18 +216,19 @@ export default function RadioPlayer() {
   };
 
   const handlePause = () => {
-    if (ignoreEvents || !audioRef || !isController()) return;
+    if (ignoreEvents || !audioRef) return;
     const sid = stationId();
     if (sid) send("radio_pause", { station_id: sid, position: audioRef.currentTime });
   };
 
   const handlePlay = () => {
-    if (ignoreEvents || !audioRef || !isController()) return;
-    // If no playback state exists, don't send — user should use play button
+    if (ignoreEvents || !audioRef) return;
+    const sid = stationId();
+    if (sid && pb()) send("radio_resume", { station_id: sid });
   };
 
   const handleSeeked = () => {
-    if (ignoreEvents || !audioRef || !isController()) return;
+    if (ignoreEvents || !audioRef) return;
     const sid = stationId();
     if (sid) send("radio_seek", { station_id: sid, position: audioRef.currentTime });
   };
@@ -165,15 +242,13 @@ export default function RadioPlayer() {
 
   const handleResumeBtn = () => {
     const sid = stationId();
-    const p = pb();
-    if (!sid || !p) return;
-    // Re-play the same playlist from current position
-    send("radio_seek", { station_id: sid, position: p.position });
-    // Actually we need to unpause — send a play with the same playlist
-    // The simplest approach: send radio_play again (restarts from beginning)
-    // Better: add a resume op. For now, toggle playing via seek + position update.
-    // Let's just change the pause state via the server
-    send("radio_pause", { station_id: sid, position: p.position });
+    if (!sid || !pb()) return;
+    send("radio_resume", { station_id: sid });
+  };
+
+  const handleSkip = (delta: number) => {
+    if (!audioRef) return;
+    audioRef.currentTime = Math.max(0, audioRef.currentTime + delta);
   };
 
   const handleNext = () => {
@@ -354,22 +429,79 @@ export default function RadioPlayer() {
               DJ: {djName()}
             </div>
 
-            {/* Controls — only for controller */}
-            <Show when={isController()}>
-              <div style={{ display: "flex", gap: "4px", "margin-top": "6px" }}>
-                <Show when={pb()!.playing}>
-                  <button onClick={handlePauseBtn} style={controlBtnStyle}>
-                    [pause]
-                  </button>
-                </Show>
-                <button onClick={handleNext} style={controlBtnStyle}>
-                  [next]
-                </button>
-                <button onClick={handleStop} style={{ ...controlBtnStyle, color: "var(--danger)", "border-color": "var(--danger)" }}>
-                  [stop]
-                </button>
-              </div>
+            <Show when={autoplayBlocked()}>
+              <button
+                onClick={() => {
+                  if (audioRef) {
+                    audioRef.play().then(() => setAutoplayBlocked(false)).catch(() => {});
+                  }
+                }}
+                style={{
+                  "margin-top": "6px",
+                  width: "100%",
+                  padding: "4px 8px",
+                  "font-size": "11px",
+                  color: "var(--accent)",
+                  border: "1px solid var(--accent)",
+                  "background-color": "var(--bg-primary)",
+                  cursor: "pointer",
+                }}
+              >
+                [click to listen]
+              </button>
             </Show>
+
+            {/* Progress bar */}
+            <div style={{ "margin-top": "6px" }}>
+              <div
+                onMouseDown={handleBarDown}
+                style={{
+                  height: "6px",
+                  "background-color": "var(--bg-primary)",
+                  border: "1px solid rgba(201,168,76,0.3)",
+                  cursor: "pointer",
+                  position: "relative",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${progress() * 100}%`,
+                    "background-color": "var(--accent)",
+                    transition: scrubbing() ? "none" : "width 0.3s linear",
+                  }}
+                />
+              </div>
+              <div style={{ display: "flex", "justify-content": "space-between", "margin-top": "2px" }}>
+                <span style={{ "font-size": "9px", color: "var(--text-muted)" }}>{formatTime(currentTime())}</span>
+                <span style={{ "font-size": "9px", color: "var(--text-muted)" }}>{formatTime(trackDuration())}</span>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div style={{ display: "flex", gap: "4px", "margin-top": "6px", "align-items": "center" }}>
+              <button onClick={() => handleSkip(-10)} style={controlBtnStyle} title="Back 10s">
+                [&lt;&lt;10]
+              </button>
+              <Show when={pb()!.playing} fallback={
+                <button onClick={handleResumeBtn} style={controlBtnStyle}>
+                  [play]
+                </button>
+              }>
+                <button onClick={handlePauseBtn} style={controlBtnStyle}>
+                  [pause]
+                </button>
+              </Show>
+              <button onClick={() => handleSkip(10)} style={controlBtnStyle} title="Forward 10s">
+                [10&gt;&gt;]
+              </button>
+              <button onClick={handleNext} style={controlBtnStyle} title="Next track">
+                [next]
+              </button>
+              <button onClick={handleStop} style={{ ...controlBtnStyle, color: "var(--danger)", "border-color": "var(--danger)" }} title="Stop">
+                [stop]
+              </button>
+            </div>
           </div>
         </Show>
 
@@ -389,7 +521,7 @@ export default function RadioPlayer() {
           style={{ display: "none" }}
         />
 
-        {/* Playlist section */}
+        {/* My Playlists section */}
         <div style={{ padding: "6px 10px" }}>
           <div
             onClick={() => setPlaylistOpen((v) => !v)}
@@ -437,11 +569,14 @@ export default function RadioPlayer() {
               </div>
             </Show>
 
-            <For each={radioPlaylists()}>
+            <For each={myPlaylists()}>
               {(playlist) => (
                 <PlaylistSection
                   playlist={playlist}
                   stationId={stationId()!}
+                  editable={true}
+                  open={openPlaylists().has(playlist.id)}
+                  onToggle={() => togglePlaylist(playlist.id)}
                   onPlay={() => handlePlayOnStation(playlist.id)}
                   onUpload={() => handleUploadTrack(playlist.id)}
                   onDeleteTrack={(trackId) => handleDeleteTrack(playlist.id, trackId)}
@@ -451,13 +586,69 @@ export default function RadioPlayer() {
               )}
             </For>
 
-            <Show when={radioPlaylists().length === 0 && !creatingPlaylist()}>
+            <Show when={myPlaylists().length === 0 && !creatingPlaylist()}>
               <div style={{ "font-size": "11px", color: "var(--text-muted)", "font-style": "italic", padding: "4px 0" }}>
                 No playlists yet — click + to create one
               </div>
             </Show>
           </Show>
         </div>
+
+        {/* Others' Playlists section */}
+        <Show when={otherPlaylists().length > 0}>
+          <div style={{ padding: "6px 10px" }}>
+            <div
+              style={{
+                "font-family": "var(--font-display)",
+                "font-size": "11px",
+                "font-weight": "600",
+                "text-transform": "uppercase",
+                "letter-spacing": "1px",
+                color: "var(--text-muted)",
+                "margin-bottom": "4px",
+              }}
+            >
+              Others' Playlists
+            </div>
+
+            <For each={otherPlaylists()}>
+              {(playlist) => (
+                <PlaylistSection
+                  playlist={playlist}
+                  stationId={stationId()!}
+                  editable={false}
+                  open={openPlaylists().has(playlist.id)}
+                  onToggle={() => togglePlaylist(playlist.id)}
+                  onPlay={() => handlePlayOnStation(playlist.id)}
+                  onUpload={() => {}}
+                  onDeleteTrack={() => {}}
+                  onDelete={() => {}}
+                  uploading={false}
+                  ownerName={lookupUsername(playlist.user_id)}
+                />
+              )}
+            </For>
+          </div>
+        </Show>
+
+        {/* Listeners */}
+        <Show when={listeners().length > 0}>
+          <div style={{ padding: "6px 10px", "border-top": "1px solid rgba(201,168,76,0.15)" }}>
+            <div style={{
+              "font-size": "10px",
+              "font-weight": "600",
+              "text-transform": "uppercase",
+              "letter-spacing": "1px",
+              color: "var(--text-muted)",
+              "margin-bottom": "3px",
+            }}>
+              Listeners ({listeners().length})
+            </div>
+            <div style={{ "font-size": "11px", color: "var(--text-secondary)" }}>
+              {listeners().map((uid) => lookupUsername(uid) || uid).join(", ")}
+            </div>
+          </div>
+        </Show>
 
         {/* Resize handle */}
         {!expanded() && (
@@ -490,19 +681,21 @@ export default function RadioPlayer() {
 function PlaylistSection(props: {
   playlist: RadioPlaylist;
   stationId: string;
+  editable: boolean;
+  open: boolean;
+  onToggle: () => void;
   onPlay: () => void;
   onUpload: () => void;
   onDeleteTrack: (trackId: string) => void;
   onDelete: () => void;
   uploading: boolean;
+  ownerName?: string;
 }) {
-  const [open, setOpen] = createSignal(false);
-
   return (
     <div style={{ "margin-bottom": "4px", "border-bottom": "1px solid rgba(201,168,76,0.1)", "padding-bottom": "4px" }}>
       <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between" }}>
         <span
-          onClick={() => setOpen((v) => !v)}
+          onClick={props.onToggle}
           style={{
             "font-size": "12px",
             color: "var(--text-secondary)",
@@ -514,8 +707,11 @@ function PlaylistSection(props: {
             "white-space": "nowrap",
           }}
         >
-          {open() ? "\u25BC" : "\u25B6"} {props.playlist.name}
+          {props.open ? "\u25BC" : "\u25B6"} {props.playlist.name}
           <span style={{ color: "var(--text-muted)", "font-size": "10px" }}> ({props.playlist.tracks.length})</span>
+          {props.ownerName && (
+            <span style={{ color: "var(--text-muted)", "font-size": "10px" }}> — {props.ownerName}</span>
+          )}
         </span>
         <div style={{ display: "flex", gap: "2px", "flex-shrink": "0" }}>
           <Show when={props.playlist.tracks.length > 0}>
@@ -527,25 +723,27 @@ function PlaylistSection(props: {
               [play]
             </button>
           </Show>
-          <button
-            onClick={props.onUpload}
-            disabled={props.uploading}
-            style={{ "font-size": "10px", color: "var(--accent)", padding: "1px 4px", opacity: props.uploading ? "0.5" : "1" }}
-            title="Upload tracks"
-          >
-            {props.uploading ? "[...]" : "[+]"}
-          </button>
-          <button
-            onClick={props.onDelete}
-            style={{ "font-size": "10px", color: "var(--danger)", padding: "1px 4px" }}
-            title="Delete playlist"
-          >
-            [x]
-          </button>
+          <Show when={props.editable}>
+            <button
+              onClick={props.onUpload}
+              disabled={props.uploading}
+              style={{ "font-size": "10px", color: "var(--accent)", padding: "1px 4px", opacity: props.uploading ? "0.5" : "1" }}
+              title="Upload tracks"
+            >
+              {props.uploading ? "[...]" : "[+]"}
+            </button>
+            <button
+              onClick={props.onDelete}
+              style={{ "font-size": "10px", color: "var(--danger)", padding: "1px 4px" }}
+              title="Delete playlist"
+            >
+              [x]
+            </button>
+          </Show>
         </div>
       </div>
 
-      <Show when={open()}>
+      <Show when={props.open}>
         <div style={{ "padding-left": "12px" }}>
           <For each={props.playlist.tracks}>
             {(track, i) => (
@@ -571,18 +769,20 @@ function PlaylistSection(props: {
                 >
                   {i() + 1}. {track.filename}
                 </span>
-                <button
-                  onClick={() => props.onDeleteTrack(track.id)}
-                  style={{ "font-size": "9px", color: "var(--text-muted)", padding: "0 3px", "flex-shrink": "0" }}
-                >
-                  [x]
-                </button>
+                <Show when={props.editable}>
+                  <button
+                    onClick={() => props.onDeleteTrack(track.id)}
+                    style={{ "font-size": "9px", color: "var(--text-muted)", padding: "0 3px", "flex-shrink": "0" }}
+                  >
+                    [x]
+                  </button>
+                </Show>
               </div>
             )}
           </For>
           <Show when={props.playlist.tracks.length === 0}>
             <div style={{ "font-size": "10px", color: "var(--text-muted)", "font-style": "italic", padding: "2px 0" }}>
-              Empty — upload tracks with [+]
+              {props.editable ? "Empty — upload tracks with [+]" : "Empty playlist"}
             </div>
           </Show>
         </div>

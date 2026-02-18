@@ -31,6 +31,7 @@ type ReadyData struct {
 	RadioStations   []RadioStationPayload             `json:"radio_stations"`
 	RadioPlayback   map[string]*RadioPlaybackPayload  `json:"radio_playback"`
 	RadioPlaylists  []RadioPlaylistPayload            `json:"radio_playlists"`
+	RadioListeners  map[string][]string               `json:"radio_listeners"`
 }
 
 type MediaItemPayload struct {

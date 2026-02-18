@@ -52,10 +52,13 @@ import {
   removeRadioStation,
   setRadioPlayback,
   setRadioPlaylists,
+  setRadioListeners,
   addRadioPlaylist,
   removeRadioPlaylist,
   updatePlaylistTracks,
   updateRadioPlaybackForStation,
+  updateRadioListeners,
+  tunedStationId,
 } from "../stores/radio";
 import { handleWebRTCOffer, handleWebRTCICE, joinVoice } from "./webrtc";
 import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./screenshare";
@@ -210,6 +213,12 @@ export function initEventHandlers() {
             }
           }
           setRadioPlayback(mapped);
+        }
+        setRadioListeners(msg.d.radio_listeners || {});
+        // Re-send tune if we were already tuned (e.g. after reconnect)
+        {
+          const sid = tunedStationId();
+          if (sid) send("radio_tune", { station_id: sid });
         }
         // Auto-rejoin voice if we were in a channel before refresh
         {
@@ -397,6 +406,10 @@ export function initEventHandlers() {
 
       case "radio_playlist_tracks":
         updatePlaylistTracks(msg.d.playlist_id, msg.d.tracks || []);
+        break;
+
+      case "radio_listeners":
+        updateRadioListeners(msg.d.station_id, msg.d.user_ids || []);
         break;
     }
   });

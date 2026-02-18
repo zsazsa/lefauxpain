@@ -130,9 +130,28 @@ export async function deleteMedia(id: string) {
   return request(`/media/${id}`, { method: "DELETE" });
 }
 
+function getAudioDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    audio.addEventListener("loadedmetadata", () => {
+      const dur = isFinite(audio.duration) ? audio.duration : 0;
+      URL.revokeObjectURL(url);
+      resolve(dur);
+    });
+    audio.addEventListener("error", () => {
+      URL.revokeObjectURL(url);
+      resolve(0);
+    });
+    audio.src = url;
+  });
+}
+
 export async function uploadRadioTrack(playlistId: string, file: File) {
+  const duration = await getAudioDuration(file);
   const form = new FormData();
   form.append("file", file);
+  form.append("duration", duration.toString());
   const token = getToken();
   const res = await fetch(`${BASE}/radio/playlists/${playlistId}/tracks`, {
     method: "POST",

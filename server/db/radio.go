@@ -108,6 +108,29 @@ func (d *DB) DeleteRadioPlaylist(id string) error {
 	return err
 }
 
+func (d *DB) GetAllPlaylists() ([]RadioPlaylist, error) {
+	rows, err := d.Query(
+		`SELECT id, name, user_id, created_at FROM radio_playlists ORDER BY created_at`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get all playlists: %w", err)
+	}
+	defer rows.Close()
+
+	var playlists []RadioPlaylist
+	for rows.Next() {
+		var p RadioPlaylist
+		if err := rows.Scan(&p.ID, &p.Name, &p.UserID, &p.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan playlist: %w", err)
+		}
+		playlists = append(playlists, p)
+	}
+	if playlists == nil {
+		playlists = []RadioPlaylist{}
+	}
+	return playlists, rows.Err()
+}
+
 func (d *DB) GetPlaylistsByUser(userID string) ([]RadioPlaylist, error) {
 	rows, err := d.Query(
 		`SELECT id, name, user_id, created_at FROM radio_playlists WHERE user_id = ? ORDER BY created_at`,

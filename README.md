@@ -1,5 +1,7 @@
 # Le Faux Pain
 
+> If you believe you've found a security issue in Le Faux Pain, please [report it privately](https://github.com/zsazsa/lefauxpain/security/advisories/new).
+
 Self-hostable voice and text chat — like Discord, but yours. One Go binary, one SQLite database, no external services required.
 
 <a href="docs/screenshot02.png"><img src="docs/screenshot02.png" alt="Screenshot" width="600"></a>

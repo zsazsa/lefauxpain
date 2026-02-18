@@ -36,7 +36,18 @@ export type RadioPlayback = {
 const [radioStations, setRadioStations] = createSignal<RadioStation[]>([]);
 const [radioPlayback, setRadioPlayback] = createSignal<Record<string, RadioPlayback>>({});
 const [radioPlaylists, setRadioPlaylists] = createSignal<RadioPlaylist[]>([]);
-const [tunedStationId, setTunedStationId] = createSignal<string | null>(null);
+const [radioListeners, setRadioListeners] = createSignal<Record<string, string[]>>({});
+const [tunedStationId, _setTunedStationId] = createSignal<string | null>(
+  sessionStorage.getItem("radio_station")
+);
+const setTunedStationId = (id: string | null) => {
+  _setTunedStationId(id);
+  if (id) {
+    sessionStorage.setItem("radio_station", id);
+  } else {
+    sessionStorage.removeItem("radio_station");
+  }
+};
 
 export {
   radioStations,
@@ -45,6 +56,8 @@ export {
   setRadioPlayback,
   radioPlaylists,
   setRadioPlaylists,
+  radioListeners,
+  setRadioListeners,
   tunedStationId,
   setTunedStationId,
 };
@@ -89,4 +102,12 @@ export function updateRadioPlaybackForStation(stationId: string, pb: RadioPlayba
 
 export function getStationPlayback(stationId: string): RadioPlayback | null {
   return radioPlayback()[stationId] || null;
+}
+
+export function updateRadioListeners(stationId: string, userIds: string[]) {
+  setRadioListeners((prev) => ({ ...prev, [stationId]: userIds }));
+}
+
+export function getStationListeners(stationId: string): string[] {
+  return radioListeners()[stationId] || [];
 }

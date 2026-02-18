@@ -263,8 +263,11 @@ func (c *Client) sendReady() error {
 	// Get radio playback states
 	radioPlayback := c.hub.GetAllRadioPlayback()
 
-	// Get current user's radio playlists with tracks
-	dbPlaylists, _ := c.hub.DB.GetPlaylistsByUser(c.UserID)
+	// Get radio listeners
+	radioListeners := c.hub.GetAllRadioListeners()
+
+	// Get all radio playlists with tracks
+	dbPlaylists, _ := c.hub.DB.GetAllPlaylists()
 	playlistPayloads := make([]RadioPlaylistPayload, len(dbPlaylists))
 	for i, p := range dbPlaylists {
 		dbTracks, _ := c.hub.DB.GetTracksByPlaylist(p.ID)
@@ -305,6 +308,7 @@ func (c *Client) sendReady() error {
 		RadioStations:   stationPayloads,
 		RadioPlayback:   radioPlayback,
 		RadioPlaylists:  playlistPayloads,
+		RadioListeners:  radioListeners,
 	})
 	if err != nil {
 		return err

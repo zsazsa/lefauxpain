@@ -3,6 +3,7 @@ package api
 import (
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -88,6 +89,11 @@ func (h *RadioHandler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var duration float64
+	if d := r.FormValue("duration"); d != "" {
+		duration, _ = strconv.ParseFloat(d, 64)
+	}
+
 	trackID := uuid.New().String()
 	track := &db.RadioTrack{
 		ID:         trackID,
@@ -96,6 +102,7 @@ func (h *RadioHandler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 		Path:       relPath,
 		MimeType:   mimeType,
 		SizeBytes:  header.Size,
+		Duration:   duration,
 	}
 
 	if err := h.DB.CreateRadioTrack(track); err != nil {

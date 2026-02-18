@@ -1216,7 +1216,7 @@ func (h *Hub) handleCreateRadioPlaylist(c *Client, data json.RawMessage) {
 		UserID: playlist.UserID,
 		Tracks: []RadioTrackPayload{},
 	})
-	c.Send(reply)
+	h.BroadcastAll(reply)
 }
 
 func (h *Hub) handleDeleteRadioPlaylist(c *Client, data json.RawMessage) {
@@ -1243,7 +1243,7 @@ func (h *Hub) handleDeleteRadioPlaylist(c *Client, data json.RawMessage) {
 	}
 
 	reply, _ := NewMessage("radio_playlist_deleted", map[string]string{"playlist_id": d.PlaylistID})
-	c.Send(reply)
+	h.BroadcastAll(reply)
 }
 
 func (h *Hub) handleReorderRadioTracks(c *Client, data json.RawMessage) {
@@ -1285,7 +1285,7 @@ func (h *Hub) sendPlaylistTracks(c *Client, playlistID string) {
 		"playlist_id": playlistID,
 		"tracks":      trackPayloads,
 	})
-	c.Send(reply)
+	h.BroadcastAll(reply)
 }
 
 func (h *Hub) buildTrackPayloads(playlistID string) []RadioTrackPayload {
@@ -1318,9 +1318,9 @@ func (h *Hub) handleRadioPlay(c *Client, data json.RawMessage) {
 		return
 	}
 
-	// Verify playlist exists and belongs to user
+	// Verify playlist exists
 	playlist, err := h.DB.GetPlaylistByID(d.PlaylistID)
-	if err != nil || playlist.UserID != c.UserID {
+	if err != nil || playlist == nil {
 		return
 	}
 
@@ -1362,7 +1362,7 @@ func (h *Hub) handleRadioPause(c *Client, data json.RawMessage) {
 	}
 
 	state := h.GetRadioPlayback(d.StationID)
-	if state == nil || state.UserID != c.UserID {
+	if state == nil {
 		return
 	}
 
@@ -1390,6 +1390,42 @@ func (h *Hub) handleRadioPause(c *Client, data json.RawMessage) {
 	h.BroadcastAll(msg)
 }
 
+func (h *Hub) handleRadioResume(c *Client, data json.RawMessage) {
+	var d struct {
+		StationID string `json:"station_id"`
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	state := h.GetRadioPlayback(d.StationID)
+	if state == nil {
+		return
+	}
+
+	h.radioMu.Lock()
+	state.Playing = true
+	state.UpdatedAt = nowUnix()
+	h.radioMu.Unlock()
+
+	var track RadioTrackPayload
+	if state.TrackIndex >= 0 && state.TrackIndex < len(state.Tracks) {
+		track = state.Tracks[state.TrackIndex]
+	}
+
+	msg, _ := NewMessage("radio_playback", &RadioPlaybackPayload{
+		StationID:  state.StationID,
+		PlaylistID: state.PlaylistID,
+		TrackIndex: state.TrackIndex,
+		Track:      track,
+		Playing:    true,
+		Position:   state.Position,
+		UpdatedAt:  state.UpdatedAt,
+		UserID:     state.UserID,
+	})
+	h.BroadcastAll(msg)
+}
+
 func (h *Hub) handleRadioSeek(c *Client, data json.RawMessage) {
 	var d RadioSeekData
 	if err := json.Unmarshal(data, &d); err != nil {
@@ -1397,7 +1433,7 @@ func (h *Hub) handleRadioSeek(c *Client, data json.RawMessage) {
 	}
 
 	state := h.GetRadioPlayback(d.StationID)
-	if state == nil || state.UserID != c.UserID {
+	if state == nil {
 		return
 	}
 
@@ -1431,7 +1467,7 @@ func (h *Hub) handleRadioNext(c *Client, data json.RawMessage) {
 	}
 
 	state := h.GetRadioPlayback(d.StationID)
-	if state == nil || state.UserID != c.UserID {
+	if state == nil {
 		return
 	}
 
@@ -1476,10 +1512,7 @@ func (h *Hub) handleRadioStop(c *Client, data json.RawMessage) {
 		return
 	}
 
-	// Only controller or admin
-	if state.UserID != c.UserID && !c.User.IsAdmin {
-		return
-	}
+	// Anyone can stop
 
 	h.ClearRadioPlayback(d.StationID)
 	msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": d.StationID, "stopped": true})
@@ -1527,6 +1560,22 @@ func (h *Hub) handleRadioTrackEnded(c *Client, data json.RawMessage) {
 		UserID:     state.UserID,
 	})
 	h.BroadcastAll(msg)
+}
+
+func (h *Hub) handleRadioTune(c *Client, data json.RawMessage) {
+	var d struct {
+		StationID string `json:"station_id"`
+	}
+	if err := json.Unmarshal(data, &d); err != nil || d.StationID == "" {
+		return
+	}
+	h.SetRadioListener(c.UserID, d.StationID)
+	h.broadcastRadioListeners(d.StationID)
+}
+
+func (h *Hub) handleRadioUntune(c *Client) {
+	// Find which station they were on and broadcast the update
+	h.removeRadioListener(c.UserID)
 }
 
 // --- Media playback handlers ---

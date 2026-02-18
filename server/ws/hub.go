@@ -43,6 +43,8 @@ type Hub struct {
 	mediaMu        sync.RWMutex
 	radioPlayback  map[string]*RadioPlaybackState // stationID → state
 	radioMu        sync.RWMutex
+	radioListeners map[string]map[string]bool // stationID → set of userIDs
+	radioListMu    sync.RWMutex
 }
 
 func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
@@ -54,7 +56,8 @@ func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
 		register:      make(chan *Client),
 		unregister:    make(chan *Client),
 		broadcast:     make(chan []byte, 256),
-		radioPlayback: make(map[string]*RadioPlaybackState),
+		radioPlayback:  make(map[string]*RadioPlaybackState),
+		radioListeners: make(map[string]map[string]bool),
 	}
 }
 
@@ -109,6 +112,9 @@ func (h *Hub) Run() {
 					h.BroadcastAll(vsMsg)
 				}
 			}
+
+			// Remove from radio listeners
+			h.removeRadioListener(client.UserID)
 
 			// Broadcast user_offline
 			msg, err := NewMessage("user_offline", UserOfflineData{
@@ -255,6 +261,80 @@ func (h *Hub) ClearRadioPlaybackByPlaylist(playlistID string) []string {
 	return cleared
 }
 
+// --- Radio listeners ---
+
+func (h *Hub) SetRadioListener(userID, stationID string) {
+	h.radioListMu.Lock()
+	// Remove from any previous station
+	for sid, users := range h.radioListeners {
+		if users[userID] {
+			delete(users, userID)
+			if len(users) == 0 {
+				delete(h.radioListeners, sid)
+			}
+		}
+	}
+	// Add to new station
+	if stationID != "" {
+		if h.radioListeners[stationID] == nil {
+			h.radioListeners[stationID] = make(map[string]bool)
+		}
+		h.radioListeners[stationID][userID] = true
+	}
+	h.radioListMu.Unlock()
+}
+
+func (h *Hub) removeRadioListener(userID string) {
+	h.radioListMu.Lock()
+	for sid, users := range h.radioListeners {
+		if users[userID] {
+			delete(users, userID)
+			if len(users) == 0 {
+				delete(h.radioListeners, sid)
+			}
+			// Broadcast updated listeners for this station
+			h.radioListMu.Unlock()
+			h.broadcastRadioListeners(sid)
+			return
+		}
+	}
+	h.radioListMu.Unlock()
+}
+
+func (h *Hub) GetRadioListeners(stationID string) []string {
+	h.radioListMu.RLock()
+	defer h.radioListMu.RUnlock()
+	users := h.radioListeners[stationID]
+	result := make([]string, 0, len(users))
+	for uid := range users {
+		result = append(result, uid)
+	}
+	return result
+}
+
+func (h *Hub) GetAllRadioListeners() map[string][]string {
+	h.radioListMu.RLock()
+	defer h.radioListMu.RUnlock()
+	result := make(map[string][]string)
+	for sid, users := range h.radioListeners {
+		list := make([]string, 0, len(users))
+		for uid := range users {
+			list = append(list, uid)
+		}
+		result[sid] = list
+	}
+	return result
+}
+
+func (h *Hub) broadcastRadioListeners(stationID string) {
+	listeners := h.GetRadioListeners(stationID)
+	msg, _ := NewMessage("radio_listeners", map[string]any{
+		"station_id": stationID,
+		"user_ids":   listeners,
+	})
+	h.BroadcastAll(msg)
+}
+
 func nowUnix() float64 {
 	return float64(time.Now().UnixMilli()) / 1000.0
 }
@@ -372,6 +452,8 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleRadioPlay(client, msg.Data)
 	case "radio_pause":
 		h.handleRadioPause(client, msg.Data)
+	case "radio_resume":
+		h.handleRadioResume(client, msg.Data)
 	case "radio_seek":
 		h.handleRadioSeek(client, msg.Data)
 	case "radio_next":
@@ -380,6 +462,10 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleRadioStop(client, msg.Data)
 	case "radio_track_ended":
 		h.handleRadioTrackEnded(client, msg.Data)
+	case "radio_tune":
+		h.handleRadioTune(client, msg.Data)
+	case "radio_untune":
+		h.handleRadioUntune(client)
 	case "ping":
 		pong, _ := NewMessage("pong", nil)
 		client.Send(pong)
