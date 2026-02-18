@@ -533,18 +533,8 @@ export default function RadioPlayer() {
           </div>
         </Show>
 
-        {/* Right: buttons — always same order, conditionally visible */}
+        {/* Right: buttons — extra buttons before arrow+close so arrow stays in place */}
         <div style={{ display: "flex", gap: "2px", "flex-shrink": "0" }}>
-          <button
-            onClick={() => {
-              if (minimized()) { setMinimized(false); }
-              else { setMinimized(true); setExpanded(false); }
-            }}
-            style={{ padding: "1px 5px", "font-size": "10px", color: "var(--text-muted)" }}
-            title={minimized() ? "Expand" : "Minimize"}
-          >
-            {minimized() ? "\u25BC" : "\u25B2"}
-          </button>
           <Show when={!minimized()}>
             <button
               onClick={() => setExpanded((v) => !v)}
@@ -562,6 +552,16 @@ export default function RadioPlayer() {
               </button>
             </Show>
           </Show>
+          <button
+            onClick={() => {
+              if (minimized()) { setMinimized(false); }
+              else { setMinimized(true); setExpanded(false); }
+            }}
+            style={{ padding: "1px 5px", "font-size": "10px", color: "var(--text-muted)" }}
+            title={minimized() ? "Expand" : "Minimize"}
+          >
+            {minimized() ? "\u25BC" : "\u25B2"}
+          </button>
           <button
             onClick={handleClose}
             style={{ padding: "1px 5px", "font-size": "10px", color: "var(--text-muted)" }}
@@ -598,12 +598,35 @@ export default function RadioPlayer() {
               </Show>
             </div>
           }>
-            <canvas
-              ref={eqCanvasRef}
-              width={320}
-              height={28}
-              style={{ width: "100%", height: "28px", display: "block" }}
-            />
+            <Show when={autoplayBlocked()} fallback={
+              <canvas
+                ref={eqCanvasRef}
+                width={320}
+                height={28}
+                style={{ width: "100%", height: "28px", display: "block" }}
+              />
+            }>
+              <div style={{ display: "flex", "align-items": "center", "justify-content": "center", height: "28px" }}>
+                <button
+                  onClick={() => {
+                    if (audioRef) {
+                      ensureAnalyser();
+                      audioRef.play().then(() => setAutoplayBlocked(false)).catch(() => {});
+                    }
+                  }}
+                  style={{
+                    "font-size": "10px",
+                    color: "var(--accent)",
+                    border: "1px solid var(--accent)",
+                    "background-color": "transparent",
+                    cursor: "pointer",
+                    padding: "2px 10px",
+                  }}
+                >
+                  [click to listen]
+                </button>
+              </div>
+            </Show>
           </Show>
         </div>
       </Show>
