@@ -344,6 +344,23 @@ export function toggleMute(): boolean {
 }
 let desktopMuted = false;
 
+// Temporarily mute/unmute the channel mic (for mic test in settings)
+let preMuteState: boolean | null = null;
+
+export function muteChannelMic() {
+  if (!localStream) return;
+  const tracks = localStream.getAudioTracks();
+  if (tracks.length === 0) return;
+  preMuteState = tracks[0].enabled;
+  tracks.forEach((t) => (t.enabled = false));
+}
+
+export function unmuteChannelMic() {
+  if (!localStream || preMuteState === null) return;
+  localStream.getAudioTracks().forEach((t) => (t.enabled = preMuteState!));
+  preMuteState = null;
+}
+
 export function toggleDeafen(deafened: boolean) {
   if (isDesktop && desktopVoiceActive) {
     tauriInvoke("voice_set_deafen", { deafened }).catch(() => {});

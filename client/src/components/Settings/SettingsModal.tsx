@@ -9,6 +9,7 @@ import {
 } from "../../stores/settings";
 import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop, isTauri } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
+import { muteChannelMic, unmuteChannelMic } from "../../lib/webrtc";
 import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, approveUser } from "../../lib/api";
 import { currentUser } from "../../stores/auth";
 import { allUsers, removeAllUser } from "../../stores/users";
@@ -227,6 +228,7 @@ export default function SettingsModal() {
   };
 
   const startTest = async () => {
+    muteChannelMic();
     const s = settings();
     const audioConstraint = (s.inputDeviceId && !isDesktop)
       ? { deviceId: { exact: s.inputDeviceId } } as MediaTrackConstraints
@@ -234,6 +236,7 @@ export default function SettingsModal() {
     try {
       testStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint });
     } catch {
+      unmuteChannelMic();
       return;
     }
 
@@ -316,6 +319,7 @@ export default function SettingsModal() {
       playCtx.close();
       if (testCtx === playCtx) testCtx = null;
       setTestPhase("idle");
+      unmuteChannelMic();
     };
     bufSource.start();
   };
@@ -329,6 +333,7 @@ export default function SettingsModal() {
     if (testCtx) { testCtx.close(); testCtx = null; }
     setMicLevel(0);
     setTestPhase("idle");
+    unmuteChannelMic();
   };
 
   const tabs = (): { id: Tab; label: string }[] => {
