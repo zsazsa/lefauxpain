@@ -2,9 +2,80 @@
 
 Self-hostable voice and text chat — like Discord, but yours. One Go binary, one SQLite database, no external services required.
 
-Text channels with replies, reactions, mentions, and image uploads. Voice channels powered by a built-in WebRTC SFU (Pion). Works in any browser. Optional native desktop client via Tauri.
-
 <a href="docs/screenshot02.png"><img src="docs/screenshot02.png" alt="Screenshot" width="600"></a>
+
+## Features
+
+### Text Chat
+- Channels with real-time messaging via WebSocket
+- Replies, emoji reactions, @mentions (with notifications)
+- File/image uploads with thumbnails and attachment previews
+- Image lightbox viewer
+- Typing indicators
+- Message editing and soft delete
+- Cursor-based pagination for message history
+
+### Voice Chat
+- Built-in WebRTC SFU (Pion) — no external TURN/media servers
+- Per-user mute, deafen, and server mute (admin)
+- Speaking detection with visual indicators
+- Join/leave sounds
+- 128kbps Opus audio
+
+### Screen Sharing
+- Browser-based screen sharing via WebRTC
+- Desktop (Tauri) screen sharing via PipeWire capture
+- H.264 encoding with hardware acceleration: NVENC (NVIDIA), VAAPI (Intel/AMD), openh264 (software fallback)
+- MJPEG local preview
+- Live viewer support — watch any user's screen share from the sidebar
+
+### Media Library
+- Drag-and-drop video uploads (mp4, webm)
+- Synchronized video playback — everyone watches together in sync
+- Floating draggable/resizable player panel
+- Play/pause/seek controls broadcast to all viewers
+
+### Radio Stations
+- Create shared radio stations visible to all users
+- Personal playlists with audio track uploads (mp3, ogg, wav, flac, m4a)
+- Synchronized audio playback — tune in and hear the same thing as everyone else
+- Playlist owner controls playback (pause, skip, stop)
+- Auto-advances through playlist, stops after last track
+- Floating radio player panel with playlist management
+
+### Applet System
+- Sidebar sections (Media Library, Radio Stations) are optional applets
+- Toggle applets on/off in Settings > Display
+- Preferences stored in localStorage per user
+
+### Admin & Users
+- Admin approval system ("Knock Knock") — new users can send a message when registering
+- Admin panel: approve/reject users, promote/demote admins, set passwords, delete accounts
+- Archived (soft-deleted) channels with restore option
+- Channel managers — per-channel permissions for rename/delete
+
+### Theme System
+- Multiple color themes (gold, cyan, green) with French and English language options
+- French Royal Cyberpunk terminal aesthetic
+
+### Desktop Client (Tauri)
+- Native app for Windows, macOS, and Linux
+- Server selector — connect to any Le Faux Pain instance
+- Native Rust voice engine (bypasses webkit2gtk WebRTC limitations)
+- Audio device enumeration via PipeWire or platform APIs
+- Auto-update via Tauri updater plugin
+- Custom titlebar and system tray integration
+
+### Mobile
+- Responsive sidebar drawer for mobile browsers
+- Touch-friendly controls
+
+### Security
+- MIME type detection on uploads (no extension trust)
+- Per-IP rate limiting on auth and upload endpoints
+- WebSocket per-user rate limiting (30 msg/sec)
+- Server read/write timeouts
+- Token-based authentication
 
 ## Quick Start (Self-Hosting)
 
@@ -136,11 +207,11 @@ The frontend runs on `:5173` with HMR. The Go server on `:8080` proxies frontend
                       └──────────────────────────────┘
 ```
 
-- **Backend** (`server/`): Go, SQLite, WebSocket hub, Pion WebRTC SFU
+- **Backend** (`server/`): Go 1.24, SQLite (WAL mode, single writer), WebSocket hub, Pion WebRTC SFU
 - **Frontend** (`client/`): SolidJS + TypeScript + Vite
-- **Desktop** (`desktop/`): Tauri v2 thin client (native webview window)
+- **Desktop** (`desktop/`): Tauri v2 with native Rust voice engine (webrtc-rs, cpal, Opus)
 
-Single WebSocket connection per user. All real-time events (messages, voice state, presence) go through the WebSocket. File uploads go through REST, then get linked to messages via WebSocket.
+Single WebSocket connection per user. All real-time events (messages, voice state, presence, media/radio playback) go through the WebSocket. File uploads go through REST, then get linked via WebSocket. In-memory state (media playback, radio playback, voice states) is held in the Hub; persistent data lives in SQLite.
 
 ## License
 
