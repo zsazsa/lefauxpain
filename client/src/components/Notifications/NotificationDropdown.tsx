@@ -1,10 +1,11 @@
 import { For, Show, onMount, onCleanup } from "solid-js";
-import { notifications, unreadCount, markRead, markAllRead } from "../../stores/notifications";
+import { notifications, unreadCount, markRead, markAllRead, type Notification } from "../../stores/notifications";
 import { setSelectedChannelId } from "../../stores/channels";
 import { setScrollToMessageId } from "../../stores/messages";
 import { send } from "../../lib/ws";
 import { lookupUsername } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
+import { setSettingsOpen, setSettingsTab } from "../../stores/settings";
 import { t } from "../../stores/theme";
 
 interface NotificationDropdownProps {
@@ -52,15 +53,20 @@ export default function NotificationDropdown(props: NotificationDropdownProps) {
     return { top: rect.bottom + "px", left: rect.left + "px" };
   };
 
-  const handleClick = (notif: typeof notifications extends () => (infer T)[] ? T : never) => {
+  const handleClick = (notif: Notification) => {
     // Mark as read
     if (!notif.read) {
       markRead(notif.id);
       send("mark_notification_read", { id: notif.id });
     }
-    // Navigate to channel + message
-    setSelectedChannelId(notif.channel_id);
-    setScrollToMessageId(notif.message_id);
+
+    if (notif.type === "pending_user") {
+      setSettingsTab("admin");
+      setSettingsOpen(true);
+    } else if (notif.data.channel_id && notif.data.message_id) {
+      setSelectedChannelId(notif.data.channel_id);
+      setScrollToMessageId(notif.data.message_id);
+    }
     props.onClose();
   };
 
@@ -172,31 +178,48 @@ export default function NotificationDropdown(props: NotificationDropdownProps) {
                 (e.currentTarget.style.backgroundColor = "transparent")
               }
             >
-              <div
-                style={{
-                  "font-size": "12px",
-                  color: "var(--text-primary)",
-                  "line-height": "1.4",
-                }}
-              >
-                <span style={{ color: "var(--cyan)" }}>@{notif.author.username}</span>{" "}
-                <span style={{ color: "var(--text-muted)" }}>
-                  mentioned you in{" "}
-                </span>
-                <span style={{ color: "var(--accent)" }}>#{notif.channel_name}</span>
-              </div>
-              <Show when={notif.content_preview}>
+              <Show when={notif.type === "pending_user"} fallback={
+                <>
+                  <div
+                    style={{
+                      "font-size": "12px",
+                      color: "var(--text-primary)",
+                      "line-height": "1.4",
+                    }}
+                  >
+                    <span style={{ color: "var(--cyan)" }}>@{notif.data.author_username}</span>{" "}
+                    <span style={{ color: "var(--text-muted)" }}>
+                      mentioned you in{" "}
+                    </span>
+                    <span style={{ color: "var(--accent)" }}>#{notif.data.channel_name}</span>
+                  </div>
+                  <Show when={notif.data.content_preview}>
+                    <div
+                      style={{
+                        "font-size": "11px",
+                        color: "var(--text-muted)",
+                        "margin-top": "2px",
+                        overflow: "hidden",
+                        "text-overflow": "ellipsis",
+                        "white-space": "nowrap",
+                      }}
+                    >
+                      {resolveMentions(notif.data.content_preview)}
+                    </div>
+                  </Show>
+                </>
+              }>
                 <div
                   style={{
-                    "font-size": "11px",
-                    color: "var(--text-muted)",
-                    "margin-top": "2px",
-                    overflow: "hidden",
-                    "text-overflow": "ellipsis",
-                    "white-space": "nowrap",
+                    "font-size": "12px",
+                    color: "var(--text-primary)",
+                    "line-height": "1.4",
                   }}
                 >
-                  {resolveMentions(notif.content_preview!)}
+                  <span style={{ color: "var(--cyan)" }}>{notif.data.username}</span>{" "}
+                  <span style={{ color: "var(--text-muted)" }}>
+                    is requesting access
+                  </span>
                 </div>
               </Show>
               <div

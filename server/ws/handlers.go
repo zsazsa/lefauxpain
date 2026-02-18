@@ -188,36 +188,38 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 					continue
 				}
 				notifID := uuid.New().String()
-				if err := h.DB.CreateNotification(notifID, mentionedID, msgID, d.ChannelID, c.UserID); err != nil {
-					log.Printf("create notification: %v", err)
-					continue
-				}
 				// Get channel name for the payload
 				chName := ""
 				if ch != nil {
 					chName = ch.Name
 				}
 				// Build content preview
-				var preview *string
+				var preview string
 				if d.Content != nil {
-					p := *d.Content
-					if len(p) > 80 {
-						p = p[:80] + "..."
+					preview = *d.Content
+					if len(preview) > 80 {
+						preview = preview[:80] + "..."
 					}
-					preview = &p
 				}
+				notifData := map[string]any{
+					"message_id":      msgID,
+					"channel_id":      d.ChannelID,
+					"channel_name":    chName,
+					"author_id":       c.User.ID,
+					"author_username": c.User.Username,
+					"content_preview": preview,
+				}
+				if err := h.DB.CreateNotification(notifID, mentionedID, "mention", notifData); err != nil {
+					log.Printf("create notification: %v", err)
+					continue
+				}
+				dataJSON, _ := json.Marshal(notifData)
 				notifMsg, _ := NewMessage("notification_create", NotificationPayload{
 					ID:        notifID,
-					MessageID: msgID,
-					ChannelID: d.ChannelID,
-					ChannelName: chName,
-					Author: UserPayload{
-						ID:       c.User.ID,
-						Username: c.User.Username,
-					},
-					ContentPreview: preview,
-					Read:           false,
-					CreatedAt:      msg.CreatedAt,
+					Type:      "mention",
+					Data:      dataJSON,
+					Read:      false,
+					CreatedAt: msg.CreatedAt,
 				})
 				h.SendTo(mentionedID, notifMsg)
 			}

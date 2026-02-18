@@ -207,5 +207,18 @@ func (h *AdminHandler) ApproveUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Broadcast user_approved so all clients add the new member
+	approvedUser, _ := h.DB.GetUserByID(targetID)
+	if approvedUser != nil {
+		msg, _ := ws.NewMessage("user_approved", ws.UserOnlineData{
+			User: ws.UserPayload{
+				ID:       approvedUser.ID,
+				Username: approvedUser.Username,
+				IsAdmin:  approvedUser.IsAdmin,
+			},
+		})
+		h.Hub.BroadcastAll(msg)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "approved"})
 }

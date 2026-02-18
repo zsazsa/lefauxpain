@@ -2,18 +2,22 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kalman/voicechat/db"
+	"github.com/kalman/voicechat/ws"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]{1,32}$`)
 
 type AuthHandler struct {
-	DB *db.DB
+	DB  *db.DB
+	Hub *ws.Hub
 }
 
 type authRequest struct {
@@ -102,6 +106,32 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !approved {
+		// Notify all online admins about the pending user
+		admins, err := h.DB.GetAdminUsers()
+		if err != nil {
+			log.Printf("get admin users for notification: %v", err)
+		}
+		now := time.Now().UTC().Format("2006-01-02 15:04:05")
+		notifData := map[string]string{
+			"subject_user_id": userID,
+			"username":        req.Username,
+		}
+		dataJSON, _ := json.Marshal(notifData)
+		for _, admin := range admins {
+			notifID := uuid.New().String()
+			if err := h.DB.CreateNotification(notifID, admin.ID, "pending_user", notifData); err != nil {
+				log.Printf("create admin notification: %v", err)
+				continue
+			}
+			notifMsg, _ := ws.NewMessage("notification_create", ws.NotificationPayload{
+				ID:        notifID,
+				Type:      "pending_user",
+				Data:      dataJSON,
+				Read:      false,
+				CreatedAt: now,
+			})
+			h.Hub.SendTo(admin.ID, notifMsg)
+		}
 		writeJSON(w, http.StatusAccepted, map[string]bool{"pending": true})
 		return
 	}

@@ -2,11 +2,8 @@ import { createSignal } from "solid-js";
 
 export type Notification = {
   id: string;
-  message_id: string;
-  channel_id: string;
-  channel_name: string;
-  author: { id: string; username: string };
-  content_preview: string | null;
+  type: string;
+  data: Record<string, any>;
   read: boolean;
   created_at: string;
 };

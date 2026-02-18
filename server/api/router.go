@@ -18,7 +18,7 @@ import (
 func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.FileStore, staticFS fs.FS) http.Handler {
 	mux := http.NewServeMux()
 
-	authHandler := &AuthHandler{DB: database}
+	authHandler := &AuthHandler{DB: database, Hub: hub}
 	authMW := &AuthMiddleware{DB: database}
 	channelHandler := &ChannelHandler{DB: database}
 	messageHandler := &MessageHandler{DB: database}

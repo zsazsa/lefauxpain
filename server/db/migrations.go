@@ -168,6 +168,24 @@ var migrations = []string{
 		created_at  DATETIME DEFAULT (datetime('now'))
 	);
 	CREATE INDEX idx_radio_tracks_playlist ON radio_tracks(playlist_id, position);`,
+
+	// Version 9: Notifications → generic type + JSON data column
+	`CREATE TABLE notifications_new (
+		id         TEXT PRIMARY KEY,
+		user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		type       TEXT NOT NULL,
+		data       TEXT NOT NULL DEFAULT '{}',
+		read       BOOLEAN NOT NULL DEFAULT FALSE,
+		created_at DATETIME DEFAULT (datetime('now'))
+	);
+	INSERT INTO notifications_new (id, user_id, type, data, read, created_at)
+		SELECT id, user_id, 'mention',
+		       json_object('message_id', message_id, 'channel_id', channel_id, 'author_id', author_id),
+		       read, created_at
+		FROM notifications;
+	DROP TABLE notifications;
+	ALTER TABLE notifications_new RENAME TO notifications;
+	CREATE INDEX idx_notifications_user ON notifications(user_id, read, created_at DESC);`,
 }
 
 func (d *DB) migrate() error {

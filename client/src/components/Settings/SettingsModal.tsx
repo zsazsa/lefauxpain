@@ -197,9 +197,10 @@ export default function SettingsModal() {
     }
   });
 
-  // Fetch admin users when admin tab is selected
+  // Fetch admin users when admin tab is selected or settings reopened
   createEffect(() => {
-    if (activeTab() === "admin" && currentUser()?.is_admin) {
+    const open = settingsOpen();
+    if (open && activeTab() === "admin" && currentUser()?.is_admin) {
       fetchAdminUsers();
     }
   });

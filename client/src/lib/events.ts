@@ -22,6 +22,7 @@ import {
   setAllUserList,
   addOnlineUser,
   removeOnlineUser,
+  addAllUser,
   mergeKnownUsers,
 } from "../stores/users";
 import {
@@ -292,6 +293,10 @@ export function initEventHandlers() {
 
       case "user_offline":
         removeOnlineUser(msg.d.user_id);
+        break;
+
+      case "user_approved":
+        addAllUser(msg.d.user);
         break;
 
       case "voice_state_update": {

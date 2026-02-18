@@ -174,15 +174,21 @@ func (c *Client) sendReady() error {
 
 	onlineUsers := c.hub.OnlineUsers()
 
-	// Get all registered users
+	// Get all registered users (approved only)
 	dbAllUsers, _ := c.hub.DB.GetAllUsers()
-	allUsers := make([]UserPayload, len(dbAllUsers))
-	for i, u := range dbAllUsers {
-		allUsers[i] = UserPayload{
+	var allUsers []UserPayload
+	for _, u := range dbAllUsers {
+		if !u.Approved {
+			continue
+		}
+		allUsers = append(allUsers, UserPayload{
 			ID:       u.ID,
 			Username: u.Username,
 			IsAdmin:  u.IsAdmin,
-		}
+		})
+	}
+	if allUsers == nil {
+		allUsers = []UserPayload{}
 	}
 
 	// Get current voice states from SFU
@@ -209,16 +215,10 @@ func (c *Client) sendReady() error {
 	for i, n := range dbNotifs {
 		notifPayloads[i] = NotificationPayload{
 			ID:        n.ID,
-			MessageID: n.MessageID,
-			ChannelID: n.ChannelID,
-			ChannelName: n.ChannelName,
-			Author: UserPayload{
-				ID:       n.AuthorID,
-				Username: n.AuthorUsername,
-			},
-			ContentPreview: n.ContentPreview,
-			Read:           n.Read,
-			CreatedAt:      n.CreatedAt,
+			Type:      n.Type,
+			Data:      n.Data,
+			Read:      n.Read,
+			CreatedAt: n.CreatedAt,
 		}
 	}
 

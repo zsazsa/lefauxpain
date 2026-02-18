@@ -37,6 +37,14 @@ export function removeOnlineUser(userId: string) {
   // intentionally NOT removed from knownUsers
 }
 
+export function addAllUser(user: User) {
+  setAllUsers((prev) => {
+    if (prev.find((u) => u.id === user.id)) return prev;
+    return [...prev, user];
+  });
+  mergeKnownUsers([user]);
+}
+
 export function removeAllUser(userId: string) {
   setAllUsers((prev) => prev.filter((u) => u.id !== userId));
 }

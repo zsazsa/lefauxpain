@@ -127,6 +127,27 @@ func (d *DB) GetAllUsers() ([]User, error) {
 	return users, rows.Err()
 }
 
+func (d *DB) GetAdminUsers() ([]User, error) {
+	rows, err := d.Query(`SELECT id, username, password_hash, is_admin, avatar_path, approved, knock_message, created_at FROM users WHERE is_admin = TRUE AND approved = TRUE`)
+	if err != nil {
+		return nil, fmt.Errorf("get admin users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.Approved, &u.KnockMessage, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan admin user: %w", err)
+		}
+		users = append(users, u)
+	}
+	if users == nil {
+		users = []User{}
+	}
+	return users, rows.Err()
+}
+
 func (d *DB) ApproveUser(id string) error {
 	_, err := d.Exec(`UPDATE users SET approved = TRUE WHERE id = ?`, id)
 	if err != nil {

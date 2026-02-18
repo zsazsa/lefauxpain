@@ -50,14 +50,11 @@ type MediaPlaybackPayload struct {
 }
 
 type NotificationPayload struct {
-	ID             string  `json:"id"`
-	MessageID      string  `json:"message_id"`
-	ChannelID      string  `json:"channel_id"`
-	ChannelName    string  `json:"channel_name"`
-	Author         UserPayload `json:"author"`
-	ContentPreview *string `json:"content_preview"`
-	Read           bool    `json:"read"`
-	CreatedAt      string  `json:"created_at"`
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Data      json.RawMessage `json:"data"`
+	Read      bool            `json:"read"`
+	CreatedAt string          `json:"created_at"`
 }
 
 type UserPayload struct {
