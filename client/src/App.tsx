@@ -199,6 +199,7 @@ function App() {
           <Show when={tunedStationId()}>
             <RadioPlayer />
           </Show>
+          <div style={{ flex: "1", "min-height": "0", display: "flex", "flex-direction": "column" }}>
           {() => {
             const watching = watchingScreenShare();
             if (watching) {
@@ -257,6 +258,7 @@ function App() {
             if (ch.type === "voice") return <VoiceChannel channelId={id} />;
             return null;
           }}
+          </div>
         </div>
           </div>
         </Show>

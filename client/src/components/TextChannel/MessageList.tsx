@@ -146,10 +146,36 @@ export default function MessageList(props: MessageListProps) {
   // Scroll to bottom on initial load
   createEffect(() => {
     if (!initialLoad() && containerRef) {
+      // Double-RAF to let mobile layout fully settle before scrolling
       requestAnimationFrame(() => {
-        containerRef!.scrollTop = containerRef!.scrollHeight;
+        requestAnimationFrame(() => {
+          if (containerRef) containerRef.scrollTop = containerRef.scrollHeight;
+        });
       });
     }
+  });
+
+  // Re-scroll to bottom when container resizes (e.g. radio player appearing on mobile)
+  onMount(() => {
+    if (!containerRef) return;
+    let wasNearBottom = true;
+    const ro = new ResizeObserver(() => {
+      if (containerRef && wasNearBottom) {
+        containerRef.scrollTop = containerRef.scrollHeight;
+      }
+    });
+    ro.observe(containerRef);
+    // Track whether user is near bottom before resize happens
+    const trackScroll = () => {
+      if (!containerRef) return;
+      const { scrollTop, scrollHeight, clientHeight } = containerRef;
+      wasNearBottom = scrollHeight - scrollTop - clientHeight < 200;
+    };
+    containerRef.addEventListener("scroll", trackScroll);
+    onCleanup(() => {
+      ro.disconnect();
+      containerRef?.removeEventListener("scroll", trackScroll);
+    });
   });
 
   // Infinite scroll up for history
