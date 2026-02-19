@@ -1,9 +1,10 @@
 .PHONY: validate lint test build-server
 
 VALIDATION_PORT ?= 18080
+GO ?= $(shell which go)
 
 build-server:
-	@cd server && ~/.local/go/bin/go build -o voicechat .
+	@cd server && $(GO) build -o voicechat .
 
 validate: build-server
 	@set -e; \
@@ -23,7 +24,7 @@ validate: build-server
 		sleep 0.5; \
 	done; \
 	echo "=== Running scenario validation ==="; \
-	cd validation && SERVER_URL=http://localhost:$(VALIDATION_PORT) ~/.local/go/bin/go test -v -count=1 ./...
+	cd validation && SERVER_URL=http://localhost:$(VALIDATION_PORT) $(GO) test -v -count=1 ./...
 
 lint:
 	@echo "=== TypeScript check ==="
