@@ -166,6 +166,10 @@ input {
   50% { opacity: 0.3; }
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 @media (max-width: 768px) {
   ::-webkit-scrollbar {
     width: 3px;

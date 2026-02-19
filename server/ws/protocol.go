@@ -32,6 +32,7 @@ type ReadyData struct {
 	RadioPlayback   map[string]*RadioPlaybackPayload  `json:"radio_playback"`
 	RadioPlaylists  []RadioPlaylistPayload            `json:"radio_playlists"`
 	RadioListeners  map[string][]string               `json:"radio_listeners"`
+	ServerTime      float64                           `json:"server_time"`
 }
 
 type MediaItemPayload struct {
@@ -117,6 +118,7 @@ type RadioTrackPayload struct {
 	URL      string  `json:"url"`
 	Duration float64 `json:"duration"`
 	Position int     `json:"position"`
+	Waveform *string `json:"waveform,omitempty"`
 }
 
 type RadioPlaybackPayload struct {

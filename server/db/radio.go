@@ -28,6 +28,7 @@ type RadioTrack struct {
 	SizeBytes  int64   `json:"size_bytes"`
 	Duration   float64 `json:"duration"`
 	Position   int     `json:"position"`
+	Waveform   *string `json:"waveform"`
 	CreatedAt  string  `json:"created_at"`
 }
 
@@ -238,8 +239,8 @@ func (d *DB) CreateRadioTrack(t *RadioTrack) error {
 	t.Position = pos
 
 	_, err = d.Exec(
-		`INSERT INTO radio_tracks (id, playlist_id, filename, path, mime_type, size_bytes, duration, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.PlaylistID, t.Filename, t.Path, t.MimeType, t.SizeBytes, t.Duration, t.Position,
+		`INSERT INTO radio_tracks (id, playlist_id, filename, path, mime_type, size_bytes, duration, position, waveform) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.PlaylistID, t.Filename, t.Path, t.MimeType, t.SizeBytes, t.Duration, t.Position, t.Waveform,
 	)
 	return err
 }
@@ -251,7 +252,7 @@ func (d *DB) DeleteRadioTrack(id string) error {
 
 func (d *DB) GetTracksByPlaylist(playlistID string) ([]RadioTrack, error) {
 	rows, err := d.Query(
-		`SELECT id, playlist_id, filename, path, mime_type, size_bytes, duration, position, created_at FROM radio_tracks WHERE playlist_id = ? ORDER BY position`,
+		`SELECT id, playlist_id, filename, path, mime_type, size_bytes, duration, position, waveform, created_at FROM radio_tracks WHERE playlist_id = ? ORDER BY position`,
 		playlistID,
 	)
 	if err != nil {
@@ -262,7 +263,7 @@ func (d *DB) GetTracksByPlaylist(playlistID string) ([]RadioTrack, error) {
 	var tracks []RadioTrack
 	for rows.Next() {
 		var t RadioTrack
-		if err := rows.Scan(&t.ID, &t.PlaylistID, &t.Filename, &t.Path, &t.MimeType, &t.SizeBytes, &t.Duration, &t.Position, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.PlaylistID, &t.Filename, &t.Path, &t.MimeType, &t.SizeBytes, &t.Duration, &t.Position, &t.Waveform, &t.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan track: %w", err)
 		}
 		tracks = append(tracks, t)
@@ -276,8 +277,8 @@ func (d *DB) GetTracksByPlaylist(playlistID string) ([]RadioTrack, error) {
 func (d *DB) GetTrackByID(id string) (*RadioTrack, error) {
 	var t RadioTrack
 	err := d.QueryRow(
-		`SELECT id, playlist_id, filename, path, mime_type, size_bytes, duration, position, created_at FROM radio_tracks WHERE id = ?`, id,
-	).Scan(&t.ID, &t.PlaylistID, &t.Filename, &t.Path, &t.MimeType, &t.SizeBytes, &t.Duration, &t.Position, &t.CreatedAt)
+		`SELECT id, playlist_id, filename, path, mime_type, size_bytes, duration, position, waveform, created_at FROM radio_tracks WHERE id = ?`, id,
+	).Scan(&t.ID, &t.PlaylistID, &t.Filename, &t.Path, &t.MimeType, &t.SizeBytes, &t.Duration, &t.Position, &t.Waveform, &t.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

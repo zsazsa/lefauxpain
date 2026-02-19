@@ -1,3 +1,5 @@
+import { computePeaksFromFile, serializePeaks } from "./waveform";
+
 const BASE = "/api/v1";
 
 function getToken(): string {
@@ -147,11 +149,23 @@ function getAudioDuration(file: File): Promise<number> {
   });
 }
 
-export async function uploadRadioTrack(playlistId: string, file: File) {
-  const duration = await getAudioDuration(file);
+export async function uploadRadioTrack(
+  playlistId: string,
+  file: File,
+  onStatus?: (phase: "processing" | "uploading") => void,
+) {
+  onStatus?.("processing");
+  const [duration, peaks] = await Promise.all([
+    getAudioDuration(file),
+    computePeaksFromFile(file).catch(() => null),
+  ]);
+  onStatus?.("uploading");
   const form = new FormData();
   form.append("file", file);
   form.append("duration", duration.toString());
+  if (peaks) {
+    form.append("waveform", serializePeaks(peaks));
+  }
   const token = getToken();
   const res = await fetch(`${BASE}/radio/playlists/${playlistId}/tracks`, {
     method: "POST",

@@ -26,6 +26,7 @@ type radioTrackResponse struct {
 	SizeBytes int64   `json:"size_bytes"`
 	Duration  float64 `json:"duration"`
 	Position  int     `json:"position"`
+	Waveform  *string `json:"waveform,omitempty"`
 }
 
 // UploadTrack handles POST /api/v1/radio/playlists/{playlist_id}/tracks
@@ -57,11 +58,11 @@ func (h *RadioHandler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse upload (100MB max)
-	const maxSize int64 = 100 * 1024 * 1024
+	// Parse upload (500MB max)
+	const maxSize int64 = 500 * 1024 * 1024
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
-	if err := r.ParseMultipartForm(maxSize); err != nil {
-		writeError(w, http.StatusBadRequest, "file too large")
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "file too large (max 500MB)")
 		return
 	}
 
@@ -98,6 +99,11 @@ func (h *RadioHandler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 		duration = h.Store.GetAudioDuration(relPath, mimeType)
 	}
 
+	var waveform *string
+	if wf := r.FormValue("waveform"); wf != "" {
+		waveform = &wf
+	}
+
 	trackID := uuid.New().String()
 	track := &db.RadioTrack{
 		ID:         trackID,
@@ -107,6 +113,7 @@ func (h *RadioHandler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 		MimeType:   mimeType,
 		SizeBytes:  header.Size,
 		Duration:   duration,
+		Waveform:   waveform,
 	}
 
 	if err := h.DB.CreateRadioTrack(track); err != nil {
@@ -124,6 +131,7 @@ func (h *RadioHandler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 		SizeBytes: header.Size,
 		Duration:  track.Duration,
 		Position:  track.Position,
+		Waveform:  waveform,
 	})
 }
 

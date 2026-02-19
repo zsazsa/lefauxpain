@@ -61,6 +61,7 @@ import {
   updateRadioPlaybackForStation,
   updateRadioListeners,
   tunedStationId,
+  setClockOffset,
 } from "../stores/radio";
 import { handleWebRTCOffer, handleWebRTCICE, joinVoice } from "./webrtc";
 import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./screenshare";
@@ -192,6 +193,7 @@ export function initEventHandlers() {
   return onMessage((msg: WSMessage) => {
     switch (msg.op) {
       case "ready":
+        if (msg.d.server_time) setClockOffset(msg.d.server_time);
         setUser(msg.d.user);
         setChannelList(msg.d.channels);
         setOnlineUserList(msg.d.online_users);

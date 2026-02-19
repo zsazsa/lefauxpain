@@ -200,6 +200,9 @@ var migrations = []string{
 
 	// Version 12: Per-station playback mode
 	`ALTER TABLE radio_stations ADD COLUMN playback_mode TEXT NOT NULL DEFAULT 'play_all';`,
+
+	// Version 13: Pre-computed waveform peaks for radio tracks
+	`ALTER TABLE radio_tracks ADD COLUMN waveform TEXT;`,
 }
 
 func (d *DB) migrate() error {

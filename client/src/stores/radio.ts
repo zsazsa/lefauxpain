@@ -15,6 +15,7 @@ export type RadioTrack = {
   url: string;
   duration: number;
   position: number;
+  waveform?: string;
 };
 
 export type RadioPlaylist = {
@@ -130,4 +131,14 @@ export function updateRadioListeners(stationId: string, userIds: string[]) {
 
 export function getStationListeners(stationId: string): string[] {
   return radioListeners()[stationId] || [];
+}
+
+// Clock offset: server_time - client_time (seconds).
+// Add this to Date.now()/1000 to get server-relative time.
+let _clockOffset = 0;
+export function setClockOffset(serverTime: number) {
+  _clockOffset = serverTime - Date.now() / 1000;
+}
+export function serverNow(): number {
+  return Date.now() / 1000 + _clockOffset;
 }

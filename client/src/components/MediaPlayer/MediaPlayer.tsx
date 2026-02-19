@@ -7,6 +7,7 @@ import {
   selectedMediaId,
 } from "../../stores/media";
 import { isMobile } from "../../stores/responsive";
+import { serverNow } from "../../stores/radio";
 
 export default function MediaPlayer() {
   let videoRef: HTMLVideoElement | undefined;
@@ -98,7 +99,7 @@ export default function MediaPlayer() {
     const pb = mediaPlayback();
     if (!pb || pb.video_id !== item.id) return;
 
-    const now = Date.now() / 1000;
+    const now = serverNow();
     const expectedPos = pb.playing
       ? pb.position + (now - pb.updated_at)
       : pb.position;

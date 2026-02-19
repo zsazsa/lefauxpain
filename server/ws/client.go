@@ -286,6 +286,7 @@ func (c *Client) sendReady() error {
 				URL:      "/" + strings.ReplaceAll(t.Path, "\\", "/"),
 				Duration: t.Duration,
 				Position: t.Position,
+				Waveform: t.Waveform,
 			}
 		}
 		sid := ""
@@ -321,6 +322,7 @@ func (c *Client) sendReady() error {
 		RadioPlayback:   radioPlayback,
 		RadioPlaylists:  playlistPayloads,
 		RadioListeners:  radioListeners,
+		ServerTime:      nowUnix(),
 	})
 	if err != nil {
 		return err

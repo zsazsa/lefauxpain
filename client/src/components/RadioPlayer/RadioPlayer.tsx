@@ -8,6 +8,7 @@ import {
   getStationPlayback,
   getStationListeners,
   updatePlaylistTracks,
+  serverNow,
   type RadioPlayback,
   type RadioPlaylist,
 } from "../../stores/radio";
@@ -25,8 +26,11 @@ export default function RadioPlayer() {
   let audioCtx: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;
   let sourceNode: MediaElementAudioSourceNode | null = null;
+  let gainNode: GainNode | null = null;
   const [currentTime, setCurrentTime] = createSignal(0);
   const [autoplayBlocked, setAutoplayBlocked] = createSignal(false);
+  const [locallyPaused, setLocallyPaused] = createSignal(false);
+  const [locallyMuted, setLocallyMuted] = createSignal(false);
 
   const [pos, setPos] = createSignal({ x: 16, y: 60 });
   const [size, setSize] = createSignal({ w: 360, h: 420 });
@@ -38,6 +42,7 @@ export default function RadioPlayer() {
   const [creatingPlaylist, setCreatingPlaylist] = createSignal(false);
   const [newPlaylistName, setNewPlaylistName] = createSignal("");
   const [uploading, setUploading] = createSignal(false);
+  const [uploadStatus, setUploadStatus] = createSignal<string | null>(null);
   const [openPlaylists, setOpenPlaylists] = createSignal<Set<string>>(new Set());
   const [showManageMenu, setShowManageMenu] = createSignal(false);
   const togglePlaylist = (id: string) => {
@@ -133,10 +138,19 @@ export default function RadioPlayer() {
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.7;
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = locallyMuted() ? 0 : 1;
       sourceNode = audioCtx.createMediaElementSource(audioRef);
       sourceNode.connect(analyser);
-      analyser.connect(audioCtx.destination);
+      analyser.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
     } catch {}
+  };
+
+  const toggleMute = () => {
+    const muted = !locallyMuted();
+    setLocallyMuted(muted);
+    if (gainNode) gainNode.gain.value = muted ? 0 : 1;
   };
 
   // --- Progress tracking + EQ render ---
@@ -155,9 +169,37 @@ export default function RadioPlayer() {
     }
   }
 
+  // Correct position to match server — used by periodic check and events
+  const syncToServer = () => {
+    if (!audioRef || locallyPaused()) return;
+    if (audioRef.seeking || audioRef.readyState < 1) return; // Don't fight in-progress seeks or unloaded audio
+    const p = pb();
+    if (!p || !p.playing) return;
+    const now = serverNow();
+    const expectedPos = p.position + (now - p.updated_at);
+    const drift = Math.abs(audioRef.currentTime - expectedPos);
+    if (drift > 0.5) {
+      ignoreEvents = true;
+      audioRef.currentTime = Math.max(0, expectedPos);
+      ignoreEvents = false;
+    }
+  };
+
+  // Re-sync when audio actually starts playing (after buffering/seeking)
+  const handlePlaying = () => syncToServer();
+  // Re-sync after a seek completes (e.g. initial load seek)
+  const handleSeeked = () => syncToServer();
+
   let rafId = 0;
+  let lastDriftCheck = 0;
   const tickProgress = () => {
     if (audioRef) setCurrentTime(audioRef.currentTime);
+    // Periodic drift correction every 2 seconds
+    const now = performance.now();
+    if (now - lastDriftCheck > 2000) {
+      lastDriftCheck = now;
+      syncToServer();
+    }
     // Draw EQ bars on canvas
     if (eqCanvasRef && analyser && minimized()) {
       const parent = eqCanvasRef.parentElement;
@@ -217,8 +259,13 @@ export default function RadioPlayer() {
   const handleWaveformSeek = (frac: number) => {
     const dur = trackDuration();
     if (dur > 0 && audioRef) {
-      audioRef.currentTime = frac * dur;
-      setCurrentTime(frac * dur);
+      const newTime = frac * dur;
+      ignoreEvents = true;
+      audioRef.currentTime = newTime;
+      setCurrentTime(newTime);
+      ignoreEvents = false;
+      const sid = stationId();
+      if (sid) send("radio_seek", { station_id: sid, position: newTime });
     }
   };
 
@@ -229,35 +276,45 @@ export default function RadioPlayer() {
     const p = pb();
     if (!p || !p.track) {
       audio.pause();
-      audio.src = "";
+      audio.removeAttribute("src");
+      audio.load();
+      setLocallyPaused(false);
       return;
     }
 
     if (!audio.src.endsWith(p.track.url)) {
       ignoreEvents = true;
+      setLocallyPaused(false);
       audio.src = p.track.url;
       audio.load();
     }
 
-    const now = Date.now() / 1000;
+    const now = serverNow();
     const expectedPos = p.playing
       ? p.position + (now - p.updated_at)
       : p.position;
 
-    const drift = Math.abs(audio.currentTime - expectedPos);
-    if (drift > 0.5) {
-      ignoreEvents = true;
-      audio.currentTime = Math.max(0, expectedPos);
+    // Only correct drift if audio is ready and not mid-seek
+    if (!audio.seeking && audio.readyState >= 1) {
+      const drift = Math.abs(audio.currentTime - expectedPos);
+      if (drift > 0.5 && !locallyPaused()) {
+        ignoreEvents = true;
+        audio.currentTime = Math.max(0, expectedPos);
+      }
     }
 
     if (p.playing && audio.paused) {
-      ignoreEvents = true;
-      ensureAnalyser();
-      audio.play().then(() => {
-        setAutoplayBlocked(false);
-      }).catch(() => {
-        setAutoplayBlocked(true);
-      }).finally(() => { ignoreEvents = false; });
+      if (!locallyPaused()) {
+        ignoreEvents = true;
+        ensureAnalyser();
+        audio.play().then(() => {
+          setAutoplayBlocked(false);
+        }).catch(() => {
+          setAutoplayBlocked(true);
+        }).finally(() => { ignoreEvents = false; });
+      } else {
+        ignoreEvents = false;
+      }
     } else if (!p.playing && !audio.paused) {
       ignoreEvents = true;
       audio.pause();
@@ -274,22 +331,17 @@ export default function RadioPlayer() {
     }
   };
 
+  // Audio element pause/play events are LOCAL only — they fire when
+  // car Bluetooth, lock screen, or OS media controls pause/resume.
+  // We never send global commands from these; only in-app buttons do that.
   const handlePause = () => {
-    if (ignoreEvents || !audioRef) return;
-    const sid = stationId();
-    if (sid) send("radio_pause", { station_id: sid, position: audioRef.currentTime });
+    if (ignoreEvents) return;
+    setLocallyPaused(true);
   };
 
   const handlePlay = () => {
-    if (ignoreEvents || !audioRef) return;
-    const sid = stationId();
-    if (sid && pb()) send("radio_resume", { station_id: sid });
-  };
-
-  const handleSeeked = () => {
-    if (ignoreEvents || !audioRef) return;
-    const sid = stationId();
-    if (sid) send("radio_seek", { station_id: sid, position: audioRef.currentTime });
+    if (ignoreEvents) return;
+    setLocallyPaused(false);
   };
 
   // --- Controls ---
@@ -307,12 +359,26 @@ export default function RadioPlayer() {
 
   const handleSkip = (delta: number) => {
     if (!audioRef) return;
-    audioRef.currentTime = Math.max(0, audioRef.currentTime + delta);
+    const newTime = Math.max(0, audioRef.currentTime + delta);
+    ignoreEvents = true;
+    audioRef.currentTime = newTime;
+    ignoreEvents = false;
+    const sid = stationId();
+    if (sid) send("radio_seek", { station_id: sid, position: newTime });
   };
 
   const handleNext = () => {
     const sid = stationId();
     if (sid) send("radio_next", { station_id: sid });
+  };
+
+  const handleLocalResume = () => {
+    if (!audioRef) return;
+    setLocallyPaused(false);
+    setAutoplayBlocked(false);
+    ensureAnalyser();
+    // Must call play() directly in user gesture context for autoplay policy
+    audioRef.play().catch(() => {});
   };
 
   const handleStop = () => {
@@ -350,19 +416,44 @@ export default function RadioPlayer() {
     input.multiple = true;
     input.onchange = async () => {
       if (!input.files) return;
+      const files = Array.from(input.files);
       setUploading(true);
-      for (const file of input.files) {
+      let added = 0;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const count = files.length > 1 ? ` (${i + 1}/${files.length})` : "";
         try {
-          const result = await uploadRadioTrack(playlistId, file);
+          setUploadStatus(`Processing ${file.name}${count}`);
+          const result = await uploadRadioTrack(playlistId, file, (phase) => {
+            if (phase === "processing") {
+              setUploadStatus(`Processing ${file.name}${count}`);
+            } else {
+              setUploadStatus(`Uploading ${file.name}${count}`);
+            }
+          });
           updatePlaylistTracks(playlistId, [
             ...(radioPlaylists().find((p) => p.id === playlistId)?.tracks || []),
             result,
           ]);
-        } catch (e) {
+          added++;
+        } catch (e: any) {
           console.error("Upload failed:", e);
+          setUploadStatus(`Failed: ${file.name} — ${e?.message || "unknown error"}`);
+          await new Promise((r) => setTimeout(r, 2000));
         }
       }
+      if (added > 0) {
+        setUploadStatus(`Added ${added} track${added > 1 ? "s" : ""}`);
+        // Auto-expand the playlist so the new track is visible
+        setOpenPlaylists((prev) => {
+          const next = new Set(prev);
+          next.add(playlistId);
+          return next;
+        });
+        await new Promise((r) => setTimeout(r, 1500));
+      }
       setUploading(false);
+      setUploadStatus(null);
     };
     input.click();
   };
@@ -450,6 +541,7 @@ export default function RadioPlayer() {
         onEnded={handleEnded}
         onPause={handlePause}
         onPlay={handlePlay}
+        onPlaying={handlePlaying}
         onSeeked={handleSeeked}
         style={{ display: "none" }}
       />
@@ -596,22 +688,43 @@ export default function RadioPlayer() {
               </Show>
             </div>
           }>
-            <Show when={autoplayBlocked()} fallback={
-              <canvas
-                ref={eqCanvasRef}
-                width={320}
-                height={28}
-                style={{ width: "100%", height: "28px", display: "block" }}
-              />
+            <Show when={autoplayBlocked() || locallyPaused()} fallback={
+              <div
+                onClick={toggleMute}
+                style={{
+                  position: "relative",
+                  cursor: "pointer",
+                  opacity: locallyMuted() ? "0.35" : "1",
+                  transition: "opacity 0.15s",
+                }}
+                title={locallyMuted() ? "Unmute" : "Mute"}
+              >
+                <canvas
+                  ref={eqCanvasRef}
+                  width={320}
+                  height={28}
+                  style={{ width: "100%", height: "28px", display: "block" }}
+                />
+                <Show when={locallyMuted()}>
+                  <div style={{
+                    position: "absolute",
+                    inset: "0",
+                    display: "flex",
+                    "align-items": "center",
+                    "justify-content": "center",
+                    "font-size": "9px",
+                    "letter-spacing": "1px",
+                    color: "var(--text-muted)",
+                    "pointer-events": "none",
+                  }}>
+                    MUTED
+                  </div>
+                </Show>
+              </div>
             }>
               <div style={{ display: "flex", "align-items": "center", "justify-content": "center", height: "28px" }}>
                 <button
-                  onClick={() => {
-                    if (audioRef) {
-                      ensureAnalyser();
-                      audioRef.play().then(() => setAutoplayBlocked(false)).catch(() => {});
-                    }
-                  }}
+                  onClick={handleLocalResume}
                   style={{
                     "font-size": "10px",
                     color: "var(--accent)",
@@ -650,14 +763,9 @@ export default function RadioPlayer() {
                 DJ: {djName()}
               </div>
 
-              <Show when={autoplayBlocked()}>
+              <Show when={autoplayBlocked() || locallyPaused()}>
                 <button
-                  onClick={() => {
-                    if (audioRef) {
-                      ensureAnalyser();
-                      audioRef.play().then(() => setAutoplayBlocked(false)).catch(() => {});
-                    }
-                  }}
+                  onClick={handleLocalResume}
                   style={{
                     "margin-top": "6px",
                     width: "100%",
@@ -679,6 +787,7 @@ export default function RadioPlayer() {
                   trackUrl={trackUrl()}
                   progress={progress()}
                   height={40}
+                  precomputedPeaks={pb()?.track?.waveform}
                   onSeek={handleWaveformSeek}
                 />
                 <div style={{ display: "flex", "justify-content": "space-between", "margin-top": "2px" }}>
@@ -692,15 +801,16 @@ export default function RadioPlayer() {
                 <button onClick={() => handleSkip(-10)} style={controlBtnStyle} title="Back 10s">
                   [&lt;&lt;10]
                 </button>
-                <Show when={pb()!.playing} fallback={
-                  <button onClick={handleResumeBtn} style={controlBtnStyle}>
-                    [play]
-                  </button>
-                }>
-                  <button onClick={handlePauseBtn} style={controlBtnStyle}>
-                    [pause]
-                  </button>
-                </Show>
+                {() => {
+                  const p = pb()!;
+                  if (p.playing && locallyPaused()) {
+                    return <button onClick={handleLocalResume} style={controlBtnStyle}>[play]</button>;
+                  } else if (p.playing) {
+                    return <button onClick={handlePauseBtn} style={controlBtnStyle}>[pause]</button>;
+                  } else {
+                    return <button onClick={handleResumeBtn} style={controlBtnStyle}>[play]</button>;
+                  }
+                }}
                 <button onClick={() => handleSkip(10)} style={controlBtnStyle} title="Forward 10s">
                   [10&gt;&gt;]
                 </button>
@@ -734,6 +844,37 @@ export default function RadioPlayer() {
                   [energize station]
                 </button>
               </Show>
+            </div>
+          </Show>
+
+          {/* Upload status */}
+          <Show when={uploadStatus()}>
+            <div style={{
+              padding: "5px 10px",
+              "background-color": "rgba(201,168,76,0.1)",
+              "border-bottom": "1px solid rgba(201,168,76,0.15)",
+              "font-size": "11px",
+              color: "var(--accent)",
+              display: "flex",
+              "align-items": "center",
+              gap: "6px",
+            }}>
+              <span style={{
+                display: "inline-block",
+                width: "12px",
+                height: "12px",
+                border: "2px solid var(--accent)",
+                "border-top-color": "transparent",
+                "border-radius": "50%",
+                animation: "spin 0.8s linear infinite",
+              }} />
+              <span style={{
+                overflow: "hidden",
+                "text-overflow": "ellipsis",
+                "white-space": "nowrap",
+              }}>
+                {uploadStatus()}
+              </span>
             </div>
           </Show>
 

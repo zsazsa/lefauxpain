@@ -1358,6 +1358,7 @@ func (h *Hub) sendPlaylistTracks(c *Client, playlistID string) {
 			URL:      "/" + strings.ReplaceAll(t.Path, "\\", "/"),
 			Duration: t.Duration,
 			Position: t.Position,
+			Waveform: t.Waveform,
 		}
 	}
 	reply, _ := NewMessage("radio_playlist_tracks", map[string]interface{}{
@@ -1380,6 +1381,7 @@ func (h *Hub) buildTrackPayloads(playlistID string) []RadioTrackPayload {
 			URL:      "/" + strings.ReplaceAll(t.Path, "\\", "/"),
 			Duration: t.Duration,
 			Position: t.Position,
+			Waveform: t.Waveform,
 		}
 	}
 	return payloads
