@@ -12,7 +12,9 @@ import (
 
 	"github.com/kalman/voicechat/api"
 	"github.com/kalman/voicechat/config"
+	appcrypto "github.com/kalman/voicechat/crypto"
 	"github.com/kalman/voicechat/db"
+	"github.com/kalman/voicechat/email"
 	"github.com/kalman/voicechat/sfu"
 	"github.com/kalman/voicechat/storage"
 	"github.com/kalman/voicechat/ws"
@@ -41,6 +43,13 @@ func main() {
 	if err := database.SeedDefaultChannels(); err != nil {
 		log.Fatalf("Failed to seed default channels: %v", err)
 	}
+
+	encKey, err := appcrypto.LoadOrCreateKey(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("Failed to load encryption key: %v", err)
+	}
+
+	emailSvc := email.NewEmailService(database, encKey, cfg.DevMode)
 
 	store := storage.NewFileStore(cfg.DataDir)
 
@@ -110,7 +119,7 @@ func main() {
 		log.Fatalf("Failed to load static files: %v", err)
 	}
 
-	router := api.NewRouter(cfg, database, hub, store, staticFS)
+	router := api.NewRouter(cfg, database, hub, store, staticFS, emailSvc, encKey)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := &http.Server{

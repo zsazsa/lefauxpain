@@ -11,7 +11,7 @@ validate: build-server
 	TMPDIR=$$(mktemp -d); \
 	trap 'kill $$PID 2>/dev/null; rm -rf $$TMPDIR' EXIT; \
 	echo "=== Starting server (port $(VALIDATION_PORT), data: $$TMPDIR) ==="; \
-	./server/voicechat --port $(VALIDATION_PORT) --data-dir "$$TMPDIR" & \
+	./server/voicechat --dev --port $(VALIDATION_PORT) --data-dir "$$TMPDIR" & \
 	PID=$$!; \
 	for i in 1 2 3 4 5 6 7 8 9 10; do \
 		if curl -sf http://localhost:$(VALIDATION_PORT)/api/v1/health > /dev/null 2>&1; then \

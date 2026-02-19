@@ -203,6 +203,28 @@ var migrations = []string{
 
 	// Version 13: Pre-computed waveform peaks for radio tracks
 	`ALTER TABLE radio_tracks ADD COLUMN waveform TEXT;`,
+
+	// Version 14: Email verification
+	`ALTER TABLE users ADD COLUMN email TEXT;
+	ALTER TABLE users ADD COLUMN email_verified_at DATETIME;
+
+	CREATE TABLE IF NOT EXISTS verification_codes (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		code_hash TEXT NOT NULL,
+		expires_at DATETIME NOT NULL,
+		attempts INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE UNIQUE INDEX idx_verification_codes_user ON verification_codes(user_id);
+
+	CREATE TABLE IF NOT EXISTS settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_nocase
+		ON users(email COLLATE NOCASE) WHERE email IS NOT NULL;`,
 }
 
 func (d *DB) migrate() error {

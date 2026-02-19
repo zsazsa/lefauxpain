@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"net/http/httputil"
@@ -11,14 +12,15 @@ import (
 
 	"github.com/kalman/voicechat/config"
 	"github.com/kalman/voicechat/db"
+	"github.com/kalman/voicechat/email"
 	"github.com/kalman/voicechat/storage"
 	"github.com/kalman/voicechat/ws"
 )
 
-func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.FileStore, staticFS fs.FS) http.Handler {
+func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.FileStore, staticFS fs.FS, emailService *email.EmailService, encKey []byte) http.Handler {
 	mux := http.NewServeMux()
 
-	authHandler := &AuthHandler{DB: database, Hub: hub}
+	authHandler := &AuthHandler{DB: database, Hub: hub, EmailService: emailService}
 	authMW := &AuthMiddleware{DB: database}
 	channelHandler := &ChannelHandler{DB: database}
 	messageHandler := &MessageHandler{DB: database}
@@ -33,9 +35,14 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 		writeJSON(w, http.StatusOK, map[string]string{"app": "voicechat"})
 	})
 
+	verifyRL := NewIPRateLimiter(10, time.Minute)
+	resendRL := NewIPRateLimiter(5, time.Minute)
+
 	// Auth routes
 	mux.HandleFunc("/api/v1/auth/register", registerRL.Wrap(authHandler.Register))
 	mux.HandleFunc("/api/v1/auth/login", loginRL.Wrap(authHandler.Login))
+	mux.HandleFunc("/api/v1/auth/verify", verifyRL.Wrap(authHandler.Verify))
+	mux.HandleFunc("/api/v1/auth/resend", resendRL.Wrap(authHandler.ResendCode))
 
 	// Channel routes (authenticated)
 	mux.HandleFunc("/api/v1/channels", authMW.Wrap(channelHandler.List))
@@ -62,8 +69,15 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	mux.HandleFunc("/api/v1/auth/password", authMW.Wrap(authHandler.ChangePassword))
 
 	// Admin routes (authenticated)
-	adminHandler := &AdminHandler{DB: database, Hub: hub}
+	adminHandler := &AdminHandler{DB: database, Hub: hub, EmailService: emailService, EncKey: encKey}
 	mux.HandleFunc("/api/v1/admin/users", authMW.Wrap(adminHandler.ListUsers))
+	mux.HandleFunc("/api/v1/admin/settings", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			adminHandler.GetSettings(w, r)
+		} else {
+			adminHandler.UpdateSettings(w, r)
+		}
+	}))
 	mux.HandleFunc("/api/v1/admin/users/", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/admin") {
 			adminHandler.SetAdmin(w, r)
@@ -90,6 +104,41 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	audioHandler := &AudioHandler{}
 	mux.HandleFunc("/api/v1/audio/devices", authMW.Wrap(audioHandler.ListDevices))
 	mux.HandleFunc("/api/v1/audio/device", authMW.Wrap(audioHandler.SetDevice))
+
+	// Dev-mode test endpoints for email verification
+	if cfg.DevMode {
+		mux.HandleFunc("/api/v1/test/verification-code", func(w http.ResponseWriter, r *http.Request) {
+			addr := r.URL.Query().Get("email")
+			code := emailService.GetTestCode(addr)
+			writeJSON(w, http.StatusOK, map[string]string{"code": code})
+		})
+		mux.HandleFunc("/api/v1/test/expire-verification-code", func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				Email string `json:"email"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			user, _ := database.GetUserByEmail(body.Email)
+			if user != nil {
+				database.ExpireVerificationCodeByUserID(user.ID)
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"status": "expired"})
+		})
+		mux.HandleFunc("/api/v1/test/verification-code-hash", func(w http.ResponseWriter, r *http.Request) {
+			addr := r.URL.Query().Get("email")
+			user, _ := database.GetUserByEmail(addr)
+			if user != nil {
+				hash, _ := database.GetVerificationCodeHash(user.ID)
+				writeJSON(w, http.StatusOK, map[string]string{"code_hash": hash})
+			} else {
+				writeJSON(w, http.StatusOK, map[string]string{"code_hash": ""})
+			}
+		})
+		mux.HandleFunc("/api/v1/test/raw-setting", func(w http.ResponseWriter, r *http.Request) {
+			key := r.URL.Query().Get("key")
+			val, _ := database.GetSetting(key)
+			writeJSON(w, http.StatusOK, map[string]string{"value": val})
+		})
+	}
 
 	// WebSocket
 	mux.HandleFunc("/ws", hub.HandleWebSocket)
