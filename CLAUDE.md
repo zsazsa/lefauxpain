@@ -1,10 +1,38 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Context
+This is a production codebase that was built iteratively without formal
+specs or tests. It works. Our job is NOT to rewrite it. Our job is to:
+1. Stabilize it with scenario validation
+2. Evolve it through specs going forward
+3. Never hand-write code again
+
+## Rules
+- Read the relevant spec in /specs/ before ANY code change
+- Run `make validate` after ANY code change
+- If scenarios fail after your change, fix YOUR change — do not modify scenarios
+- Never delete or rewrite working code "to clean it up" unless a spec asks for it
+- Ask the architect before making any structural/architectural changes
+
+## How to Make Changes
+1. Read the spec for the requested change
+2. Understand the existing code in the affected area
+3. Make the minimum change to satisfy the spec
+4. Run `make validate`
+5. Fix until green
+6. Commit
+
+## Critical: Do Not
+- Refactor code that isn't related to the current spec
+- Add unit tests (we use scenario validation instead)
+- "Improve" code style on files you didn't need to change
+- Break the existing app to make the new feature work
 
 ## What This Is
 
-Self-hostable Discord alternative ("Le Faux Pain"). Single Go binary with an embedded SolidJS SPA. Text channels with replies/reactions/mentions/uploads, voice channels via Pion WebRTC SFU.
+Self-hostable Discord alternative ("Le Faux Pain"). Single Go binary with an embedded SolidJS SPA. Text channels with replies/reactions/mentions/uploads, voice channels via Pion WebRTC SFU, radio stations, synchronized media player.
+
+For full architecture, WS protocol, REST endpoints, DB schema, known fragile areas, and what works reliably, see **[specs/architecture/current-state.md](specs/architecture/current-state.md)**.
 
 ## Build & Dev Commands
 
@@ -19,57 +47,30 @@ rm -rf server/static/assets/* server/static/index.html
 cp -r client/dist/* server/static/
 cd server && go build -o voicechat .
 
+# Validation (builds server, starts fresh instance, runs 35 scenarios)
+make validate
+
 # Desktop (Tauri) — requires libopus-dev, libasound2-dev
-cd desktop/src-tauri && cargo build              # Dev build
 cd desktop && npm run tauri dev                  # Dev with hot reload
 cd desktop && npm run tauri build                # Release build
 ```
 
-There are no tests. There is no linter configured.
+## Validation
 
-## Architecture
+33 automated scenarios in `validation/` verify the critical path against a live server (Go tests using `net/http` + `nhooyr.io/websocket`). Covers auth, channels, messaging, reactions, mentions, file upload, voice state, presence, radio, admin, rate limiting, and permissions.
 
-**Backend** (`server/`): Go 1.24, module `github.com/kalman/voicechat`
-- `main.go` — wires everything: DB, SFU, WS Hub, HTTP router, orphan cleanup goroutine
-- `db/` — SQLite via `modernc.org/sqlite`. WAL mode, `MaxOpenConns(1)`, foreign keys ON. Migrations run on startup.
-- `api/` — REST endpoints: auth (register/login), channel CRUD, message history (cursor pagination), file upload with thumbnail generation
-- `ws/` — Single WebSocket per user. First message must be `authenticate`. Hub broadcasts all real-time events (chat, voice state, presence). All ops in `handlers.go`.
-- `sfu/` — Pion WebRTC SFU. One Room per voice channel, one PeerConnection per user. Opus-only (`Channels: 2` per RFC 7587). Renegotiates all peers when someone joins/leaves.
-- `storage/` — Hash-based file storage with deduplication
-- `embed.go` — `go:embed static/*` (used in non-nginx mode)
+```bash
+make validate    # Build server, start fresh instance, run scenarios, tear down
+make lint        # TypeScript type check
+make test        # Both
+```
 
-**Frontend** (`client/`): SolidJS + TypeScript + Vite
-- `src/stores/` — State as SolidJS signals (`createSignal`). Key stores: `auth.ts` (token in localStorage), `channels.ts`, `messages.ts`, `users.ts`, `voice.ts`
-- `src/lib/ws.ts` — WebSocket client with reconnect backoff. All incoming messages dispatched via `onMessage()` observer pattern. `disconnectWS()` sets `intentionalDisconnect` flag to prevent `onclose` from rescheduling reconnect.
-- `src/lib/webrtc.ts` — Voice: `joinVoice`/`leaveVoice`, sends/receives SDP and ICE candidates over WS. When `isDesktop`, routes through Tauri IPC to the native Rust voice engine instead of browser WebRTC.
-- `src/lib/audio.ts` — Per-user audio chain: MediaStreamSource → GainNode → AnalyserNode → destination (browser only; desktop uses Rust cpal)
-- `src/lib/devices.ts` — Audio device enumeration (browser API or Tauri IPC), speaking detection (RMS + EMA + hold timer)
-- `src/lib/events.ts` — Maps WS ops to store updates (the central event dispatcher). On desktop, registers Tauri event listeners to bridge `voice:ice_candidate` and `voice:speaking` from Rust to WS.
-- `src/lib/api.ts` — REST client (`fetch` with Bearer token)
-- `src/components/` — Sidebar (channel list), TextChannel (messages + input), VoiceChannel (user grid + controls), Settings, Auth
+Scenario specs: `specs/scenarios/critical-path.md`
 
-**Desktop** (`desktop/`): Tauri 2 wrapper
-- `src-tauri/src/main.rs` — Tauri app entry. Injects `__DESKTOP__` flag and audio devices via UserScript. Enables webkit2gtk WebRTC/MediaStream settings. Registers voice IPC commands.
-- `src-tauri/src/voice/` — Native Rust voice engine (bypasses webkit2gtk's missing RTCPeerConnection):
-  - `mod.rs` — `VoiceEngine` struct, Tauri IPC commands, event forwarding loop
-  - `peer.rs` — webrtc-rs `RTCPeerConnection` with Opus codec matching Go SFU (48kHz/2ch/PT111/NACK)
-  - `audio_capture.rs` — cpal mic input → ring buffer → Opus encode → RTP via `TrackLocalStaticRTP`
-  - `audio_playback.rs` — RTP → Opus decode → shared ring buffer → cpal output. Multiple remote tracks mix by writing to the same buffer.
-  - `resampler.rs` — rubato FFT resampler for 44100↔48000 conversion
-  - `speaking.rs` — RMS + EMA speaking detection (ported from JS: threshold 0.015, attack 0.4, release 0.05, 250ms hold)
-  - `types.rs` — Serde structs for IPC payloads
-- `dist/index.html` — Server selector page (not the SPA). Prompts for server URL, saves to localStorage, navigates webview to the remote server. Do NOT overwrite with `client/dist/`.
+## Key Patterns (pitfall prevention)
 
-## Key Patterns
-
-**WebSocket protocol**: `{ op: string, d: any }`. Client authenticates within 5 seconds of connecting. Server responds with `ready` containing full initial state. All mutations go through WS (not REST).
-
-**SFU signaling**: Voice join → server creates PeerConnection → sends `webrtc_offer` → client responds with `webrtc_answer` → ICE candidates exchanged via `webrtc_ice`. Renegotiation uses `needsRenegotiation` flag to avoid race conditions when signaling state isn't stable.
-
-**Desktop voice signaling**: On desktop (`isDesktop`), WebRTC runs natively in Rust. The SDP/ICE flow is: WS `webrtc_offer` → frontend forwards SDP to Rust via `voice_handle_offer` IPC → Rust creates answer → frontend sends `webrtc_answer` over WS. ICE candidates flow Rust→frontend via Tauri events (`voice:ice_candidate`), then frontend→WS. Speaking detection runs in Rust and emits `voice:speaking` events to frontend, which forwards over WS.
-
-**SolidJS reactivity pitfall**: `<Show>` without `keyed` uses truthiness equality (`!a === !b`) on its condition memo — switching between two truthy values won't re-render children. Use reactive function children `{() => { ... }}` for dynamic component swapping based on signal values, or use `<Show keyed>`.
-
-**SQLite single-writer**: `MaxOpenConns(1)` is intentional. All writes serialize through one connection. WAL mode allows concurrent reads.
+**SolidJS `<Show>` pitfall**: `<Show>` without `keyed` uses truthiness equality — switching between two truthy values won't re-render. Use reactive function children `{() => { ... }}` or `<Show keyed>`.
 
 **Attachment flow**: Upload via REST (returns attachment ID) → include ID in `send_message` WS op → server links attachment to message. Orphaned attachments (unlinked after 1 hour) cleaned up by background goroutine.
+
+**Desktop `dist/index.html`**: This is the server selector page, NOT the SPA. Do NOT overwrite with `client/dist/`.

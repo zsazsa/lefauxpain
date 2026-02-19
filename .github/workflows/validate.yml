@@ -1,0 +1,29 @@
+name: Factory Validation
+on: [push, pull_request]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Build frontend
+        run: cd client && npm install && npm run build
+
+      - name: Copy frontend to server/static
+        run: |
+          rm -rf server/static/assets/* server/static/index.html
+          cp -r client/dist/* server/static/
+
+      - name: Validate
+        run: make validate
