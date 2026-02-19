@@ -265,6 +265,88 @@ func (h *AdminHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (h *AdminHandler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user := UserFromContext(r.Context())
+	if user == nil || !user.IsAdmin {
+		writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+
+	result := map[string]any{
+		"is_configured": false,
+	}
+
+	enabled, _ := h.DB.GetSetting("email_verification_enabled")
+	result["email_verification_enabled"] = enabled == "true"
+
+	cfg, err := h.EmailService.GetProviderConfig()
+	if err == nil && cfg != nil {
+		result["is_configured"] = true
+		result["provider"] = cfg.Provider
+		result["from_email"] = cfg.FromEmail
+		result["from_name"] = cfg.FromName
+
+		if cfg.Provider == "postmark" || cfg.Provider == "test" {
+			result["api_key_masked"] = maskSecret(cfg.APIKey)
+		} else if cfg.Provider == "smtp" {
+			result["host"] = cfg.Host
+			result["port"] = cfg.Port
+			result["username"] = cfg.Username
+			result["password_masked"] = maskSecret(cfg.Password)
+			result["encryption"] = cfg.Encryption
+		}
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *AdminHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user := UserFromContext(r.Context())
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !user.IsAdmin {
+		writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+
+	if user.Email == nil || *user.Email == "" {
+		writeError(w, http.StatusBadRequest, "your account does not have an email address")
+		return
+	}
+
+	if err := h.EmailService.SendTestEmail(*user.Email, "Le Faux Pain"); err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "sent",
+		"email":  *user.Email,
+	})
+}
+
+func maskSecret(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) <= 4 {
+		return "\u2022\u2022\u2022\u2022\u2022\u2022"
+	}
+	return "\u2022\u2022\u2022\u2022\u2022\u2022" + s[len(s)-4:]
+}
+
 func (h *AdminHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -288,7 +370,20 @@ func (h *AdminHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 
 	// Save provider config if provided
 	if req.EmailProviderConfig != nil {
-		cfgJSON, _ := json.Marshal(req.EmailProviderConfig)
+		newCfg := req.EmailProviderConfig
+
+		// Merge with existing config to preserve unchanged credentials
+		existingCfg, _ := h.EmailService.GetProviderConfig()
+		if existingCfg != nil && newCfg.Provider == existingCfg.Provider {
+			if newCfg.APIKey == "" || strings.HasPrefix(newCfg.APIKey, "\u2022") {
+				newCfg.APIKey = existingCfg.APIKey
+			}
+			if newCfg.Password == "" || strings.HasPrefix(newCfg.Password, "\u2022") {
+				newCfg.Password = existingCfg.Password
+			}
+		}
+
+		cfgJSON, _ := json.Marshal(newCfg)
 		encrypted, err := crypto.Encrypt(h.EncKey, string(cfgJSON))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")

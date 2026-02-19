@@ -10,7 +10,7 @@ import {
 import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop, isTauri } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
 import { muteChannelMic, unmuteChannelMic } from "../../lib/webrtc";
-import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, approveUser } from "../../lib/api";
+import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, approveUser, getEmailSettings, saveEmailSettings, sendTestEmail } from "../../lib/api";
 import { currentUser } from "../../stores/auth";
 import { allUsers, removeAllUser } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
@@ -34,7 +34,7 @@ type AdminUser = {
   created_at: string;
 };
 
-type Tab = "account" | "display" | "audio" | "admin" | "app" | "about";
+type Tab = "account" | "display" | "audio" | "admin" | "email" | "app" | "about";
 
 export default function SettingsModal() {
   const [activeTab, setActiveTab] = createSignal<Tab>("account");
@@ -74,6 +74,30 @@ export default function SettingsModal() {
   const [adminError, setAdminError] = createSignal("");
   const [selectedPwInput, setSelectedPwInput] = createSignal(localStorage.getItem("pw_input_device") || "");
   const [selectedPwOutput, setSelectedPwOutput] = createSignal(localStorage.getItem("pw_output_device") || "");
+
+  // Email settings state
+  const [emailProvider, setEmailProvider] = createSignal<"postmark" | "smtp">("postmark");
+  const [emailApiKey, setEmailApiKey] = createSignal("");
+  const [emailApiKeyMasked, setEmailApiKeyMasked] = createSignal("");
+  const [emailApiKeyChanged, setEmailApiKeyChanged] = createSignal(false);
+  const [emailFromEmail, setEmailFromEmail] = createSignal("");
+  const [emailFromName, setEmailFromName] = createSignal("");
+  const [smtpHost, setSmtpHost] = createSignal("");
+  const [smtpPort, setSmtpPort] = createSignal("587");
+  const [smtpUsername, setSmtpUsername] = createSignal("");
+  const [smtpPassword, setSmtpPassword] = createSignal("");
+  const [smtpPasswordMasked, setSmtpPasswordMasked] = createSignal("");
+  const [smtpPasswordChanged, setSmtpPasswordChanged] = createSignal(false);
+  const [smtpEncryption, setSmtpEncryption] = createSignal("starttls");
+  const [emailVerifyEnabled, setEmailVerifyEnabled] = createSignal(false);
+  const [emailConfigured, setEmailConfigured] = createSignal(false);
+  const [emailSaving, setEmailSaving] = createSignal(false);
+  const [emailSaveMsg, setEmailSaveMsg] = createSignal("");
+  const [emailSaveError, setEmailSaveError] = createSignal("");
+  const [emailTesting, setEmailTesting] = createSignal(false);
+  const [emailTestPhase, setEmailTestPhase] = createSignal("idle");
+  const [emailTestMsg, setEmailTestMsg] = createSignal("");
+  const [emailValidErrors, setEmailValidErrors] = createSignal<Record<string, string>>({});
 
   const fetchAdminUsers = async () => {
     setAdminError("");
@@ -178,6 +202,171 @@ export default function SettingsModal() {
     }
   };
 
+  const fetchEmailSettings = async () => {
+    try {
+      const data = await getEmailSettings();
+      setEmailVerifyEnabled(data.email_verification_enabled);
+      setEmailConfigured(data.is_configured);
+      if (data.is_configured && data.provider) {
+        setEmailProvider(data.provider as "postmark" | "smtp");
+        setEmailFromEmail(data.from_email || "");
+        setEmailFromName(data.from_name || "");
+        if (data.provider === "postmark" || data.provider === "test") {
+          setEmailApiKeyMasked(data.api_key_masked || "");
+          setEmailApiKey(data.api_key_masked || "");
+          setEmailApiKeyChanged(false);
+        } else if (data.provider === "smtp") {
+          setSmtpHost(data.host || "");
+          setSmtpPort(data.port?.toString() || "587");
+          setSmtpUsername(data.username || "");
+          setSmtpPasswordMasked(data.password_masked || "");
+          setSmtpPassword(data.password_masked || "");
+          setSmtpPasswordChanged(false);
+          setSmtpEncryption(data.encryption || "starttls");
+        }
+      } else {
+        setEmailProvider("postmark");
+        setEmailFromEmail("");
+        setEmailFromName("");
+        setEmailApiKey("");
+        setEmailApiKeyMasked("");
+        setEmailApiKeyChanged(false);
+        setSmtpHost("");
+        setSmtpPort("587");
+        setSmtpUsername("");
+        setSmtpPassword("");
+        setSmtpPasswordMasked("");
+        setSmtpPasswordChanged(false);
+        setSmtpEncryption("starttls");
+      }
+    } catch {
+      // Error loading email settings
+    }
+  };
+
+  const clearEmailForm = () => {
+    setEmailFromEmail("");
+    setEmailFromName("");
+    setEmailApiKey("");
+    setEmailApiKeyMasked("");
+    setEmailApiKeyChanged(false);
+    setSmtpHost("");
+    setSmtpPort("587");
+    setSmtpUsername("");
+    setSmtpPassword("");
+    setSmtpPasswordMasked("");
+    setSmtpPasswordChanged(false);
+    setSmtpEncryption("starttls");
+    setEmailValidErrors({});
+    setEmailSaveMsg("");
+    setEmailSaveError("");
+    setEmailConfigured(false);
+  };
+
+  const validateEmailForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (emailProvider() === "postmark") {
+      if (!emailApiKey()) errors.api_key = "API key is required";
+      if (!emailFromEmail()) errors.from_email = "From email is required";
+      else if (!emailRe.test(emailFromEmail())) errors.from_email = "Must be a valid email address";
+      if (!emailFromName()) errors.from_name = "From name is required";
+    } else {
+      if (!smtpHost()) errors.host = "Host is required";
+      if (!smtpPort()) errors.port = "Port is required";
+      else if (!/^\d+$/.test(smtpPort())) errors.port = "Port must be a number";
+      if (!smtpUsername()) errors.username = "Username is required";
+      if (!smtpPassword()) errors.password = "Password is required";
+      if (!smtpEncryption()) errors.encryption = "Encryption is required";
+      if (!emailFromEmail()) errors.from_email = "From email is required";
+      else if (!emailRe.test(emailFromEmail())) errors.from_email = "Must be a valid email address";
+      if (!emailFromName()) errors.from_name = "From name is required";
+    }
+
+    setEmailValidErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSaveEmail = async () => {
+    if (!validateEmailForm()) return;
+
+    setEmailSaving(true);
+    setEmailSaveMsg("");
+    setEmailSaveError("");
+
+    const config: Record<string, unknown> = {
+      provider: emailProvider(),
+      from_email: emailFromEmail(),
+      from_name: emailFromName(),
+    };
+
+    if (emailProvider() === "postmark") {
+      config.api_key = emailApiKeyChanged() ? emailApiKey() : emailApiKeyMasked();
+    } else {
+      config.host = smtpHost();
+      config.port = parseInt(smtpPort());
+      config.username = smtpUsername();
+      config.password = smtpPasswordChanged() ? smtpPassword() : smtpPasswordMasked();
+      config.encryption = smtpEncryption();
+    }
+
+    try {
+      await saveEmailSettings({ email_provider_config: config });
+      setEmailSaveMsg("> SETTINGS SAVED");
+      setEmailConfigured(true);
+      // Re-fetch to get masked values
+      await fetchEmailSettings();
+    } catch (e: any) {
+      setEmailSaveError(e.message || "Failed to save settings");
+    } finally {
+      setEmailSaving(false);
+    }
+  };
+
+  const handleToggleVerification = async () => {
+    const newVal = !emailVerifyEnabled();
+    if (newVal && !emailConfigured()) {
+      setEmailSaveError("Configure an email provider before enabling verification");
+      return;
+    }
+
+    setEmailSaving(true);
+    setEmailSaveError("");
+    setEmailSaveMsg("");
+
+    try {
+      await saveEmailSettings({ email_verification_enabled: newVal });
+      setEmailVerifyEnabled(newVal);
+      setEmailSaveMsg(newVal ? "> VERIFICATION ENABLED" : "> VERIFICATION DISABLED");
+    } catch (e: any) {
+      setEmailSaveError(e.message || "Failed to toggle verification");
+    } finally {
+      setEmailSaving(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    setEmailTesting(true);
+    setEmailTestPhase("connecting");
+    setEmailTestMsg("");
+
+    setTimeout(() => {
+      if (emailTesting()) setEmailTestPhase("sending");
+    }, 500);
+
+    try {
+      const result = await sendTestEmail();
+      setEmailTestPhase("done");
+      setEmailTestMsg(`> DELIVERED — test email sent to ${result.email}`);
+    } catch (e: any) {
+      setEmailTestPhase("error");
+      setEmailTestMsg(`> FAILED: ${e.message || "unknown error"}`);
+    } finally {
+      setEmailTesting(false);
+    }
+  };
+
   onMount(() => {
     enumerateDevices();
     fetchPwDevices();
@@ -202,6 +391,14 @@ export default function SettingsModal() {
     const open = settingsOpen();
     if (open && activeTab() === "admin" && currentUser()?.is_admin) {
       fetchAdminUsers();
+    }
+  });
+
+  // Fetch email settings when email tab is selected
+  createEffect(() => {
+    const open = settingsOpen();
+    if (open && activeTab() === "email" && currentUser()?.is_admin) {
+      fetchEmailSettings();
     }
   });
 
@@ -348,6 +545,7 @@ export default function SettingsModal() {
     ];
     if (currentUser()?.is_admin) {
       list.push({ id: "admin", label: "Admin" });
+      list.push({ id: "email", label: "Email" });
     }
     if (isTauri) {
       list.push({ id: "app", label: "App" });
@@ -1103,6 +1301,321 @@ export default function SettingsModal() {
                     )}
                   </For>
                 </Show>
+              </Show>
+
+              {/* Email tab */}
+              <Show when={activeTab() === "email" && currentUser()?.is_admin}>
+                {/* Email Verification Toggle */}
+                <div style={sectionHeaderStyle}>Email Verification</div>
+                <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", "margin-bottom": "16px" }}>
+                  <span style={{ "font-size": "12px", color: "var(--text-primary)" }}>
+                    Require email verification
+                  </span>
+                  <button
+                    onClick={handleToggleVerification}
+                    disabled={emailSaving()}
+                    style={{
+                      "font-size": "11px",
+                      padding: "2px 8px",
+                      border: `1px solid ${emailVerifyEnabled() ? "var(--success)" : "var(--text-muted)"}`,
+                      "background-color": emailVerifyEnabled() ? "rgba(76,175,80,0.15)" : "transparent",
+                      color: emailVerifyEnabled() ? "var(--success)" : "var(--text-muted)",
+                      "font-weight": "600",
+                      cursor: emailSaving() ? "wait" : "pointer",
+                      opacity: emailSaving() ? "0.6" : "1",
+                    }}
+                  >
+                    {emailVerifyEnabled() ? "[on]" : "[off]"}
+                  </button>
+                </div>
+
+                {/* Provider Selection */}
+                <div style={sectionHeaderStyle}>Provider</div>
+                <select
+                  value={emailProvider()}
+                  onChange={(e) => {
+                    setEmailProvider(e.currentTarget.value as "postmark" | "smtp");
+                    clearEmailForm();
+                  }}
+                  style={{ ...selectStyle, "margin-bottom": "16px" }}
+                >
+                  <option value="postmark">Postmark</option>
+                  <option value="smtp">SMTP</option>
+                </select>
+
+                {/* Postmark Fields */}
+                <Show when={emailProvider() === "postmark"}>
+                  <div style={sectionHeaderStyle}>Postmark Configuration</div>
+
+                  <label style={labelStyle}>API Key (Server Token)</label>
+                  <input
+                    type="password"
+                    value={emailApiKey()}
+                    onInput={(e) => {
+                      setEmailApiKey(e.currentTarget.value);
+                      setEmailApiKeyChanged(true);
+                      setEmailValidErrors((v) => { const n = { ...v }; delete n.api_key; return n; });
+                    }}
+                    onFocus={() => {
+                      if (!emailApiKeyChanged() && emailApiKeyMasked()) {
+                        setEmailApiKey("");
+                        setEmailApiKeyChanged(true);
+                      }
+                    }}
+                    placeholder={emailApiKeyMasked() || "Enter API key"}
+                    style={inputStyle}
+                  />
+                  {emailValidErrors().api_key && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().api_key}
+                    </div>
+                  )}
+                  <div style={{ height: "8px" }} />
+
+                  <label style={labelStyle}>From Email</label>
+                  <input
+                    type="email"
+                    value={emailFromEmail()}
+                    onInput={(e) => {
+                      setEmailFromEmail(e.currentTarget.value);
+                      setEmailValidErrors((v) => { const n = { ...v }; delete n.from_email; return n; });
+                    }}
+                    placeholder="noreply@yourdomain.com"
+                    style={inputStyle}
+                  />
+                  {emailValidErrors().from_email && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().from_email}
+                    </div>
+                  )}
+                  <div style={{ height: "8px" }} />
+
+                  <label style={labelStyle}>From Name</label>
+                  <input
+                    type="text"
+                    value={emailFromName()}
+                    onInput={(e) => {
+                      setEmailFromName(e.currentTarget.value);
+                      setEmailValidErrors((v) => { const n = { ...v }; delete n.from_name; return n; });
+                    }}
+                    placeholder="Le Faux Pain"
+                    style={inputStyle}
+                  />
+                  {emailValidErrors().from_name && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().from_name}
+                    </div>
+                  )}
+                </Show>
+
+                {/* SMTP Fields */}
+                <Show when={emailProvider() === "smtp"}>
+                  <div style={sectionHeaderStyle}>SMTP Configuration</div>
+
+                  <label style={labelStyle}>Host</label>
+                  <input
+                    type="text"
+                    value={smtpHost()}
+                    onInput={(e) => {
+                      setSmtpHost(e.currentTarget.value);
+                      setEmailValidErrors((v) => { const n = { ...v }; delete n.host; return n; });
+                    }}
+                    placeholder="smtp.postmarkapp.com"
+                    style={inputStyle}
+                  />
+                  {emailValidErrors().host && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().host}
+                    </div>
+                  )}
+                  <div style={{ height: "8px" }} />
+
+                  <label style={labelStyle}>Port</label>
+                  <input
+                    type="text"
+                    value={smtpPort()}
+                    onInput={(e) => {
+                      setSmtpPort(e.currentTarget.value);
+                      setEmailValidErrors((v) => { const n = { ...v }; delete n.port; return n; });
+                    }}
+                    placeholder="587"
+                    style={inputStyle}
+                  />
+                  {emailValidErrors().port && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().port}
+                    </div>
+                  )}
+                  <div style={{ height: "8px" }} />
+
+                  <label style={labelStyle}>Username</label>
+                  <input
+                    type="text"
+                    value={smtpUsername()}
+                    onInput={(e) => {
+                      setSmtpUsername(e.currentTarget.value);
+                      setEmailValidErrors((v) => { const n = { ...v }; delete n.username; return n; });
+                    }}
+                    placeholder="username"
+                    style={inputStyle}
+                  />
+                  {emailValidErrors().username && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().username}
+                    </div>
+                  )}
+                  <div style={{ height: "8px" }} />
+
+                  <label style={labelStyle}>Password</label>
+                  <input
+                    type="password"
+                    value={smtpPassword()}
+                    onInput={(e) => {
+                      setSmtpPassword(e.currentTarget.value);
+                      setSmtpPasswordChanged(true);
+                      setEmailValidErrors((v) => { const n = { ...v }; delete n.password; return n; });
+                    }}
+                    onFocus={() => {
+                      if (!smtpPasswordChanged() && smtpPasswordMasked()) {
+                        setSmtpPassword("");
+                        setSmtpPasswordChanged(true);
+                      }
+                    }}
+                    placeholder={smtpPasswordMasked() || "Enter password"}
+                    style={inputStyle}
+                  />
+                  {emailValidErrors().password && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().password}
+                    </div>
+                  )}
+                  <div style={{ height: "8px" }} />
+
+                  <label style={labelStyle}>Encryption</label>
+                  <select
+                    value={smtpEncryption()}
+                    onChange={(e) => {
+                      setSmtpEncryption(e.currentTarget.value);
+                      if (e.currentTarget.value === "starttls" && smtpPort() === "465") setSmtpPort("587");
+                      if (e.currentTarget.value === "tls" && smtpPort() === "587") setSmtpPort("465");
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="starttls">STARTTLS (port 587)</option>
+                    <option value="tls">TLS (port 465)</option>
+                    <option value="none">None (port 25)</option>
+                  </select>
+                  {emailValidErrors().encryption && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().encryption}
+                    </div>
+                  )}
+                  <div style={{ height: "8px" }} />
+
+                  <label style={labelStyle}>From Email</label>
+                  <input
+                    type="email"
+                    value={emailFromEmail()}
+                    onInput={(e) => {
+                      setEmailFromEmail(e.currentTarget.value);
+                      setEmailValidErrors((v) => { const n = { ...v }; delete n.from_email; return n; });
+                    }}
+                    placeholder="noreply@yourdomain.com"
+                    style={inputStyle}
+                  />
+                  {emailValidErrors().from_email && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().from_email}
+                    </div>
+                  )}
+                  <div style={{ height: "8px" }} />
+
+                  <label style={labelStyle}>From Name</label>
+                  <input
+                    type="text"
+                    value={emailFromName()}
+                    onInput={(e) => {
+                      setEmailFromName(e.currentTarget.value);
+                      setEmailValidErrors((v) => { const n = { ...v }; delete n.from_name; return n; });
+                    }}
+                    placeholder="Le Faux Pain"
+                    style={inputStyle}
+                  />
+                  {emailValidErrors().from_name && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "2px" }}>
+                      {emailValidErrors().from_name}
+                    </div>
+                  )}
+                </Show>
+
+                {/* Save & Test Buttons */}
+                <div style={{ "margin-top": "16px" }}>
+                  {emailSaveError() && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-bottom": "8px" }}>
+                      {emailSaveError()}
+                    </div>
+                  )}
+                  {emailSaveMsg() && (
+                    <div style={{ color: "var(--success)", "font-size": "11px", "margin-bottom": "8px", "font-family": "var(--font-display)", "letter-spacing": "1px" }}>
+                      {emailSaveMsg()}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleSaveEmail}
+                    disabled={emailSaving() || emailTesting()}
+                    style={{
+                      ...actionBtnStyle,
+                      width: "100%",
+                      opacity: emailSaving() ? "0.6" : "1",
+                      cursor: emailSaving() ? "wait" : "pointer",
+                    }}
+                  >
+                    {emailSaving() ? "[SAVING...]" : "[save configuration]"}
+                  </button>
+
+                  <div style={{ height: "8px" }} />
+
+                  <button
+                    onClick={handleTestEmail}
+                    disabled={emailTesting() || emailSaving() || !emailConfigured()}
+                    style={{
+                      "font-size": "12px",
+                      border: "1px solid var(--cyan)",
+                      "background-color": "rgba(0,188,212,0.1)",
+                      color: "var(--cyan)",
+                      "font-weight": "600",
+                      padding: "6px 16px",
+                      width: "100%",
+                      opacity: (!emailConfigured() || emailTesting() || emailSaving()) ? "0.4" : "1",
+                      cursor: (!emailConfigured() || emailTesting()) ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {emailTestPhase() === "connecting"
+                      ? "[CONNECTING...]"
+                      : emailTestPhase() === "sending"
+                        ? "[SENDING...]"
+                        : "[test connection]"}
+                  </button>
+
+                  <Show when={!emailConfigured()}>
+                    <div style={{ "font-size": "10px", color: "var(--text-muted)", "margin-top": "4px" }}>
+                      Save a provider configuration first
+                    </div>
+                  </Show>
+
+                  {emailTestMsg() && (
+                    <div style={{
+                      "font-size": "11px",
+                      color: emailTestPhase() === "done" ? "var(--success)" : "var(--danger)",
+                      "margin-top": "8px",
+                      "font-family": "var(--font-display)",
+                      "letter-spacing": "1px",
+                    }}>
+                      {emailTestMsg()}
+                    </div>
+                  )}
+                </div>
               </Show>
 
               {/* App tab (desktop only) */}

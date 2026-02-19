@@ -182,3 +182,33 @@ export async function uploadRadioTrack(
 export async function deleteRadioTrack(trackId: string) {
   return request(`/radio/tracks/${trackId}`, { method: "DELETE" });
 }
+
+export function getEmailSettings(): Promise<{
+  is_configured: boolean;
+  email_verification_enabled: boolean;
+  provider?: string;
+  from_email?: string;
+  from_name?: string;
+  api_key_masked?: string;
+  host?: string;
+  port?: number;
+  username?: string;
+  password_masked?: string;
+  encryption?: string;
+}> {
+  return request("/admin/settings/email");
+}
+
+export function saveEmailSettings(payload: {
+  email_verification_enabled?: boolean;
+  email_provider_config?: Record<string, unknown>;
+}) {
+  return request("/admin/settings", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function sendTestEmail(): Promise<{ status: string; email: string }> {
+  return request("/admin/settings/email/test", { method: "POST" });
+}

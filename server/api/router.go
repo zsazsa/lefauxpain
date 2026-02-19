@@ -71,6 +71,8 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	// Admin routes (authenticated)
 	adminHandler := &AdminHandler{DB: database, Hub: hub, EmailService: emailService, EncKey: encKey}
 	mux.HandleFunc("/api/v1/admin/users", authMW.Wrap(adminHandler.ListUsers))
+	mux.HandleFunc("/api/v1/admin/settings/email/test", authMW.Wrap(adminHandler.SendTestEmail))
+	mux.HandleFunc("/api/v1/admin/settings/email", authMW.Wrap(adminHandler.GetEmailSettings))
 	mux.HandleFunc("/api/v1/admin/settings", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			adminHandler.GetSettings(w, r)

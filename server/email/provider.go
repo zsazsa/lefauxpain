@@ -17,13 +17,19 @@ import (
 
 type Provider interface {
 	SendVerificationEmail(to, code, appName string) error
+	SendTestEmail(to, appName string) error
 }
 
 type ProviderConfig struct {
-	Provider  string `json:"provider"`
-	APIKey    string `json:"api_key"`
-	FromEmail string `json:"from_email"`
-	FromName  string `json:"from_name"`
+	Provider   string `json:"provider"`
+	APIKey     string `json:"api_key,omitempty"`
+	FromEmail  string `json:"from_email"`
+	FromName   string `json:"from_name"`
+	Host       string `json:"host,omitempty"`
+	Port       int    `json:"port,omitempty"`
+	Username   string `json:"username,omitempty"`
+	Password   string `json:"password,omitempty"`
+	Encryption string `json:"encryption,omitempty"`
 }
 
 type EmailService struct {
@@ -68,6 +74,16 @@ func (s *EmailService) GetProvider() (Provider, error) {
 			APIKey:    cfg.APIKey,
 			FromEmail: cfg.FromEmail,
 			FromName:  cfg.FromName,
+		}, nil
+	case "smtp":
+		return &SMTPProvider{
+			Host:       cfg.Host,
+			Port:       cfg.Port,
+			Username:   cfg.Username,
+			Password:   cfg.Password,
+			Encryption: cfg.Encryption,
+			FromEmail:  cfg.FromEmail,
+			FromName:   cfg.FromName,
 		}, nil
 	case "test":
 		return &TestProvider{}, nil
@@ -125,6 +141,35 @@ func (s *EmailService) IsVerificationEnabled() (bool, error) {
 		return false, err
 	}
 	return val == "true", nil
+}
+
+func (s *EmailService) GetProviderConfig() (*ProviderConfig, error) {
+	encrypted, err := s.db.GetSetting("email_provider_config")
+	if err != nil {
+		return nil, fmt.Errorf("get provider config: %w", err)
+	}
+	if encrypted == "" {
+		return nil, nil
+	}
+
+	decrypted, err := crypto.Decrypt(s.encKey, encrypted)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt provider config: %w", err)
+	}
+
+	var cfg ProviderConfig
+	if err := json.Unmarshal([]byte(decrypted), &cfg); err != nil {
+		return nil, fmt.Errorf("parse provider config: %w", err)
+	}
+	return &cfg, nil
+}
+
+func (s *EmailService) SendTestEmail(to, appName string) error {
+	provider, err := s.GetProvider()
+	if err != nil {
+		return err
+	}
+	return provider.SendTestEmail(to, appName)
 }
 
 func generateCode() (string, error) {
