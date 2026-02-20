@@ -194,9 +194,9 @@ export default function RadioPlayer() {
   let lastDriftCheck = 0;
   const tickProgress = () => {
     if (audioRef) setCurrentTime(audioRef.currentTime);
-    // Periodic drift correction every 2 seconds
+    // Periodic drift correction every 60 seconds
     const now = performance.now();
-    if (now - lastDriftCheck > 2000) {
+    if (now - lastDriftCheck > 60000) {
       lastDriftCheck = now;
       syncToServer();
     }
