@@ -228,6 +228,20 @@ var migrations = []string{
 
 	// Version 15: Registration IP tracking
 	`ALTER TABLE users ADD COLUMN register_ip TEXT;`,
+
+	// Version 16: URL unfurls for link previews
+	`CREATE TABLE url_unfurls (
+		id           TEXT PRIMARY KEY,
+		message_id   TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+		url          TEXT NOT NULL,
+		site_name    TEXT,
+		title        TEXT,
+		description  TEXT,
+		image_url    TEXT,
+		fetch_status TEXT NOT NULL DEFAULT 'pending',
+		fetched_at   DATETIME DEFAULT (datetime('now'))
+	);
+	CREATE INDEX idx_url_unfurls_message ON url_unfurls(message_id);`,
 }
 
 func (d *DB) migrate() error {

@@ -16,6 +16,7 @@ import {
   deleteMessage,
   addReaction,
   removeReaction,
+  setMessageUnfurls,
 } from "../stores/messages";
 import {
   setOnlineUserList,
@@ -275,6 +276,10 @@ export function initEventHandlers() {
 
       case "message_delete":
         deleteMessage(msg.d.id, msg.d.channel_id);
+        break;
+
+      case "message_unfurls":
+        setMessageUnfurls(msg.d.message_id, msg.d.channel_id, msg.d.unfurls || []);
         break;
 
       case "reaction_add":

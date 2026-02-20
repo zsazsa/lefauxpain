@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/kalman/voicechat/db"
+	"github.com/kalman/voicechat/unfurl"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -283,6 +285,61 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		CreatedAt:   msg.CreatedAt,
 	})
 	h.BroadcastAll(broadcast)
+
+	// Async URL unfurling
+	if d.Content != nil {
+		urls := unfurl.ExtractURLs(*d.Content)
+		if len(urls) > 0 {
+			go h.processUnfurls(msg.ID, msg.ChannelID, urls)
+		}
+	}
+}
+
+func (h *Hub) processUnfurls(messageID, channelID string, urls []string) {
+	results := unfurl.FetchUnfurls(urls)
+
+	var payloads []UnfurlPayload
+	for _, r := range results {
+		status := "error"
+		if r.Success {
+			status = "success"
+		}
+		u := &db.URLUnfurl{
+			ID:          uuid.New().String(),
+			MessageID:   messageID,
+			URL:         r.URL,
+			SiteName:    r.SiteName,
+			Title:       r.Title,
+			Description: r.Description,
+			ImageURL:    r.ImageURL,
+			FetchStatus: status,
+		}
+		if err := h.DB.CreateURLUnfurl(u); err != nil {
+			log.Printf("create unfurl: %v", err)
+			continue
+		}
+		if r.Success {
+			siteName := ""
+			if r.SiteName != nil {
+				siteName = *r.SiteName
+			}
+			payloads = append(payloads, UnfurlPayload{
+				URL:         r.URL,
+				SiteName:    siteName,
+				Title:       r.Title,
+				Description: r.Description,
+			})
+		}
+	}
+
+	if len(payloads) > 0 {
+		msg, _ := NewMessage("message_unfurls", MessageUnfurlsPayload{
+			MessageID: messageID,
+			ChannelID: channelID,
+			Unfurls:   payloads,
+		})
+		h.BroadcastAll(msg)
+	}
 }
 
 func (h *Hub) handleEditMessage(c *Client, data json.RawMessage) {

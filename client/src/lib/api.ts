@@ -238,3 +238,13 @@ export function resetPassword(email: string, code: string, newPassword: string) 
     body: JSON.stringify({ email, code, new_password: newPassword }),
   });
 }
+
+export function previewUnfurl(url: string): Promise<{
+  success: boolean;
+  url?: string;
+  site_name?: string;
+  title?: string | null;
+  description?: string | null;
+}> {
+  return request(`/unfurl?url=${encodeURIComponent(url)}`);
+}

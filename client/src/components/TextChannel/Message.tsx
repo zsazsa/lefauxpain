@@ -1,5 +1,5 @@
 import { Show, For, createSignal } from "solid-js";
-import type { Message } from "../../stores/messages";
+import type { Message, Unfurl } from "../../stores/messages";
 import { setReplyingTo } from "../../stores/messages";
 import { currentUser } from "../../stores/auth";
 import { lookupUsername, onlineUsers, allUsers } from "../../stores/users";
@@ -100,6 +100,50 @@ function renderContent(content: string): any {
     result.push(content.slice(lastIndex));
   }
   return result.length > 0 ? result : content;
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "..." : s;
+}
+
+function UnfurlBlock(props: { unfurl: Unfurl }) {
+  const title = () => props.unfurl.title ? truncate(props.unfurl.title, 80) : null;
+  const desc = () => props.unfurl.description ? truncate(props.unfurl.description, 100) : null;
+  const siteName = () => props.unfurl.site_name || "";
+
+  return (
+    <a
+      href={props.unfurl.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: "block",
+        "text-decoration": "none",
+        "margin-top": "1px",
+      }}
+    >
+      <div
+        style={{
+          "font-size": "12px",
+          "line-height": "1.4",
+          color: "var(--text-muted)",
+          padding: "1px 0",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+      >
+        <span>{"\u21B3"} </span>
+        <span>{siteName()}</span>
+        <Show when={title()}>
+          <span> {"\u2014"} </span>
+          <span style={{ color: "var(--text-secondary)" }}>{title()}</span>
+        </Show>
+        <Show when={desc()}>
+          <div style={{ "padding-left": "2ch" }}>{desc()}</div>
+        </Show>
+      </div>
+    </a>
+  );
 }
 
 // Module-level signal: only one message shows actions at a time on mobile
@@ -323,6 +367,15 @@ export default function MessageItem(props: MessageProps) {
                 }}
               />
             )}
+          </For>
+        </div>
+      </Show>
+
+      {/* URL Unfurls */}
+      <Show when={props.message.unfurls && props.message.unfurls.length > 0}>
+        <div style={{ "padding-left": "7ch", "margin-top": "2px" }}>
+          <For each={props.message.unfurls}>
+            {(unfurl: Unfurl) => <UnfurlBlock unfurl={unfurl} />}
           </For>
         </div>
       </Show>

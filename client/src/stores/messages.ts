@@ -23,6 +23,13 @@ export type ReplyTo = {
   deleted?: boolean;
 };
 
+export type Unfurl = {
+  url: string;
+  site_name: string;
+  title: string | null;
+  description: string | null;
+};
+
 export type Message = {
   id: string;
   channel_id: string;
@@ -32,6 +39,7 @@ export type Message = {
   attachments: Attachment[];
   reactions: ReactionGroup[];
   mentions: string[];
+  unfurls?: Unfurl[];
   created_at: string;
   edited_at: string | null;
   deleted?: boolean;
@@ -83,7 +91,7 @@ export function deleteMessage(id: string, channelId: string) {
     ...prev,
     [channelId]: (prev[channelId] || []).map((m) =>
       m.id === id
-        ? { ...m, deleted: true, content: null, attachments: [], reactions: [] }
+        ? { ...m, deleted: true, content: null, attachments: [], reactions: [], unfurls: [] }
         : m
     ),
   }));
@@ -168,6 +176,19 @@ export function removeReaction(
     }
     return updated;
   });
+}
+
+export function setMessageUnfurls(
+  messageId: string,
+  channelId: string,
+  unfurls: Unfurl[]
+) {
+  setMessagesByChannel((prev) => ({
+    ...prev,
+    [channelId]: (prev[channelId] || []).map((m) =>
+      m.id === messageId ? { ...m, unfurls } : m
+    ),
+  }));
 }
 
 export function getChannelMessages(channelId: string): Message[] {

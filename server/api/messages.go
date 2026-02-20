@@ -12,6 +12,13 @@ type MessageHandler struct {
 	DB *db.DB
 }
 
+type unfurlPayload struct {
+	URL         string  `json:"url"`
+	SiteName    string  `json:"site_name"`
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+}
+
 type messageResponse struct {
 	ID          string              `json:"id"`
 	ChannelID   string              `json:"channel_id"`
@@ -21,6 +28,7 @@ type messageResponse struct {
 	Attachments []attachPayload     `json:"attachments"`
 	Reactions   []db.ReactionGroup  `json:"reactions"`
 	Mentions    []string            `json:"mentions"`
+	Unfurls     []unfurlPayload     `json:"unfurls"`
 	CreatedAt   string              `json:"created_at"`
 	EditedAt    *string             `json:"edited_at"`
 	Deleted     bool                `json:"deleted"`
@@ -77,6 +85,12 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		// Batch fetch unfurls
+		msgIDs := make([]string, len(messages))
+		for i, m := range messages {
+			msgIDs[i] = m.ID
+		}
+		unfurlsMap, _ := h.DB.GetUnfurlsByMessageIDs(msgIDs)
 		result := make([]messageResponse, len(messages))
 		for i, m := range messages {
 			attachments, _ := h.DB.GetAttachmentsByMessage(m.ID)
@@ -120,7 +134,8 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 				Author:      authorPayload{ID: authorID, Username: m.AuthorUsername, AvatarURL: m.AuthorAvatarURL},
 				Content:     m.Content, ReplyTo: reply,
 				Attachments: attachPayloads, Reactions: reactions,
-				Mentions: mentions, CreatedAt: m.CreatedAt, EditedAt: m.EditedAt,
+				Mentions: mentions, Unfurls: buildUnfurlPayloads(unfurlsMap[m.ID]),
+				CreatedAt: m.CreatedAt, EditedAt: m.EditedAt,
 				Deleted: m.DeletedAt != nil,
 			}
 		}
@@ -138,6 +153,13 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	// Batch fetch unfurls
+	msgIDs := make([]string, len(messages))
+	for i, m := range messages {
+		msgIDs[i] = m.ID
+	}
+	unfurlsMap, _ := h.DB.GetUnfurlsByMessageIDs(msgIDs)
 
 	result := make([]messageResponse, len(messages))
 	for i, m := range messages {
@@ -204,6 +226,7 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			Attachments: attachPayloads,
 			Reactions:   reactions,
 			Mentions:    mentions,
+			Unfurls:     buildUnfurlPayloads(unfurlsMap[m.ID]),
 			CreatedAt:   m.CreatedAt,
 			EditedAt:    m.EditedAt,
 			Deleted:     m.DeletedAt != nil,
@@ -211,4 +234,24 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+func buildUnfurlPayloads(unfurls []db.URLUnfurl) []unfurlPayload {
+	if len(unfurls) == 0 {
+		return []unfurlPayload{}
+	}
+	result := make([]unfurlPayload, len(unfurls))
+	for i, u := range unfurls {
+		siteName := ""
+		if u.SiteName != nil {
+			siteName = *u.SiteName
+		}
+		result[i] = unfurlPayload{
+			URL:         u.URL,
+			SiteName:    siteName,
+			Title:       u.Title,
+			Description: u.Description,
+		}
+	}
+	return result
 }

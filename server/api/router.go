@@ -109,6 +109,11 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	mux.HandleFunc("/api/v1/radio/playlists/", radioRL.Wrap(authMW.Wrap(radioHandler.UploadTrack)))
 	mux.HandleFunc("/api/v1/radio/tracks/", authMW.Wrap(radioHandler.DeleteTrack))
 
+	// URL unfurl preview (authenticated + rate limited)
+	unfurlHandler := &UnfurlHandler{}
+	unfurlRL := NewIPRateLimiter(10, 10*time.Second)
+	mux.HandleFunc("/api/v1/unfurl", unfurlRL.Wrap(authMW.Wrap(unfurlHandler.Preview)))
+
 	// Audio device management (authenticated)
 	audioHandler := &AudioHandler{}
 	mux.HandleFunc("/api/v1/audio/devices", authMW.Wrap(audioHandler.ListDevices))

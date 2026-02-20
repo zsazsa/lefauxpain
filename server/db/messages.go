@@ -189,7 +189,11 @@ func (d *DB) DeleteMessage(id string) error {
 		`UPDATE messages SET content = NULL, deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL`,
 		id,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	d.Exec(`DELETE FROM url_unfurls WHERE message_id = ?`, id)
+	return nil
 }
 
 func (d *DB) GetReplyContext(messageID string) (*ReplyContext, error) {

@@ -133,6 +133,19 @@ type RadioPlaybackPayload struct {
 	UserID     string           `json:"user_id"`
 }
 
+type UnfurlPayload struct {
+	URL         string  `json:"url"`
+	SiteName    string  `json:"site_name"`
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+}
+
+type MessageUnfurlsPayload struct {
+	MessageID string          `json:"message_id"`
+	ChannelID string          `json:"channel_id"`
+	Unfurls   []UnfurlPayload `json:"unfurls"`
+}
+
 func NewMessage(op string, data any) ([]byte, error) {
 	d, err := json.Marshal(data)
 	if err != nil {

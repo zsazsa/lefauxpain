@@ -1,7 +1,7 @@
 import { createSignal, Show, For, onCleanup } from "solid-js";
 import { send } from "../../lib/ws";
 import { replyingTo, setReplyingTo, getChannelMessages } from "../../stores/messages";
-import { uploadFile, uploadMedia } from "../../lib/api";
+import { uploadFile, uploadMedia, previewUnfurl } from "../../lib/api";
 import { onlineUsers, allUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { isMobile } from "../../stores/responsive";
@@ -23,10 +23,59 @@ export default function MessageInput(props: MessageInputProps) {
   const [dragActive, setDragActive] = createSignal(false);
   const [mentionQuery, setMentionQuery] = createSignal<string | null>(null);
   const [mentionIndex, setMentionIndex] = createSignal(0);
+  const [urlPreview, setUrlPreview] = createSignal<{
+    url: string;
+    site_name: string;
+    title: string | null;
+    description: string | null;
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = createSignal(false);
   let fileInputRef: HTMLInputElement | undefined;
   let inputRef: HTMLInputElement | undefined;
   let typingTimeout: number | null = null;
+  let previewAbort: AbortController | null = null;
   const pendingMentions = new Map<string, string>();
+
+  const urlRegex = /https?:\/\/[^\s<>"'`]+/;
+
+  function tryFetchPreview(value: string) {
+    // Cancel any pending preview
+    if (previewAbort) previewAbort.abort();
+
+    const match = value.match(urlRegex);
+    if (!match) {
+      setUrlPreview(null);
+      return;
+    }
+
+    // Strip trailing punctuation
+    let url = match[0];
+    while (url.length > 1 && /[.,;:!?)>\]]+$/.test(url)) {
+      url = url.slice(0, -1);
+    }
+
+    // Don't re-fetch if we already have this URL
+    const current = urlPreview();
+    if (current && current.url === url) return;
+
+    previewAbort = new AbortController();
+    setPreviewLoading(true);
+    previewUnfurl(url)
+      .then((res) => {
+        if (res.success) {
+          setUrlPreview({
+            url: res.url || url,
+            site_name: res.site_name || "",
+            title: res.title || null,
+            description: res.description || null,
+          });
+        } else {
+          setUrlPreview(null);
+        }
+      })
+      .catch(() => setUrlPreview(null))
+      .finally(() => setPreviewLoading(false));
+  }
 
   // Cleanup preview URLs on unmount
   onCleanup(() => {
@@ -106,6 +155,7 @@ export default function MessageInput(props: MessageInputProps) {
     setAttachments([]);
     setReplyingTo(null);
     setMentionQuery(null);
+    setUrlPreview(null);
     pendingMentions.clear();
   };
 
@@ -338,6 +388,53 @@ export default function MessageInput(props: MessageInputProps) {
         </div>
       </Show>
 
+      {/* URL preview */}
+      <Show when={urlPreview() || previewLoading()}>
+        <div
+          style={{
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "space-between",
+            padding: "4px 12px",
+            "background-color": "var(--bg-secondary)",
+            "border-left": "1px solid var(--border-gold)",
+            "border-right": "1px solid var(--border-gold)",
+            "font-size": "12px",
+            color: "var(--text-muted)",
+          }}
+        >
+          <Show when={previewLoading() && !urlPreview()}>
+            <span style={{ "font-style": "italic" }}>fetching preview...</span>
+          </Show>
+          <Show when={urlPreview()}>
+            {(() => {
+              const p = urlPreview()!;
+              return (
+                <span>
+                  <span>{"\u21B1"} </span>
+                  <span>{p.site_name}</span>
+                  <Show when={p.title}>
+                    <span> {"\u2014"} </span>
+                    <span style={{ color: "var(--text-secondary)" }}>{p.title}</span>
+                  </Show>
+                </span>
+              );
+            })()}
+          </Show>
+          <button
+            onClick={() => setUrlPreview(null)}
+            style={{
+              color: "var(--text-muted)",
+              "font-size": "12px",
+              padding: "0 4px",
+              "flex-shrink": "0",
+            }}
+          >
+            [x]
+          </button>
+        </div>
+      </Show>
+
       {/* Terminal prompt input */}
       <div
         style={{
@@ -378,6 +475,12 @@ export default function MessageInput(props: MessageInputProps) {
             if (imageFiles.length > 0) {
               e.preventDefault();
               handleFiles(imageFiles);
+              return;
+            }
+            // Check pasted text for URLs — setTimeout so input value is updated first
+            const pasted = e.clipboardData?.getData("text/plain") || "";
+            if (pasted) {
+              setTimeout(() => tryFetchPreview(text()), 0);
             }
           }}
           disabled={uploading()}
