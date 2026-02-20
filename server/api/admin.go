@@ -29,6 +29,7 @@ type adminUserPayload struct {
 	KnockMessage  *string `json:"knock_message,omitempty"`
 	Email         *string `json:"email,omitempty"`
 	EmailVerified bool    `json:"email_verified"`
+	RegisterIP    *string `json:"register_ip,omitempty"`
 	CreatedAt     string  `json:"created_at"`
 }
 
@@ -61,6 +62,7 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 			KnockMessage:  u.KnockMessage,
 			Email:         u.Email,
 			EmailVerified: u.EmailVerifiedAt != nil,
+			RegisterIP:    u.RegisterIP,
 			CreatedAt:     u.CreatedAt,
 		}
 	}

@@ -16,6 +16,7 @@ type User struct {
 	KnockMessage    *string `json:"knock_message,omitempty"`
 	Email           *string `json:"email,omitempty"`
 	EmailVerifiedAt *string `json:"email_verified_at,omitempty"`
+	RegisterIP      *string `json:"register_ip,omitempty"`
 	CreatedAt       string  `json:"created_at"`
 }
 
@@ -29,10 +30,10 @@ type Channel struct {
 	CreatedAt string  `json:"created_at"`
 }
 
-func (d *DB) CreateUser(id, username string, passwordHash *string, email *string, isAdmin, approved bool, knockMessage *string) error {
+func (d *DB) CreateUser(id, username string, passwordHash *string, email *string, isAdmin, approved bool, knockMessage *string, registerIP *string) error {
 	_, err := d.Exec(
-		`INSERT INTO users (id, username, password_hash, email, is_admin, approved, knock_message) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, username, passwordHash, email, isAdmin, approved, knockMessage,
+		`INSERT INTO users (id, username, password_hash, email, is_admin, approved, knock_message, register_ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, username, passwordHash, email, isAdmin, approved, knockMessage, registerIP,
 	)
 	if err != nil {
 		return fmt.Errorf("create user: %w", err)
@@ -109,7 +110,7 @@ func (d *DB) GetUserByToken(token string) (*User, error) {
 }
 
 func (d *DB) GetAllUsers() ([]User, error) {
-	rows, err := d.Query(`SELECT id, username, password_hash, is_admin, avatar_path, approved, knock_message, email, email_verified_at, created_at FROM users ORDER BY created_at`)
+	rows, err := d.Query(`SELECT id, username, password_hash, is_admin, avatar_path, approved, knock_message, email, email_verified_at, register_ip, created_at FROM users ORDER BY created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("get all users: %w", err)
 	}
@@ -118,7 +119,7 @@ func (d *DB) GetAllUsers() ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.Approved, &u.KnockMessage, &u.Email, &u.EmailVerifiedAt, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.AvatarPath, &u.Approved, &u.KnockMessage, &u.Email, &u.EmailVerifiedAt, &u.RegisterIP, &u.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		users = append(users, u)
@@ -195,6 +196,14 @@ func (d *DB) SetPassword(id string, passwordHash *string) error {
 	_, err := d.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, id)
 	if err != nil {
 		return fmt.Errorf("set password: %w", err)
+	}
+	return nil
+}
+
+func (d *DB) SetEmail(id string, email *string) error {
+	_, err := d.Exec(`UPDATE users SET email = ? WHERE id = ?`, email, id)
+	if err != nil {
+		return fmt.Errorf("set email: %w", err)
 	}
 	return nil
 }

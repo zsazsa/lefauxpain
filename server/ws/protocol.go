@@ -63,6 +63,7 @@ type UserPayload struct {
 	ID          string  `json:"id"`
 	Username    string  `json:"username"`
 	AvatarURL   *string `json:"avatar_url"`
+	Email       *string `json:"email,omitempty"`
 	IsAdmin     bool    `json:"is_admin"`
 	HasPassword bool    `json:"has_password,omitempty"`
 }

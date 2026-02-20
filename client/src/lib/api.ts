@@ -61,6 +61,11 @@ export function getUsers(): Promise<
     username: string;
     avatar_url: string | null;
     is_admin: boolean;
+    approved: boolean;
+    knock_message: string | null;
+    email: string | null;
+    email_verified: boolean;
+    register_ip: string | null;
     created_at: string;
   }[]
 > {
@@ -93,6 +98,13 @@ export function changePassword(currentPassword: string, newPassword: string) {
   return request("/auth/password", {
     method: "POST",
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
+export function updateEmail(email: string) {
+  return request("/auth/email", {
+    method: "POST",
+    body: JSON.stringify({ email }),
   });
 }
 

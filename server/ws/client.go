@@ -306,6 +306,7 @@ func (c *Client) sendReady() error {
 		User: &UserPayload{
 			ID:          c.User.ID,
 			Username:    c.User.Username,
+			Email:       c.User.Email,
 			IsAdmin:     c.User.IsAdmin,
 			HasPassword: c.User.PasswordHash != nil,
 		},

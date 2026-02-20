@@ -10,8 +10,8 @@ import {
 import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop, isTauri } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
 import { muteChannelMic, unmuteChannelMic } from "../../lib/webrtc";
-import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, approveUser, getEmailSettings, saveEmailSettings, sendTestEmail } from "../../lib/api";
-import { currentUser } from "../../stores/auth";
+import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, updateEmail, approveUser, getEmailSettings, saveEmailSettings, sendTestEmail } from "../../lib/api";
+import { currentUser, setUser } from "../../stores/auth";
 import { allUsers, removeAllUser } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
 import {
@@ -31,6 +31,9 @@ type AdminUser = {
   is_admin: boolean;
   approved: boolean;
   knock_message: string | null;
+  email: string | null;
+  email_verified: boolean;
+  register_ip: string | null;
   created_at: string;
 };
 
@@ -64,6 +67,9 @@ export default function SettingsModal() {
   const [confirmPwd, setConfirmPwd] = createSignal("");
   const [pwdError, setPwdError] = createSignal("");
   const [pwdSuccess, setPwdSuccess] = createSignal("");
+  const [accountEmail, setAccountEmail] = createSignal(currentUser()?.email || "");
+  const [emailError, setEmailError] = createSignal("");
+  const [emailSuccess, setEmailSuccess] = createSignal("");
   let testStream: MediaStream | null = null;
   let testCtx: AudioContext | null = null;
   let testInterval: number | null = null;
@@ -386,6 +392,15 @@ export default function SettingsModal() {
     }
   });
 
+  // Sync account email when settings open
+  createEffect(() => {
+    if (settingsOpen() && activeTab() === "account") {
+      setAccountEmail(currentUser()?.email || "");
+      setEmailError("");
+      setEmailSuccess("");
+    }
+  });
+
   // Fetch admin users when admin tab is selected or settings reopened
   createEffect(() => {
     const open = settingsOpen();
@@ -665,6 +680,59 @@ export default function SettingsModal() {
             >
               {/* Account tab */}
               <Show when={activeTab() === "account"}>
+                <div style={sectionHeaderStyle}>Email</div>
+                <label style={labelStyle}>Email Address</label>
+                <input
+                  type="email"
+                  value={accountEmail()}
+                  onInput={(e) => {
+                    setAccountEmail(e.currentTarget.value);
+                    setEmailError("");
+                    setEmailSuccess("");
+                  }}
+                  placeholder="user@example.com"
+                  style={inputStyle}
+                />
+
+                {emailError() && (
+                  <div style={{ color: "var(--danger)", "font-size": "11px", "margin-top": "6px" }}>
+                    {emailError()}
+                  </div>
+                )}
+                {emailSuccess() && (
+                  <div style={{ color: "var(--success)", "font-size": "11px", "margin-top": "6px" }}>
+                    {emailSuccess()}
+                  </div>
+                )}
+
+                <button
+                  onClick={async () => {
+                    setEmailError("");
+                    setEmailSuccess("");
+                    const val = accountEmail().trim();
+                    if (val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+                      setEmailError("Invalid email format");
+                      return;
+                    }
+                    try {
+                      const res = await updateEmail(val);
+                      setEmailSuccess("Email updated");
+                      const u = currentUser();
+                      if (u) setUser({ ...u, email: res.email || null });
+                    } catch (e: any) {
+                      setEmailError(e.message || "Failed to update email");
+                    }
+                  }}
+                  style={{
+                    "margin-top": "12px",
+                    ...actionBtnStyle,
+                    width: "100%",
+                  }}
+                >
+                  [save email]
+                </button>
+
+                <div style={{ height: "20px" }} />
                 <div style={sectionHeaderStyle}>Password</div>
 
                 <Show when={currentUser()?.has_password}>
@@ -1102,6 +1170,11 @@ export default function SettingsModal() {
                             </button>
                           </div>
                         </div>
+                        <Show when={user.email || user.register_ip}>
+                          <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "2px" }}>
+                            {user.email}{user.email && user.register_ip ? " \u00b7 " : ""}{user.register_ip}
+                          </div>
+                        </Show>
                         <Show when={user.knock_message}>
                           <div
                             style={{
@@ -1221,6 +1294,11 @@ export default function SettingsModal() {
                             </span>
                           </Show>
                         </div>
+                        <Show when={user.email || user.register_ip}>
+                          <div style={{ "font-size": "11px", color: "var(--text-muted)", "padding-bottom": "2px" }}>
+                            {user.email}{user.email && user.register_ip ? " \u00b7 " : ""}{user.register_ip}
+                          </div>
+                        </Show>
                         <Show when={pwdEditUser() === user.id}>
                           <div style={{ padding: "4px 0 8px", display: "flex", "flex-direction": "column", gap: "6px" }}>
                             <input

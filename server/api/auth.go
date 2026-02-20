@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -149,8 +150,18 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	isAdmin := isFirstUser
 	approved := isFirstUser
 
+	// Capture registration IP
+	clientIP := r.Header.Get("X-Real-IP")
+	if clientIP == "" {
+		clientIP = r.RemoteAddr
+		if host, _, err := net.SplitHostPort(clientIP); err == nil {
+			clientIP = host
+		}
+	}
+	registerIP := &clientIP
+
 	userID := uuid.New().String()
-	if err := h.DB.CreateUser(userID, req.Username, passwordHash, emailPtr, isAdmin, approved, req.KnockMessage); err != nil {
+	if err := h.DB.CreateUser(userID, req.Username, passwordHash, emailPtr, isAdmin, approved, req.KnockMessage, registerIP); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
