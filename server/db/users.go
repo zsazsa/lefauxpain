@@ -91,6 +91,14 @@ func (d *DB) CreateToken(token, userID string) error {
 	return nil
 }
 
+func (d *DB) DeleteTokensByUserID(userID string) error {
+	_, err := d.Exec(`DELETE FROM tokens WHERE user_id = ?`, userID)
+	if err != nil {
+		return fmt.Errorf("delete tokens by user: %w", err)
+	}
+	return nil
+}
+
 func (d *DB) GetUserByToken(token string) (*User, error) {
 	u := &User{}
 	err := d.QueryRow(

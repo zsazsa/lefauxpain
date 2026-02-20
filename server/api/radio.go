@@ -101,6 +101,10 @@ func (h *RadioHandler) UploadTrack(w http.ResponseWriter, r *http.Request) {
 
 	var waveform *string
 	if wf := r.FormValue("waveform"); wf != "" {
+		if len(wf) > 10000 {
+			writeError(w, http.StatusBadRequest, "waveform data too large")
+			return
+		}
 		waveform = &wf
 	}
 

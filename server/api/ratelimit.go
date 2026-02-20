@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -41,12 +42,22 @@ func (rl *IPRateLimiter) Allow(ip string) bool {
 	return entry.count <= rl.limit
 }
 
+func clientIP(r *http.Request) string {
+	// Trust X-Real-IP set by nginx reverse proxy
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return ip
+	}
+	// Fall back to connection address
+	ip := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		return host
+	}
+	return ip
+}
+
 func (rl *IPRateLimiter) Wrap(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			ip = fwd
-		}
+		ip := clientIP(r)
 
 		if !rl.Allow(ip) {
 			http.Error(w, `{"error":"rate limit exceeded"}`, http.StatusTooManyRequests)

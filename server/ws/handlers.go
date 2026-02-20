@@ -630,6 +630,10 @@ func (h *Hub) handleRemoveChannelManager(c *Client, data json.RawMessage) {
 }
 
 func (h *Hub) handleReorderChannels(c *Client, data json.RawMessage) {
+	if !c.User.IsAdmin {
+		return
+	}
+
 	var d ReorderChannelsData
 	if err := json.Unmarshal(data, &d); err != nil {
 		return
@@ -1393,6 +1397,10 @@ func (h *Hub) handleRadioPlay(c *Client, data json.RawMessage) {
 		return
 	}
 
+	if !h.canManageRadioStation(c, d.StationID) {
+		return
+	}
+
 	// Verify station exists
 	_, err := h.DB.GetRadioStationByID(d.StationID)
 	if err != nil {
@@ -1442,6 +1450,10 @@ func (h *Hub) handleRadioPause(c *Client, data json.RawMessage) {
 		return
 	}
 
+	if !h.canManageRadioStation(c, d.StationID) {
+		return
+	}
+
 	state := h.GetRadioPlayback(d.StationID)
 	if state == nil {
 		return
@@ -1479,6 +1491,10 @@ func (h *Hub) handleRadioResume(c *Client, data json.RawMessage) {
 		return
 	}
 
+	if !h.canManageRadioStation(c, d.StationID) {
+		return
+	}
+
 	state := h.GetRadioPlayback(d.StationID)
 	if state == nil {
 		return
@@ -1513,6 +1529,10 @@ func (h *Hub) handleRadioSeek(c *Client, data json.RawMessage) {
 		return
 	}
 
+	if !h.canManageRadioStation(c, d.StationID) {
+		return
+	}
+
 	state := h.GetRadioPlayback(d.StationID)
 	if state == nil {
 		return
@@ -1544,6 +1564,10 @@ func (h *Hub) handleRadioSeek(c *Client, data json.RawMessage) {
 func (h *Hub) handleRadioNext(c *Client, data json.RawMessage) {
 	var d RadioNextData
 	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	if !h.canManageRadioStation(c, d.StationID) {
 		return
 	}
 
@@ -1599,12 +1623,14 @@ func (h *Hub) handleRadioStop(c *Client, data json.RawMessage) {
 		return
 	}
 
+	if !h.canManageRadioStation(c, d.StationID) {
+		return
+	}
+
 	state := h.GetRadioPlayback(d.StationID)
 	if state == nil {
 		return
 	}
-
-	// Anyone can stop
 
 	h.ClearRadioPlayback(d.StationID)
 	msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": d.StationID, "stopped": true})
@@ -1966,6 +1992,10 @@ type MediaSeekData struct {
 }
 
 func (h *Hub) handleMediaPlay(c *Client, data json.RawMessage) {
+	if !c.User.IsAdmin {
+		return
+	}
+
 	var d MediaPlayData
 	if err := json.Unmarshal(data, &d); err != nil {
 		return
@@ -1985,6 +2015,10 @@ func (h *Hub) handleMediaPlay(c *Client, data json.RawMessage) {
 }
 
 func (h *Hub) handleMediaPause(c *Client, data json.RawMessage) {
+	if !c.User.IsAdmin {
+		return
+	}
+
 	var d MediaPauseData
 	if err := json.Unmarshal(data, &d); err != nil {
 		return
@@ -2007,6 +2041,10 @@ func (h *Hub) handleMediaPause(c *Client, data json.RawMessage) {
 }
 
 func (h *Hub) handleMediaSeek(c *Client, data json.RawMessage) {
+	if !c.User.IsAdmin {
+		return
+	}
+
 	var d MediaSeekData
 	if err := json.Unmarshal(data, &d); err != nil {
 		return
@@ -2028,6 +2066,10 @@ func (h *Hub) handleMediaSeek(c *Client, data json.RawMessage) {
 }
 
 func (h *Hub) handleMediaStop(c *Client) {
+	if !c.User.IsAdmin {
+		return
+	}
+
 	h.SetMediaPlayback(nil)
 
 	msg, _ := NewMessage("media_playback", nil)

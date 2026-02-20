@@ -114,6 +114,8 @@ func (h *MediaHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user := UserFromContext(r.Context())
+
 	// Extract ID from /api/v1/media/{id}
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 5 {
@@ -125,6 +127,12 @@ func (h *MediaHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	item, err := h.DB.GetMediaByID(mediaID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "media not found")
+		return
+	}
+
+	// Only uploader or admin can delete
+	if item.UploadedBy != user.ID && !user.IsAdmin {
+		writeError(w, http.StatusForbidden, "only the uploader or an admin can delete this media")
 		return
 	}
 

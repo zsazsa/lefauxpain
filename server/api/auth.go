@@ -101,6 +101,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.KnockMessage != nil && len(*req.KnockMessage) > 500 {
+		writeError(w, http.StatusBadRequest, "knock message must be 500 characters or less")
+		return
+	}
+
 	// Check if username already taken (case-insensitive)
 	existing, err := h.DB.GetUserByUsername(req.Username)
 	if err != nil {
@@ -131,6 +136,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Hash password if provided
 	var passwordHash *string
 	if req.Password != nil && *req.Password != "" {
+		if len(*req.Password) > 72 {
+			writeError(w, http.StatusBadRequest, "password must be 72 characters or less")
+			return
+		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -324,6 +333,10 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	// Set or remove password
 	var passwordHash *string
 	if req.NewPassword != "" {
+		if len(req.NewPassword) > 72 {
+			writeError(w, http.StatusBadRequest, "password must be 72 characters or less")
+			return
+		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -337,6 +350,9 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	// Invalidate all existing tokens for this user
+	h.DB.DeleteTokensByUserID(user.ID)
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "updated", "has_password": passwordHash != nil})
 }
@@ -594,6 +610,10 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "new password is required")
 		return
 	}
+	if len(req.NewPassword) > 72 {
+		writeError(w, http.StatusBadRequest, "password must be 72 characters or less")
+		return
+	}
 
 	user, err := h.DB.GetUserByEmail(req.Email)
 	if err != nil {
@@ -650,6 +670,9 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.DB.InvalidateVerificationCode(vc.ID)
+
+	// Invalidate all existing tokens for this user
+	h.DB.DeleteTokensByUserID(user.ID)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
 }

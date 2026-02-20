@@ -40,7 +40,7 @@ func uniqueName(prefix string) string {
 // HTTPClient wraps net/http with JSON helpers and auth.
 type HTTPClient struct {
 	Token  string
-	FakeIP string // sent as X-Forwarded-For to isolate rate limits
+	FakeIP string // sent as X-Real-IP to isolate rate limits
 	client *http.Client
 }
 
@@ -72,7 +72,7 @@ func (c *HTTPClient) do(method, path string, body any) (*http.Response, error) {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 	if c.FakeIP != "" {
-		req.Header.Set("X-Forwarded-For", c.FakeIP)
+		req.Header.Set("X-Real-IP", c.FakeIP)
 	}
 
 	return c.client.Do(req)
@@ -159,7 +159,7 @@ func (c *HTTPClient) UploadFile(path, fieldName, filename string, data []byte, c
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 	if c.FakeIP != "" {
-		req.Header.Set("X-Forwarded-For", c.FakeIP)
+		req.Header.Set("X-Real-IP", c.FakeIP)
 	}
 
 	resp, err := c.client.Do(req)
