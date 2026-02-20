@@ -14,6 +14,15 @@ specs or tests. It works. Our job is NOT to rewrite it. Our job is to:
 - Never delete or rewrite working code "to clean it up" unless a spec asks for it
 - Ask the architect before making any structural/architectural changes
 
+## Scenario Integrity Rules
+- Scenario definition files in /specs/scenarios/ are READ-ONLY
+- You do not have permission to modify them
+- If a scenario fails, fix the application code
+- If a scenario seems wrong, ask the architect — never modify it yourself
+- The validation runner in /validation/ must faithfully implement 
+  each scenario step as described in the markdown
+- CI verifies scenario checksums on every push — tampering fails the build
+
 ## How to Make Changes
 1. Read the spec for the requested change
 2. Understand the existing code in the affected area
