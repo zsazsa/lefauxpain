@@ -41,6 +41,7 @@ type userPayload struct {
 	ID          string  `json:"id"`
 	Username    string  `json:"username"`
 	AvatarURL   *string `json:"avatar_url"`
+	Email       *string `json:"email,omitempty"`
 	IsAdmin     bool    `json:"is_admin"`
 	HasPassword bool    `json:"has_password"`
 }
@@ -50,6 +51,7 @@ func newUserPayload(u *db.User) *userPayload {
 		ID:          u.ID,
 		Username:    u.Username,
 		AvatarURL:   u.AvatarURL,
+		Email:       u.Email,
 		IsAdmin:     u.IsAdmin,
 		HasPassword: u.PasswordHash != nil,
 	}
@@ -253,9 +255,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check email verification status before approval check
+	// Check email verification status — only block unapproved users mid-verification
 	verificationEnabled, _ := h.EmailService.IsVerificationEnabled()
-	if verificationEnabled && user.Email != nil && user.EmailVerifiedAt == nil {
+	if verificationEnabled && !user.Approved && user.Email != nil && user.EmailVerifiedAt == nil {
+		// Send a verification code so the user can proceed
+		_ = h.EmailService.GenerateAndSendCode(user.ID, *user.Email)
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "please verify your email", "pending_verification": true})
 		return
 	}
@@ -324,6 +328,63 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "updated", "has_password": passwordHash != nil})
+}
+
+func (h *AuthHandler) UpdateEmail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user := UserFromContext(r.Context())
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	trimmed := strings.TrimSpace(req.Email)
+
+	// Empty string = remove email
+	if trimmed == "" {
+		if err := h.DB.SetEmail(user.ID, nil); err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"status": "updated", "email": nil})
+		return
+	}
+
+	// Validate format
+	if !emailRegex.MatchString(trimmed) {
+		writeError(w, http.StatusBadRequest, "invalid email format")
+		return
+	}
+
+	// Check uniqueness (case-insensitive)
+	existing, err := h.DB.GetUserByEmail(trimmed)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if existing != nil && existing.ID != user.ID {
+		writeError(w, http.StatusConflict, "email already in use")
+		return
+	}
+
+	if err := h.DB.SetEmail(user.ID, &trimmed); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "updated", "email": trimmed})
 }
 
 func (h *AuthHandler) Verify(w http.ResponseWriter, r *http.Request) {
