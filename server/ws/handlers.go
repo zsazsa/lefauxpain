@@ -1318,6 +1318,7 @@ func (h *Hub) handleDeleteRadioPlaylist(c *Client, data json.RawMessage) {
 	for _, sid := range cleared {
 		msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": sid, "stopped": true})
 		h.BroadcastToRadioListeners(sid, msg)
+		h.BroadcastRadioStopped(sid)
 	}
 
 	if err := h.DB.DeleteRadioPlaylist(d.PlaylistID); err != nil {
@@ -1442,6 +1443,7 @@ func (h *Hub) handleRadioPlay(c *Client, data json.RawMessage) {
 		UserID:     c.UserID,
 	})
 	h.BroadcastToRadioListeners(d.StationID, msg)
+	h.BroadcastRadioStatus(d.StationID, true, trackPayloads[0].Filename, c.UserID)
 }
 
 func (h *Hub) handleRadioPause(c *Client, data json.RawMessage) {
@@ -1481,6 +1483,7 @@ func (h *Hub) handleRadioPause(c *Client, data json.RawMessage) {
 		UserID:     state.UserID,
 	})
 	h.BroadcastToRadioListeners(state.StationID, msg)
+	h.BroadcastRadioStatus(state.StationID, false, track.Filename, state.UserID)
 }
 
 func (h *Hub) handleRadioResume(c *Client, data json.RawMessage) {
@@ -1521,6 +1524,7 @@ func (h *Hub) handleRadioResume(c *Client, data json.RawMessage) {
 		UserID:     state.UserID,
 	})
 	h.BroadcastToRadioListeners(state.StationID, msg)
+	h.BroadcastRadioStatus(state.StationID, true, track.Filename, state.UserID)
 }
 
 func (h *Hub) handleRadioSeek(c *Client, data json.RawMessage) {
@@ -1598,6 +1602,7 @@ func (h *Hub) handleRadioNext(c *Client, data json.RawMessage) {
 			UserID:     state.UserID,
 		})
 		h.BroadcastToRadioListeners(state.StationID, msg)
+		h.BroadcastRadioStatus(state.StationID, true, track.Filename, state.UserID)
 		return
 	}
 
@@ -1611,6 +1616,7 @@ func (h *Hub) handleRadioNext(c *Client, data json.RawMessage) {
 		h.ClearRadioPlayback(d.StationID)
 		msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": d.StationID, "stopped": true})
 		h.BroadcastToRadioListeners(d.StationID, msg)
+		h.BroadcastRadioStopped(d.StationID)
 		return
 	}
 
@@ -1635,6 +1641,7 @@ func (h *Hub) handleRadioStop(c *Client, data json.RawMessage) {
 	h.ClearRadioPlayback(d.StationID)
 	msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": d.StationID, "stopped": true})
 	h.BroadcastToRadioListeners(d.StationID, msg)
+	h.BroadcastRadioStopped(d.StationID)
 }
 
 func (h *Hub) handleRadioTrackEnded(c *Client, data json.RawMessage) {
@@ -1671,6 +1678,7 @@ func (h *Hub) handleRadioTrackEnded(c *Client, data json.RawMessage) {
 			UserID:     state.UserID,
 		})
 		h.BroadcastToRadioListeners(state.StationID, msg)
+		h.BroadcastRadioStatus(state.StationID, true, track.Filename, state.UserID)
 		return
 	}
 
@@ -1684,6 +1692,7 @@ func (h *Hub) handleRadioTrackEnded(c *Client, data json.RawMessage) {
 		h.ClearRadioPlayback(d.StationID)
 		msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": d.StationID, "stopped": true})
 		h.BroadcastToRadioListeners(d.StationID, msg)
+		h.BroadcastRadioStopped(d.StationID)
 		return
 	}
 
@@ -1700,6 +1709,7 @@ func (h *Hub) advancePlaybackMode(stationID, playlistID, userID, mode string) {
 			h.ClearRadioPlayback(stationID)
 			msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": stationID, "stopped": true})
 			h.BroadcastToRadioListeners(stationID, msg)
+			h.BroadcastRadioStopped(stationID)
 			return
 		}
 		state := &RadioPlaybackState{
@@ -1724,6 +1734,7 @@ func (h *Hub) advancePlaybackMode(stationID, playlistID, userID, mode string) {
 			UserID:     userID,
 		})
 		h.BroadcastToRadioListeners(stationID, msg)
+		h.BroadcastRadioStatus(stationID, true, tracks[0].Filename, userID)
 
 	case "play_all":
 		// Advance to next playlist, stop if none
@@ -1732,6 +1743,7 @@ func (h *Hub) advancePlaybackMode(stationID, playlistID, userID, mode string) {
 			h.ClearRadioPlayback(stationID)
 			msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": stationID, "stopped": true})
 			h.BroadcastToRadioListeners(stationID, msg)
+			h.BroadcastRadioStopped(stationID)
 			return
 		}
 		state := &RadioPlaybackState{
@@ -1756,6 +1768,7 @@ func (h *Hub) advancePlaybackMode(stationID, playlistID, userID, mode string) {
 			UserID:     userID,
 		})
 		h.BroadcastToRadioListeners(stationID, msg)
+		h.BroadcastRadioStatus(stationID, true, tracks[0].Filename, userID)
 
 	case "loop_all":
 		// Advance to next playlist, wrap around
@@ -1767,6 +1780,7 @@ func (h *Hub) advancePlaybackMode(stationID, playlistID, userID, mode string) {
 				h.ClearRadioPlayback(stationID)
 				msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": stationID, "stopped": true})
 				h.BroadcastToRadioListeners(stationID, msg)
+				h.BroadcastRadioStopped(stationID)
 				return
 			}
 			nextPL = playlistID
@@ -1793,11 +1807,13 @@ func (h *Hub) advancePlaybackMode(stationID, playlistID, userID, mode string) {
 			UserID:     userID,
 		})
 		h.BroadcastToRadioListeners(stationID, msg)
+		h.BroadcastRadioStatus(stationID, true, tracks[0].Filename, userID)
 
 	default: // "single" or unknown
 		h.ClearRadioPlayback(stationID)
 		msg, _ := NewMessage("radio_playback", map[string]interface{}{"station_id": stationID, "stopped": true})
 		h.BroadcastToRadioListeners(stationID, msg)
+		h.BroadcastRadioStopped(stationID)
 	}
 }
 

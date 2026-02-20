@@ -55,11 +55,13 @@ import {
   setRadioPlayback,
   setRadioPlaylists,
   setRadioListeners,
+  setRadioStatus,
   addRadioPlaylist,
   removeRadioPlaylist,
   updatePlaylistTracks,
   updateRadioPlaybackForStation,
   updateRadioListeners,
+  updateRadioStatusForStation,
   tunedStationId,
   setClockOffset,
 } from "../stores/radio";
@@ -219,6 +221,23 @@ export function initEventHandlers() {
           setRadioPlayback(mapped);
         }
         setRadioListeners(msg.d.radio_listeners || {});
+        // Derive initial radio_status from radio_playback
+        {
+          const pb = msg.d.radio_playback || {};
+          const statusMap: Record<string, any> = {};
+          for (const [sid, state] of Object.entries(pb)) {
+            if (state && !(state as any).stopped) {
+              const s = state as any;
+              statusMap[sid] = {
+                station_id: sid,
+                playing: s.playing,
+                track_name: s.track?.filename || "Playing",
+                user_id: s.user_id,
+              };
+            }
+          }
+          setRadioStatus(statusMap);
+        }
         // Re-send tune if we were already tuned (e.g. after reconnect)
         {
           const sid = tunedStationId();
@@ -418,6 +437,19 @@ export function initEventHandlers() {
 
       case "radio_playlist_tracks":
         updatePlaylistTracks(msg.d.playlist_id, msg.d.tracks || []);
+        break;
+
+      case "radio_status":
+        if (msg.d.stopped) {
+          updateRadioStatusForStation(msg.d.station_id, null);
+        } else {
+          updateRadioStatusForStation(msg.d.station_id, {
+            station_id: msg.d.station_id,
+            playing: msg.d.playing,
+            track_name: msg.d.track_name,
+            user_id: msg.d.user_id,
+          });
+        }
         break;
 
       case "radio_listeners":

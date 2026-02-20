@@ -37,10 +37,18 @@ export type RadioPlayback = {
   user_id: string;
 };
 
+export type RadioStatus = {
+  station_id: string;
+  playing: boolean;
+  track_name: string;
+  user_id: string;
+};
+
 const [radioStations, setRadioStations] = createSignal<RadioStation[]>([]);
 const [radioPlayback, setRadioPlayback] = createSignal<Record<string, RadioPlayback>>({});
 const [radioPlaylists, setRadioPlaylists] = createSignal<RadioPlaylist[]>([]);
 const [radioListeners, setRadioListeners] = createSignal<Record<string, string[]>>({});
+const [radioStatus, setRadioStatus] = createSignal<Record<string, RadioStatus>>({});
 const [tunedStationId, _setTunedStationId] = createSignal<string | null>(
   sessionStorage.getItem("radio_station")
 );
@@ -62,6 +70,8 @@ export {
   setRadioPlaylists,
   radioListeners,
   setRadioListeners,
+  radioStatus,
+  setRadioStatus,
   tunedStationId,
   setTunedStationId,
 };
@@ -127,6 +137,22 @@ export function getStationPlayback(stationId: string): RadioPlayback | null {
 
 export function updateRadioListeners(stationId: string, userIds: string[]) {
   setRadioListeners((prev) => ({ ...prev, [stationId]: userIds }));
+}
+
+export function updateRadioStatusForStation(stationId: string, status: RadioStatus | null) {
+  setRadioStatus((prev) => {
+    const next = { ...prev };
+    if (status) {
+      next[stationId] = status;
+    } else {
+      delete next[stationId];
+    }
+    return next;
+  });
+}
+
+export function getStationStatus(stationId: string): RadioStatus | null {
+  return radioStatus()[stationId] || null;
 }
 
 export function getStationListeners(stationId: string): string[] {

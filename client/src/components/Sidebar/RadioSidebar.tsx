@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
-import { radioStations, radioPlayback, setTunedStationId, getStationListeners } from "../../stores/radio";
+import { radioStations, radioStatus, setTunedStationId, getStationListeners } from "../../stores/radio";
 import { lookupUsername } from "../../stores/users";
 import { send } from "../../lib/ws";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
@@ -73,11 +73,11 @@ export default function RadioSidebar() {
 
       <For each={radioStations()}>
         {(station) => {
-          const pb = () => radioPlayback()[station.id];
-          const isActive = () => !!pb();
+          const status = () => radioStatus()[station.id];
+          const isActive = () => !!status();
           const djName = () => {
-            const p = pb();
-            return p ? lookupUsername(p.user_id) || "DJ" : null;
+            const s = status();
+            return s ? lookupUsername(s.user_id) || "DJ" : null;
           };
           const listenerCount = () => getStationListeners(station.id).length;
 
@@ -118,7 +118,7 @@ export default function RadioSidebar() {
                       "white-space": "nowrap",
                     }}
                   >
-                    {pb()!.track?.filename || "Playing"} — {djName()}
+                    {status()!.track_name || "Playing"} — {djName()}
                   </div>
                 </Show>
               </div>

@@ -338,6 +338,27 @@ func (h *Hub) BroadcastToRadioListeners(stationID string, msg []byte) {
 	}
 }
 
+// BroadcastRadioStatus sends a lightweight status update to all connected clients
+// so the sidebar shows which stations are live, without triggering audio.
+func (h *Hub) BroadcastRadioStatus(stationID string, playing bool, trackName string, userID string) {
+	msg, _ := NewMessage("radio_status", map[string]any{
+		"station_id": stationID,
+		"playing":    playing,
+		"track_name": trackName,
+		"user_id":    userID,
+	})
+	h.BroadcastAll(msg)
+}
+
+// BroadcastRadioStopped sends a stopped status to all connected clients.
+func (h *Hub) BroadcastRadioStopped(stationID string) {
+	msg, _ := NewMessage("radio_status", map[string]any{
+		"station_id": stationID,
+		"stopped":    true,
+	})
+	h.BroadcastAll(msg)
+}
+
 func (h *Hub) broadcastRadioListeners(stationID string) {
 	listeners := h.GetRadioListeners(stationID)
 	msg, _ := NewMessage("radio_listeners", map[string]any{
