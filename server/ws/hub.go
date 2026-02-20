@@ -326,6 +326,18 @@ func (h *Hub) GetAllRadioListeners() map[string][]string {
 	return result
 }
 
+// BroadcastToRadioListeners sends a message only to users tuned into the given station.
+func (h *Hub) BroadcastToRadioListeners(stationID string, msg []byte) {
+	listeners := h.GetRadioListeners(stationID)
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, uid := range listeners {
+		if client, ok := h.clients[uid]; ok {
+			client.Send(msg)
+		}
+	}
+}
+
 func (h *Hub) broadcastRadioListeners(stationID string) {
 	listeners := h.GetRadioListeners(stationID)
 	msg, _ := NewMessage("radio_listeners", map[string]any{

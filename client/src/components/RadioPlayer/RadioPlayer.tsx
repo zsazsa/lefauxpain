@@ -31,6 +31,9 @@ export default function RadioPlayer() {
   const [autoplayBlocked, setAutoplayBlocked] = createSignal(false);
   const [locallyPaused, setLocallyPaused] = createSignal(false);
   const [locallyMuted, setLocallyMuted] = createSignal(false);
+  // Gate: audio only plays if the user has explicitly initiated playback this session.
+  // Prevents remote radio_play events from auto-playing on tuned-in clients.
+  const [userActivated, setUserActivated] = createSignal(false);
 
   const [pos, setPos] = createSignal({ x: 16, y: 60 });
   const [size, setSize] = createSignal({ w: 360, h: 420 });
@@ -304,7 +307,7 @@ export default function RadioPlayer() {
     }
 
     if (p.playing && audio.paused) {
-      if (!locallyPaused()) {
+      if (!locallyPaused() && userActivated()) {
         ignoreEvents = true;
         ensureAnalyser();
         audio.play().then(() => {
@@ -354,6 +357,7 @@ export default function RadioPlayer() {
   const handleResumeBtn = () => {
     const sid = stationId();
     if (!sid || !pb()) return;
+    setUserActivated(true);
     send("radio_resume", { station_id: sid });
   };
 
@@ -374,6 +378,7 @@ export default function RadioPlayer() {
 
   const handleLocalResume = () => {
     if (!audioRef) return;
+    setUserActivated(true);
     setLocallyPaused(false);
     setAutoplayBlocked(false);
     ensureAnalyser();
@@ -406,6 +411,7 @@ export default function RadioPlayer() {
   const handlePlayOnStation = (playlistId: string) => {
     const sid = stationId();
     if (!sid) return;
+    setUserActivated(true);
     send("radio_play", { station_id: sid, playlist_id: playlistId });
   };
 
@@ -487,6 +493,7 @@ export default function RadioPlayer() {
       (p) => p.station_id === sid && p.tracks.length > 0
     );
     if (stationPlaylists.length > 0) {
+      setUserActivated(true);
       send("radio_play", { station_id: sid, playlist_id: stationPlaylists[0].id });
       setPlaylistOpen(true);
     }
