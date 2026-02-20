@@ -8,6 +8,7 @@ interface LoginProps {
 
 function Login(props: LoginProps) {
   const [username, setUsername] = createSignal("");
+  const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [confirmPassword, setConfirmPassword] = createSignal("");
   const [knockMessage, setKnockMessage] = createSignal("");
@@ -15,6 +16,12 @@ function Login(props: LoginProps) {
   const [error, setError] = createSignal("");
   const [loading, setLoading] = createSignal(false);
   const [pending, setPending] = createSignal(false);
+  const [pendingVerification, setPendingVerification] = createSignal(false);
+  const [verificationEmail, setVerificationEmail] = createSignal("");
+  const [verificationCode, setVerificationCode] = createSignal("");
+  const [verificationError, setVerificationError] = createSignal("");
+  const [verificationLoading, setVerificationLoading] = createSignal(false);
+  const [resendStatus, setResendStatus] = createSignal("");
   const [showServerInput, setShowServerInput] = createSignal(false);
   const [serverUrl, setServerUrl] = createSignal("");
   const [serverError, setServerError] = createSignal("");
@@ -60,6 +67,9 @@ function Login(props: LoginProps) {
       if (password()) {
         body.password = password();
       }
+      if (isRegister() && email()) {
+        body.email = email();
+      }
       if (isRegister() && knockMessage()) {
         body.knock_message = knockMessage();
       }
@@ -71,6 +81,13 @@ function Login(props: LoginProps) {
       });
 
       const data = await res.json();
+
+      if (data.pending_verification) {
+        const vEmail = isRegister() ? email() : username();
+        setVerificationEmail(vEmail);
+        setPendingVerification(true);
+        return;
+      }
 
       if (data.pending) {
         setPending(true);
@@ -90,6 +107,52 @@ function Login(props: LoginProps) {
     }
   };
 
+  const handleVerify = async (e: Event) => {
+    e.preventDefault();
+    setVerificationError("");
+    setVerificationLoading(true);
+    try {
+      const res = await fetch("/api/v1/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: verificationEmail(), code: verificationCode() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setVerificationError(data.error || "Verification failed");
+        return;
+      }
+      if (data.pending_approval) {
+        setPendingVerification(false);
+        setPending(true);
+      }
+    } catch {
+      setVerificationError("Failed to connect to server");
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setResendStatus("");
+    setVerificationError("");
+    try {
+      const res = await fetch("/api/v1/auth/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: verificationEmail() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setVerificationError(data.error || "Failed to resend code");
+        return;
+      }
+      setResendStatus("Code sent!");
+    } catch {
+      setVerificationError("Failed to connect to server");
+    }
+  };
+
   return (
     <div
       style={{
@@ -100,7 +163,175 @@ function Login(props: LoginProps) {
         "background-color": "var(--bg-primary)",
       }}
     >
-      <Show when={pending()}>
+      <Show when={pendingVerification()}>
+        <div
+          style={{
+            "background-color": "var(--bg-secondary)",
+            padding: "32px",
+            border: "1px solid var(--border-gold)",
+            width: "400px",
+            "max-width": "90vw",
+            "box-shadow": "0 0 30px rgba(201,168,76,0.08)",
+            "text-align": "center",
+          }}
+        >
+          <h2
+            style={{
+              "margin-bottom": "8px",
+              color: "var(--accent)",
+              "font-family": "var(--font-display)",
+              "font-size": "22px",
+              "letter-spacing": "2px",
+            }}
+          >
+            {t("appName")}
+          </h2>
+          <p
+            style={{
+              color: "var(--text-muted)",
+              "font-size": "12px",
+              "margin-bottom": "24px",
+            }}
+          >
+            // check your email
+          </p>
+          <div
+            style={{
+              "background-color": "rgba(201,168,76,0.08)",
+              border: "1px solid var(--border-gold)",
+              padding: "16px",
+              "margin-bottom": "16px",
+            }}
+          >
+            <p
+              style={{
+                color: "var(--accent)",
+                "font-size": "14px",
+                "font-weight": "600",
+                "margin-bottom": "8px",
+              }}
+            >
+              Verification code sent to {verificationEmail()}
+            </p>
+            <p
+              style={{
+                color: "var(--text-muted)",
+                "font-size": "12px",
+              }}
+            >
+              Enter the 6-digit code below
+            </p>
+          </div>
+
+          {verificationError() && (
+            <div
+              style={{
+                "background-color": "rgba(232, 64, 64, 0.1)",
+                border: "1px solid var(--danger)",
+                color: "var(--danger)",
+                padding: "8px",
+                "margin-bottom": "16px",
+                "font-size": "12px",
+              }}
+            >
+              ERR: {verificationError()}
+            </div>
+          )}
+
+          {resendStatus() && (
+            <div
+              style={{
+                "background-color": "rgba(201,168,76,0.08)",
+                border: "1px solid var(--border-gold)",
+                color: "var(--accent)",
+                padding: "8px",
+                "margin-bottom": "16px",
+                "font-size": "12px",
+              }}
+            >
+              {resendStatus()}
+            </div>
+          )}
+
+          <form onSubmit={handleVerify}>
+            <div style={{ "margin-bottom": "16px" }}>
+              <input
+                type="text"
+                value={verificationCode()}
+                onInput={(e) => setVerificationCode(e.currentTarget.value)}
+                placeholder="000000"
+                maxLength={6}
+                pattern="[0-9]{6}"
+                required
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  "background-color": "var(--bg-primary)",
+                  border: "1px solid var(--border-gold)",
+                  color: "var(--text-primary)",
+                  "font-size": "24px",
+                  "letter-spacing": "8px",
+                  "text-align": "center",
+                  "caret-color": "var(--accent)",
+                }}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={verificationLoading()}
+              style={{
+                width: "100%",
+                padding: "10px",
+                "background-color": "transparent",
+                border: "1px solid var(--accent)",
+                color: "var(--accent)",
+                "font-size": "13px",
+                "font-weight": "600",
+                "letter-spacing": "1px",
+                opacity: verificationLoading() ? "0.7" : "1",
+              }}
+            >
+              {verificationLoading() ? "..." : "[VERIFY]"}
+            </button>
+          </form>
+
+          <p
+            style={{
+              "margin-top": "16px",
+              color: "var(--text-muted)",
+              "font-size": "12px",
+            }}
+          >
+            <span
+              onClick={handleResend}
+              style={{
+                color: "var(--cyan)",
+                cursor: "pointer",
+              }}
+            >
+              [resend code]
+            </span>
+            {" "}
+            <span
+              onClick={() => {
+                setPendingVerification(false);
+                setVerificationCode("");
+                setVerificationError("");
+                setResendStatus("");
+                setError("");
+              }}
+              style={{
+                color: "var(--cyan)",
+                cursor: "pointer",
+              }}
+            >
+              [back to login]
+            </span>
+          </p>
+        </div>
+      </Show>
+
+      <Show when={pending() && !pendingVerification()}>
         <div
           style={{
             "background-color": "var(--bg-secondary)",
@@ -178,7 +409,7 @@ function Login(props: LoginProps) {
         </div>
       </Show>
 
-      <Show when={!pending()}>
+      <Show when={!pending() && !pendingVerification()}>
         <form
           onSubmit={handleSubmit}
           style={{
@@ -241,15 +472,15 @@ function Login(props: LoginProps) {
                 "letter-spacing": "1px",
               }}
             >
-              username
+              {isRegister() ? "username" : "username or email"}
             </label>
             <input
               type="text"
               value={username()}
               onInput={(e) => setUsername(e.currentTarget.value)}
               required
-              maxLength={32}
-              pattern="[a-zA-Z0-9_]+"
+              maxLength={isRegister() ? 32 : 255}
+              pattern={isRegister() ? "[a-zA-Z0-9_]+" : undefined}
               style={{
                 width: "100%",
                 padding: "8px",
@@ -261,6 +492,40 @@ function Login(props: LoginProps) {
               }}
             />
           </div>
+
+          <Show when={isRegister()}>
+            <div style={{ "margin-bottom": "16px" }}>
+              <label
+                style={{
+                  display: "block",
+                  "margin-bottom": "6px",
+                  color: "var(--text-muted)",
+                  "font-size": "11px",
+                  "text-transform": "uppercase",
+                  "letter-spacing": "1px",
+                }}
+              >
+                email{" "}
+                <span style={{ color: "var(--text-muted)", "letter-spacing": "0" }}>
+                  (optional)
+                </span>
+              </label>
+              <input
+                type="email"
+                value={email()}
+                onInput={(e) => setEmail(e.currentTarget.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  "background-color": "var(--bg-primary)",
+                  border: "1px solid var(--border-gold)",
+                  color: "var(--text-primary)",
+                  "font-size": "14px",
+                  "caret-color": "var(--accent)",
+                }}
+              />
+            </div>
+          </Show>
 
           <div style={{ "margin-bottom": isRegister() && password() ? "16px" : "24px" }}>
             <label
