@@ -30,9 +30,10 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	registerRL := NewIPRateLimiter(3, time.Minute)
 	loginRL := NewIPRateLimiter(5, time.Minute)
 
-	// Health check (unauthenticated — used by desktop app to verify server)
+	// Health check (unauthenticated — used by desktop app and login page)
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"app": "voicechat"})
+		emailRequired, _ := emailService.IsVerificationEnabled()
+		writeJSON(w, http.StatusOK, map[string]any{"app": "voicechat", "email_required": emailRequired})
 	})
 
 	verifyRL := NewIPRateLimiter(10, time.Minute)
@@ -65,8 +66,9 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	mux.HandleFunc("/api/v1/media/upload", mediaRL.Wrap(authMW.Wrap(mediaHandler.Upload)))
 	mux.HandleFunc("/api/v1/media/", authMW.Wrap(mediaHandler.Delete))
 
-	// Auth - change password (authenticated)
+	// Auth - change password / email (authenticated)
 	mux.HandleFunc("/api/v1/auth/password", authMW.Wrap(authHandler.ChangePassword))
+	mux.HandleFunc("/api/v1/auth/email", authMW.Wrap(authHandler.UpdateEmail))
 
 	// Admin routes (authenticated)
 	adminHandler := &AdminHandler{DB: database, Hub: hub, EmailService: emailService, EncKey: encKey}

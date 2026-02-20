@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
 import { isTauri } from "../../lib/devices";
 import { t } from "../../stores/theme";
 
@@ -22,10 +22,19 @@ function Login(props: LoginProps) {
   const [verificationError, setVerificationError] = createSignal("");
   const [verificationLoading, setVerificationLoading] = createSignal(false);
   const [resendStatus, setResendStatus] = createSignal("");
+  const [emailRequired, setEmailRequired] = createSignal(false);
   const [showServerInput, setShowServerInput] = createSignal(false);
   const [serverUrl, setServerUrl] = createSignal("");
   const [serverError, setServerError] = createSignal("");
   const [serverLoading, setServerLoading] = createSignal(false);
+
+  onMount(async () => {
+    try {
+      const res = await fetch("/api/v1/health");
+      const data = await res.json();
+      if (data.email_required) setEmailRequired(true);
+    } catch { /* ignore */ }
+  });
 
   const connectToServer = async () => {
     let url = serverUrl().trim();
@@ -506,14 +515,17 @@ function Login(props: LoginProps) {
                 }}
               >
                 email{" "}
-                <span style={{ color: "var(--text-muted)", "letter-spacing": "0" }}>
-                  (optional)
-                </span>
+                <Show when={!emailRequired()}>
+                  <span style={{ color: "var(--text-muted)", "letter-spacing": "0" }}>
+                    (optional)
+                  </span>
+                </Show>
               </label>
               <input
                 type="email"
                 value={email()}
                 onInput={(e) => setEmail(e.currentTarget.value)}
+                required={emailRequired()}
                 style={{
                   width: "100%",
                   padding: "8px",
@@ -539,14 +551,17 @@ function Login(props: LoginProps) {
               }}
             >
               password{" "}
-              <span style={{ color: "var(--text-muted)", "letter-spacing": "0" }}>
-                (optional)
-              </span>
+              <Show when={!emailRequired()}>
+                <span style={{ color: "var(--text-muted)", "letter-spacing": "0" }}>
+                  (optional)
+                </span>
+              </Show>
             </label>
             <input
               type="password"
               value={password()}
               onInput={(e) => setPassword(e.currentTarget.value)}
+              required={isRegister() && emailRequired()}
               style={{
                 width: "100%",
                 padding: "8px",
