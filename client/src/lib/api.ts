@@ -224,3 +224,17 @@ export function saveEmailSettings(payload: {
 export function sendTestEmail(): Promise<{ status: string; email: string }> {
   return request("/admin/settings/email/test", { method: "POST" });
 }
+
+export function forgotPassword(email: string) {
+  return request("/auth/forgot", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(email: string, code: string, newPassword: string) {
+  return request("/auth/reset", {
+    method: "POST",
+    body: JSON.stringify({ email, code, new_password: newPassword }),
+  });
+}

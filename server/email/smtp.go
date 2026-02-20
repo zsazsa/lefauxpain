@@ -88,6 +88,11 @@ func (p *SMTPProvider) SendVerificationEmail(to, code, appName string) error {
 	return p.sendEmail(to, subject, VerificationEmailHTML(code, appName), VerificationEmailText(code, appName))
 }
 
+func (p *SMTPProvider) SendPasswordResetEmail(to, code, appName string) error {
+	subject := fmt.Sprintf("%s — Reset your password", appName)
+	return p.sendEmail(to, subject, PasswordResetEmailHTML(code, appName), PasswordResetEmailText(code, appName))
+}
+
 func (p *SMTPProvider) SendTestEmail(to, appName string) error {
 	subject := fmt.Sprintf("%s — Test email", appName)
 	return p.sendEmail(to, subject, TestEmailHTML(appName), TestEmailText(appName))

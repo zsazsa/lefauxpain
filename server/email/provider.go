@@ -17,6 +17,7 @@ import (
 
 type Provider interface {
 	SendVerificationEmail(to, code, appName string) error
+	SendPasswordResetEmail(to, code, appName string) error
 	SendTestEmail(to, appName string) error
 }
 
@@ -124,6 +125,42 @@ func (s *EmailService) GenerateAndSendCode(userID, email string) error {
 	if err := provider.SendVerificationEmail(email, code, "Le Faux Pain"); err != nil {
 		log.Printf("send verification email error: %v", err)
 		// Non-fatal — user can resend
+	}
+
+	return nil
+}
+
+func (s *EmailService) GenerateAndSendResetCode(userID, email string) error {
+	code, err := generateCode()
+	if err != nil {
+		return fmt.Errorf("generate code: %w", err)
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash code: %w", err)
+	}
+
+	codeID := uuid.New().String()
+	expiresAt := time.Now().Add(15 * time.Minute)
+
+	if err := s.db.CreateVerificationCode(codeID, userID, string(hash), expiresAt); err != nil {
+		return fmt.Errorf("store verification code: %w", err)
+	}
+
+	// Store plain code in memory for dev test endpoint
+	s.mu.Lock()
+	s.codes[email] = code
+	s.mu.Unlock()
+
+	provider, err := s.GetProvider()
+	if err != nil {
+		log.Printf("email provider error (code still stored): %v", err)
+		return nil
+	}
+
+	if err := provider.SendPasswordResetEmail(email, code, "Le Faux Pain"); err != nil {
+		log.Printf("send password reset email error: %v", err)
 	}
 
 	return nil

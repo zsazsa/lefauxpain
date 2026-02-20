@@ -23,6 +23,15 @@ function Login(props: LoginProps) {
   const [verificationLoading, setVerificationLoading] = createSignal(false);
   const [resendStatus, setResendStatus] = createSignal("");
   const [emailRequired, setEmailRequired] = createSignal(false);
+  const [forgotPwd, setForgotPwd] = createSignal(false);
+  const [resetPhase, setResetPhase] = createSignal<"email" | "code">("email");
+  const [resetEmail, setResetEmail] = createSignal("");
+  const [resetCode, setResetCode] = createSignal("");
+  const [resetNewPwd, setResetNewPwd] = createSignal("");
+  const [resetConfirmPwd, setResetConfirmPwd] = createSignal("");
+  const [resetError, setResetError] = createSignal("");
+  const [resetSuccess, setResetSuccess] = createSignal(false);
+  const [resetLoading, setResetLoading] = createSignal(false);
   const [showServerInput, setShowServerInput] = createSignal(false);
   const [serverUrl, setServerUrl] = createSignal("");
   const [serverError, setServerError] = createSignal("");
@@ -162,6 +171,68 @@ function Login(props: LoginProps) {
     }
   };
 
+  const handleForgotSubmit = async (e: Event) => {
+    e.preventDefault();
+    setResetError("");
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/v1/auth/forgot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resetEmail() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResetError(data.error || "Failed to send reset code");
+        return;
+      }
+      setResetPhase("code");
+    } catch {
+      setResetError("Failed to connect to server");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleResetSubmit = async (e: Event) => {
+    e.preventDefault();
+    setResetError("");
+    if (resetNewPwd() !== resetConfirmPwd()) {
+      setResetError("Passwords do not match");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/v1/auth/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resetEmail(), code: resetCode(), new_password: resetNewPwd() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResetError(data.error || "Reset failed");
+        return;
+      }
+      setResetSuccess(true);
+    } catch {
+      setResetError("Failed to connect to server");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const cancelForgot = () => {
+    setForgotPwd(false);
+    setResetPhase("email");
+    setResetEmail("");
+    setResetCode("");
+    setResetNewPwd("");
+    setResetConfirmPwd("");
+    setResetError("");
+    setResetSuccess(false);
+    setError("");
+  };
+
   return (
     <div
       style={{
@@ -172,7 +243,301 @@ function Login(props: LoginProps) {
         "background-color": "var(--bg-primary)",
       }}
     >
-      <Show when={pendingVerification()}>
+      <Show when={forgotPwd()}>
+        <div
+          style={{
+            "background-color": "var(--bg-secondary)",
+            padding: "32px",
+            border: "1px solid var(--border-gold)",
+            width: "400px",
+            "max-width": "90vw",
+            "box-shadow": "0 0 30px rgba(201,168,76,0.08)",
+            "text-align": "center",
+          }}
+        >
+          <h2
+            style={{
+              "margin-bottom": "8px",
+              color: "var(--accent)",
+              "font-family": "var(--font-display)",
+              "font-size": "22px",
+              "letter-spacing": "2px",
+            }}
+          >
+            {t("appName")}
+          </h2>
+          <p
+            style={{
+              color: "var(--text-muted)",
+              "font-size": "12px",
+              "margin-bottom": "24px",
+            }}
+          >
+            // reset your password
+          </p>
+
+          {resetError() && (
+            <div
+              style={{
+                "background-color": "rgba(232, 64, 64, 0.1)",
+                border: "1px solid var(--danger)",
+                color: "var(--danger)",
+                padding: "8px",
+                "margin-bottom": "16px",
+                "font-size": "12px",
+              }}
+            >
+              ERR: {resetError()}
+            </div>
+          )}
+
+          <Show when={resetSuccess()}>
+            <div
+              style={{
+                "background-color": "rgba(201,168,76,0.08)",
+                border: "1px solid var(--border-gold)",
+                padding: "16px",
+                "margin-bottom": "16px",
+              }}
+            >
+              <p
+                style={{
+                  color: "var(--accent)",
+                  "font-size": "14px",
+                  "font-weight": "600",
+                  "margin-bottom": "8px",
+                }}
+              >
+                Password reset successful
+              </p>
+              <p
+                style={{
+                  color: "var(--text-muted)",
+                  "font-size": "12px",
+                }}
+              >
+                You can now log in with your new password.
+              </p>
+            </div>
+            <span
+              onClick={cancelForgot}
+              style={{
+                color: "var(--cyan)",
+                cursor: "pointer",
+                "font-size": "12px",
+              }}
+            >
+              [back to login]
+            </span>
+          </Show>
+
+          <Show when={!resetSuccess() && resetPhase() === "email"}>
+            <form onSubmit={handleForgotSubmit}>
+              <div style={{ "margin-bottom": "16px", "text-align": "left" }}>
+                <label
+                  style={{
+                    display: "block",
+                    "margin-bottom": "6px",
+                    color: "var(--text-muted)",
+                    "font-size": "11px",
+                    "text-transform": "uppercase",
+                    "letter-spacing": "1px",
+                  }}
+                >
+                  email address
+                </label>
+                <input
+                  type="email"
+                  value={resetEmail()}
+                  onInput={(e) => setResetEmail(e.currentTarget.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    "background-color": "var(--bg-primary)",
+                    border: "1px solid var(--border-gold)",
+                    color: "var(--text-primary)",
+                    "font-size": "14px",
+                    "caret-color": "var(--accent)",
+                  }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={resetLoading()}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  "background-color": "transparent",
+                  border: "1px solid var(--accent)",
+                  color: "var(--accent)",
+                  "font-size": "13px",
+                  "font-weight": "600",
+                  "letter-spacing": "1px",
+                  opacity: resetLoading() ? "0.7" : "1",
+                }}
+              >
+                {resetLoading() ? "..." : "[SEND RESET CODE]"}
+              </button>
+            </form>
+            <p style={{ "margin-top": "16px" }}>
+              <span
+                onClick={cancelForgot}
+                style={{
+                  color: "var(--cyan)",
+                  cursor: "pointer",
+                  "font-size": "12px",
+                }}
+              >
+                [back to login]
+              </span>
+            </p>
+          </Show>
+
+          <Show when={!resetSuccess() && resetPhase() === "code"}>
+            <div
+              style={{
+                "background-color": "rgba(201,168,76,0.08)",
+                border: "1px solid var(--border-gold)",
+                padding: "16px",
+                "margin-bottom": "16px",
+              }}
+            >
+              <p
+                style={{
+                  color: "var(--accent)",
+                  "font-size": "14px",
+                  "font-weight": "600",
+                  "margin-bottom": "8px",
+                }}
+              >
+                Reset code sent to {resetEmail()}
+              </p>
+              <p
+                style={{
+                  color: "var(--text-muted)",
+                  "font-size": "12px",
+                }}
+              >
+                Enter the 6-digit code and your new password
+              </p>
+            </div>
+            <form onSubmit={handleResetSubmit}>
+              <div style={{ "margin-bottom": "16px" }}>
+                <input
+                  type="text"
+                  value={resetCode()}
+                  onInput={(e) => setResetCode(e.currentTarget.value)}
+                  placeholder="000000"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    "background-color": "var(--bg-primary)",
+                    border: "1px solid var(--border-gold)",
+                    color: "var(--text-primary)",
+                    "font-size": "24px",
+                    "letter-spacing": "8px",
+                    "text-align": "center",
+                    "caret-color": "var(--accent)",
+                  }}
+                />
+              </div>
+              <div style={{ "margin-bottom": "16px", "text-align": "left" }}>
+                <label
+                  style={{
+                    display: "block",
+                    "margin-bottom": "6px",
+                    color: "var(--text-muted)",
+                    "font-size": "11px",
+                    "text-transform": "uppercase",
+                    "letter-spacing": "1px",
+                  }}
+                >
+                  new password
+                </label>
+                <input
+                  type="password"
+                  value={resetNewPwd()}
+                  onInput={(e) => setResetNewPwd(e.currentTarget.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    "background-color": "var(--bg-primary)",
+                    border: "1px solid var(--border-gold)",
+                    color: "var(--text-primary)",
+                    "font-size": "14px",
+                    "caret-color": "var(--accent)",
+                  }}
+                />
+              </div>
+              <div style={{ "margin-bottom": "16px", "text-align": "left" }}>
+                <label
+                  style={{
+                    display: "block",
+                    "margin-bottom": "6px",
+                    color: "var(--text-muted)",
+                    "font-size": "11px",
+                    "text-transform": "uppercase",
+                    "letter-spacing": "1px",
+                  }}
+                >
+                  confirm password
+                </label>
+                <input
+                  type="password"
+                  value={resetConfirmPwd()}
+                  onInput={(e) => setResetConfirmPwd(e.currentTarget.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    "background-color": "var(--bg-primary)",
+                    border: "1px solid var(--border-gold)",
+                    color: "var(--text-primary)",
+                    "font-size": "14px",
+                    "caret-color": "var(--accent)",
+                  }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={resetLoading()}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  "background-color": "transparent",
+                  border: "1px solid var(--accent)",
+                  color: "var(--accent)",
+                  "font-size": "13px",
+                  "font-weight": "600",
+                  "letter-spacing": "1px",
+                  opacity: resetLoading() ? "0.7" : "1",
+                }}
+              >
+                {resetLoading() ? "..." : "[RESET PASSWORD]"}
+              </button>
+            </form>
+            <p style={{ "margin-top": "16px" }}>
+              <span
+                onClick={cancelForgot}
+                style={{
+                  color: "var(--cyan)",
+                  cursor: "pointer",
+                  "font-size": "12px",
+                }}
+              >
+                [back to login]
+              </span>
+            </p>
+          </Show>
+        </div>
+      </Show>
+
+      <Show when={pendingVerification() && !forgotPwd()}>
         <div
           style={{
             "background-color": "var(--bg-secondary)",
@@ -340,7 +705,7 @@ function Login(props: LoginProps) {
         </div>
       </Show>
 
-      <Show when={pending() && !pendingVerification()}>
+      <Show when={pending() && !pendingVerification() && !forgotPwd()}>
         <div
           style={{
             "background-color": "var(--bg-secondary)",
@@ -418,7 +783,7 @@ function Login(props: LoginProps) {
         </div>
       </Show>
 
-      <Show when={!pending() && !pendingVerification()}>
+      <Show when={!pending() && !pendingVerification() && !forgotPwd()}>
         <form
           onSubmit={handleSubmit}
           style={{
@@ -686,6 +1051,27 @@ function Login(props: LoginProps) {
               {isRegister() ? "[log in]" : "[register]"}
             </span>
           </p>
+
+          <Show when={!isRegister()}>
+            <p
+              style={{
+                "text-align": "center",
+                "margin-top": "8px",
+                color: "var(--text-muted)",
+                "font-size": "12px",
+              }}
+            >
+              <span
+                onClick={() => setForgotPwd(true)}
+                style={{
+                  color: "var(--cyan)",
+                  cursor: "pointer",
+                }}
+              >
+                [forgot password?]
+              </span>
+            </p>
+          </Show>
 
           <Show when={isTauri}>
             <div

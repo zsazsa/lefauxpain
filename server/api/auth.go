@@ -527,6 +527,133 @@ func (h *AuthHandler) ResendCode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
 }
 
+func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Check email provider is configured
+	cfg, err := h.EmailService.GetProviderConfig()
+	if err != nil || cfg == nil {
+		writeError(w, http.StatusBadRequest, "email is not configured on this server")
+		return
+	}
+
+	// Always return 200 to not leak user existence
+	user, err := h.DB.GetUserByEmail(req.Email)
+	if err != nil || user == nil || user.Email == nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+		return
+	}
+
+	// Rate limit: max 3 codes per hour
+	count, err := h.DB.CountRecentVerificationCodes(user.ID, time.Now().Add(-1*time.Hour))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if count >= 3 {
+		// Still return 200 to not leak info
+		writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+		return
+	}
+
+	if err := h.EmailService.GenerateAndSendResetCode(user.ID, *user.Email); err != nil {
+		log.Printf("generate reset code: %v", err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+}
+
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Email       string `json:"email"`
+		Code        string `json:"code"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "new password is required")
+		return
+	}
+
+	user, err := h.DB.GetUserByEmail(req.Email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if user == nil {
+		writeError(w, http.StatusBadRequest, "invalid email or code")
+		return
+	}
+
+	vc, err := h.DB.GetVerificationCode(user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if vc == nil {
+		writeError(w, http.StatusBadRequest, "no pending reset code, please request a new one")
+		return
+	}
+
+	if vc.Expired {
+		writeError(w, http.StatusBadRequest, "code expired, please request a new one")
+		return
+	}
+
+	if vc.Attempts >= 5 {
+		h.DB.InvalidateVerificationCode(vc.ID)
+		writeError(w, http.StatusBadRequest, "too many failed attempts, please request a new code")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(vc.CodeHash), []byte(req.Code)); err != nil {
+		h.DB.IncrementVerificationAttempts(vc.ID)
+		newAttempts := vc.Attempts + 1
+		if newAttempts >= 5 {
+			h.DB.InvalidateVerificationCode(vc.ID)
+			writeError(w, http.StatusBadRequest, "too many failed attempts, please request a new code")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "invalid code")
+		return
+	}
+
+	// Success: hash new password, update, invalidate code
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	s := string(hash)
+	if err := h.DB.SetPassword(user.ID, &s); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.DB.InvalidateVerificationCode(vc.ID)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

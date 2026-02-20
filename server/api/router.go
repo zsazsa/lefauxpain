@@ -39,11 +39,16 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	verifyRL := NewIPRateLimiter(10, time.Minute)
 	resendRL := NewIPRateLimiter(5, time.Minute)
 
+	forgotRL := NewIPRateLimiter(5, time.Minute)
+	resetRL := NewIPRateLimiter(10, time.Minute)
+
 	// Auth routes
 	mux.HandleFunc("/api/v1/auth/register", registerRL.Wrap(authHandler.Register))
 	mux.HandleFunc("/api/v1/auth/login", loginRL.Wrap(authHandler.Login))
 	mux.HandleFunc("/api/v1/auth/verify", verifyRL.Wrap(authHandler.Verify))
 	mux.HandleFunc("/api/v1/auth/resend", resendRL.Wrap(authHandler.ResendCode))
+	mux.HandleFunc("/api/v1/auth/forgot", forgotRL.Wrap(authHandler.ForgotPassword))
+	mux.HandleFunc("/api/v1/auth/reset", resetRL.Wrap(authHandler.ResetPassword))
 
 	// Channel routes (authenticated)
 	mux.HandleFunc("/api/v1/channels", authMW.Wrap(channelHandler.List))
