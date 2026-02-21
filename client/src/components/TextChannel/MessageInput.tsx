@@ -489,9 +489,32 @@ export default function MessageInput(props: MessageInputProps) {
                 return;
               }
             }
-            // Check pasted text for URLs — setTimeout so input value is updated first
+            // Check pasted text for URLs
             const pasted = e.clipboardData?.getData("text/plain") || "";
             if (pasted) {
+              const trimmed = pasted.trim();
+              // Detect image URLs (WebKitGTK/Tauri pastes image as URL text)
+              if (/^https?:\/\/\S+\.(png|jpe?g|gif|webp|bmp|svg)(\?[^\s]*)?$/i.test(trimmed)) {
+                e.preventDefault();
+                fetch(trimmed)
+                  .then((res) => {
+                    if (!res.ok || !res.headers.get("content-type")?.startsWith("image/"))
+                      throw new Error("not an image");
+                    return res.blob();
+                  })
+                  .then((blob) => {
+                    const ext = blob.type.split("/")[1] || "png";
+                    const file = new File([blob], `image.${ext}`, { type: blob.type });
+                    handleFiles([file]);
+                  })
+                  .catch(() => {
+                    // CORS or fetch failure — fall back to text + URL preview
+                    setText(trimmed);
+                    tryFetchPreview(trimmed);
+                  });
+                return;
+              }
+              // Regular URL — setTimeout so input value is updated first
               setTimeout(() => tryFetchPreview(text()), 0);
             }
           }}
