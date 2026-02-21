@@ -10,6 +10,10 @@ use tauri::Manager;
 use serde::Serialize;
 use std::process::Command;
 use tokio::sync::Mutex;
+#[cfg(target_os = "linux")]
+use base64::Engine;
+#[cfg(target_os = "linux")]
+use image::ImageEncoder;
 
 use voice::{
     VoiceEngine,
@@ -113,6 +117,27 @@ fn set_default_audio_device(id: String) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+fn read_clipboard_image() -> Option<String> {
+    let mut clipboard = arboard::Clipboard::new().ok()?;
+    let img = clipboard.get_image().ok()?;
+
+    let rgba = image::RgbaImage::from_raw(
+        img.width as u32,
+        img.height as u32,
+        img.bytes.into_owned(),
+    )?;
+
+    let mut buf = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut buf);
+    encoder
+        .write_image(rgba.as_raw(), rgba.width(), rgba.height(), image::ExtendedColorType::Rgba8)
+        .ok()?;
+
+    Some(base64::engine::general_purpose::STANDARD.encode(&buf))
+}
+
 fn main() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -140,6 +165,9 @@ fn main() {
             voice_list_devices,
             voice_set_input_device,
             voice_set_output_device,
+            // Clipboard image read (Linux only — WebKitGTK doesn't expose image clipboard data)
+            #[cfg(target_os = "linux")]
+            read_clipboard_image,
             // Screen share commands (Linux only — PipeWire capture)
             #[cfg(target_os = "linux")]
             screen_start,

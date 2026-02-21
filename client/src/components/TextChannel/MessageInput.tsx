@@ -5,6 +5,7 @@ import { uploadFile, uploadMedia, previewUnfurl } from "../../lib/api";
 import { onlineUsers, allUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { isMobile } from "../../stores/responsive";
+import { isDesktop, tauriInvoke } from "../../lib/devices";
 
 interface MessageInputProps {
   channelId: string;
@@ -489,11 +490,50 @@ export default function MessageInput(props: MessageInputProps) {
                 return;
               }
             }
+            // Desktop (WebKitGTK): read system clipboard image via Tauri IPC
+            // WebKitGTK doesn't expose image data through clipboardData APIs
+            if (isDesktop) {
+              const pastedText = e.clipboardData?.getData("text/plain") || "";
+              e.preventDefault();
+              tauriInvoke("read_clipboard_image")
+                .then((base64: string | null) => {
+                  if (base64) {
+                    const binary = atob(base64);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                    const file = new File([bytes], "clipboard.png", { type: "image/png" });
+                    handleFiles([file]);
+                  } else if (pastedText) {
+                    // No image — insert text at cursor
+                    const el = inputRef;
+                    if (el) {
+                      const start = el.selectionStart ?? text().length;
+                      const end = el.selectionEnd ?? text().length;
+                      const cur = text();
+                      const newText = cur.slice(0, start) + pastedText + cur.slice(end);
+                      setText(newText);
+                      requestAnimationFrame(() => {
+                        el.selectionStart = el.selectionEnd = start + pastedText.length;
+                      });
+                    } else {
+                      setText((prev) => prev + pastedText);
+                    }
+                    setTimeout(() => tryFetchPreview(text()), 0);
+                  }
+                })
+                .catch(() => {
+                  if (pastedText) {
+                    setText((prev) => prev + pastedText);
+                    setTimeout(() => tryFetchPreview(text()), 0);
+                  }
+                });
+              return;
+            }
             // Check pasted text for URLs
             const pasted = e.clipboardData?.getData("text/plain") || "";
             if (pasted) {
               const trimmed = pasted.trim();
-              // Detect image URLs (WebKitGTK/Tauri pastes image as URL text)
+              // Detect image URLs (pastes image as URL text)
               if (/^https?:\/\/\S+\.(png|jpe?g|gif|webp|bmp|svg)(\?[^\s]*)?$/i.test(trimmed)) {
                 e.preventDefault();
                 fetch(trimmed)

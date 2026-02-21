@@ -1,6 +1,6 @@
 [package]
 name = "lefauxpain-desktop"
-version = "1.5.3"
+version = "1.5.4"
 edition = "2021"
 
 [features]
@@ -29,7 +29,8 @@ tauri-plugin-opener = "2"
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "=2.0.2"
 openh264 = { version = "0.6", features = ["source"] }
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 ashpd = "0.9"
 pipewire = "0.8"
 libspa = "0.8"

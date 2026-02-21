@@ -1,6 +1,6 @@
 {
   "productName": "LeFauxPain",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "identifier": "com.lefauxpain.chat",
   "build": {
     "beforeBuildCommand": "",
