@@ -463,19 +463,31 @@ export default function MessageInput(props: MessageInputProps) {
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           onPaste={(e) => {
+            // Try clipboardData.items first (Chrome/Chromium)
             const items = e.clipboardData?.items;
-            if (!items) return;
-            const imageFiles: File[] = [];
-            for (const item of items) {
-              if (item.type.startsWith("image/")) {
-                const file = item.getAsFile();
-                if (file) imageFiles.push(file);
+            if (items) {
+              const imageFiles: File[] = [];
+              for (const item of items) {
+                if (item.type.startsWith("image/")) {
+                  const file = item.getAsFile();
+                  if (file) imageFiles.push(file);
+                }
+              }
+              if (imageFiles.length > 0) {
+                e.preventDefault();
+                handleFiles(imageFiles);
+                return;
               }
             }
-            if (imageFiles.length > 0) {
-              e.preventDefault();
-              handleFiles(imageFiles);
-              return;
+            // Fallback to clipboardData.files (Firefox, WebKitGTK/Tauri on Linux)
+            const files = e.clipboardData?.files;
+            if (files && files.length > 0) {
+              const imageFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
+              if (imageFiles.length > 0) {
+                e.preventDefault();
+                handleFiles(imageFiles);
+                return;
+              }
             }
             // Check pasted text for URLs — setTimeout so input value is updated first
             const pasted = e.clipboardData?.getData("text/plain") || "";
