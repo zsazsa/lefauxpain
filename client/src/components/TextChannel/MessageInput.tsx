@@ -501,7 +501,12 @@ export default function MessageInput(props: MessageInputProps) {
                     const binary = atob(base64);
                     const bytes = new Uint8Array(binary.length);
                     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                    const file = new File([bytes], "clipboard.png", { type: "image/png" });
+                    // Detect format from magic bytes
+                    let mime = "image/png", ext = "png";
+                    if (bytes[0] === 0xFF && bytes[1] === 0xD8) { mime = "image/jpeg"; ext = "jpg"; }
+                    else if (bytes[0] === 0x47 && bytes[1] === 0x49) { mime = "image/gif"; ext = "gif"; }
+                    else if (bytes.length > 11 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) { mime = "image/webp"; ext = "webp"; }
+                    const file = new File([bytes], `clipboard.${ext}`, { type: mime });
                     handleFiles([file]);
                   } else if (pastedText) {
                     // No image — insert text at cursor

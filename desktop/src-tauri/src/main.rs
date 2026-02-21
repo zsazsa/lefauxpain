@@ -120,22 +120,50 @@ fn set_default_audio_device(id: String) -> bool {
 #[cfg(target_os = "linux")]
 #[tauri::command]
 fn read_clipboard_image() -> Option<String> {
-    let mut clipboard = arboard::Clipboard::new().ok()?;
-    let img = clipboard.get_image().ok()?;
+    let mut clipboard = match arboard::Clipboard::new() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[clipboard] failed to open: {e}");
+            return None;
+        }
+    };
 
-    let rgba = image::RgbaImage::from_raw(
-        img.width as u32,
-        img.height as u32,
-        img.bytes.into_owned(),
-    )?;
+    // Try reading raw image data from clipboard (e.g. Print Screen, gnome-screenshot)
+    match clipboard.get_image() {
+        Ok(img) => {
+            let rgba = image::RgbaImage::from_raw(
+                img.width as u32,
+                img.height as u32,
+                img.bytes.into_owned(),
+            )?;
 
-    let mut buf = Vec::new();
-    let encoder = image::codecs::png::PngEncoder::new(&mut buf);
-    encoder
-        .write_image(rgba.as_raw(), rgba.width(), rgba.height(), image::ExtendedColorType::Rgba8)
-        .ok()?;
+            let mut buf = Vec::new();
+            let encoder = image::codecs::png::PngEncoder::new(&mut buf);
+            encoder
+                .write_image(rgba.as_raw(), rgba.width(), rgba.height(), image::ExtendedColorType::Rgba8)
+                .ok()?;
 
-    Some(base64::engine::general_purpose::STANDARD.encode(&buf))
+            return Some(base64::engine::general_purpose::STANDARD.encode(&buf));
+        }
+        Err(_) => {}
+    }
+
+    // Fallback: clipboard text might be a file path to an image
+    // (WebKitGTK often pastes image file paths instead of image data)
+    if let Ok(text) = clipboard.get_text() {
+        let path = text.trim();
+        let path = path.strip_prefix("file://").unwrap_or(path);
+        let p = std::path::Path::new(path);
+        if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+            if matches!(ext.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp") {
+                if let Ok(data) = std::fs::read(p) {
+                    return Some(base64::engine::general_purpose::STANDARD.encode(&data));
+                }
+            }
+        }
+    }
+
+    None
 }
 
 fn main() {
