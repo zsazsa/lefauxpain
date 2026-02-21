@@ -6,6 +6,7 @@ export type RadioStation = {
   created_by: string | null;
   position: number;
   playback_mode: string;
+  public_controls: boolean;
   manager_ids: string[];
 };
 
@@ -94,12 +95,13 @@ export function renameRadioStation(stationId: string, name: string) {
   );
 }
 
-export function updateRadioStation(stationId: string, name: string, managerIds: string[], playbackMode?: string) {
+export function updateRadioStation(stationId: string, name: string, managerIds: string[], playbackMode?: string, publicControls?: boolean) {
   setRadioStations((prev) =>
     prev.map((s) => {
       if (s.id !== stationId) return s;
       const updated = { ...s, name, manager_ids: managerIds };
       if (playbackMode !== undefined) updated.playback_mode = playbackMode;
+      if (publicControls !== undefined) updated.public_controls = publicControls;
       return updated;
     })
   );

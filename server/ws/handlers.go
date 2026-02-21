@@ -1156,10 +1156,11 @@ type RadioStationManagerData struct {
 }
 
 type RadioStationUpdatePayload struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	PlaybackMode string   `json:"playback_mode"`
-	ManagerIDs   []string `json:"manager_ids"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	PlaybackMode   string   `json:"playback_mode"`
+	PublicControls bool     `json:"public_controls"`
+	ManagerIDs     []string `json:"manager_ids"`
 }
 
 func (h *Hub) canManageRadioStation(c *Client, stationID string) bool {
@@ -1171,6 +1172,17 @@ func (h *Hub) canManageRadioStation(c *Client, stationID string) bool {
 		return false
 	}
 	return isManager
+}
+
+func (h *Hub) canControlRadioPlayback(c *Client, stationID string) bool {
+	if h.canManageRadioStation(c, stationID) {
+		return true
+	}
+	station, err := h.DB.GetRadioStationByID(stationID)
+	if err != nil || station == nil {
+		return false
+	}
+	return station.PublicControls
 }
 
 type CreateRadioStationData struct {
@@ -1314,10 +1326,11 @@ func (h *Hub) handleRenameRadioStation(c *Client, data json.RawMessage) {
 	}
 
 	broadcast, _ := NewMessage("radio_station_update", RadioStationUpdatePayload{
-		ID:           station.ID,
-		Name:         name,
-		PlaybackMode: station.PlaybackMode,
-		ManagerIDs:   managerIDs,
+		ID:             station.ID,
+		Name:           name,
+		PlaybackMode:   station.PlaybackMode,
+		PublicControls: station.PublicControls,
+		ManagerIDs:     managerIDs,
 	})
 	h.BroadcastAll(broadcast)
 }
@@ -1455,7 +1468,7 @@ func (h *Hub) handleRadioPlay(c *Client, data json.RawMessage) {
 		return
 	}
 
-	if !h.canManageRadioStation(c, d.StationID) {
+	if !h.canControlRadioPlayback(c, d.StationID) {
 		return
 	}
 
@@ -1509,7 +1522,7 @@ func (h *Hub) handleRadioPause(c *Client, data json.RawMessage) {
 		return
 	}
 
-	if !h.canManageRadioStation(c, d.StationID) {
+	if !h.canControlRadioPlayback(c, d.StationID) {
 		return
 	}
 
@@ -1551,7 +1564,7 @@ func (h *Hub) handleRadioResume(c *Client, data json.RawMessage) {
 		return
 	}
 
-	if !h.canManageRadioStation(c, d.StationID) {
+	if !h.canControlRadioPlayback(c, d.StationID) {
 		return
 	}
 
@@ -1590,7 +1603,7 @@ func (h *Hub) handleRadioSeek(c *Client, data json.RawMessage) {
 		return
 	}
 
-	if !h.canManageRadioStation(c, d.StationID) {
+	if !h.canControlRadioPlayback(c, d.StationID) {
 		return
 	}
 
@@ -1628,7 +1641,7 @@ func (h *Hub) handleRadioNext(c *Client, data json.RawMessage) {
 		return
 	}
 
-	if !h.canManageRadioStation(c, d.StationID) {
+	if !h.canControlRadioPlayback(c, d.StationID) {
 		return
 	}
 
@@ -1686,7 +1699,7 @@ func (h *Hub) handleRadioStop(c *Client, data json.RawMessage) {
 		return
 	}
 
-	if !h.canManageRadioStation(c, d.StationID) {
+	if !h.canControlRadioPlayback(c, d.StationID) {
 		return
 	}
 
@@ -1916,10 +1929,11 @@ func (h *Hub) handleAddRadioStationManager(c *Client, data json.RawMessage) {
 	}
 
 	broadcast, _ := NewMessage("radio_station_update", RadioStationUpdatePayload{
-		ID:           d.StationID,
-		Name:         station.Name,
-		PlaybackMode: station.PlaybackMode,
-		ManagerIDs:   managerIDs,
+		ID:             d.StationID,
+		Name:           station.Name,
+		PlaybackMode:   station.PlaybackMode,
+		PublicControls: station.PublicControls,
+		ManagerIDs:     managerIDs,
 	})
 	h.BroadcastAll(broadcast)
 }
@@ -1956,10 +1970,11 @@ func (h *Hub) handleRemoveRadioStationManager(c *Client, data json.RawMessage) {
 	}
 
 	broadcast, _ := NewMessage("radio_station_update", RadioStationUpdatePayload{
-		ID:           d.StationID,
-		Name:         station.Name,
-		PlaybackMode: station.PlaybackMode,
-		ManagerIDs:   managerIDs,
+		ID:             d.StationID,
+		Name:           station.Name,
+		PlaybackMode:   station.PlaybackMode,
+		PublicControls: station.PublicControls,
+		ManagerIDs:     managerIDs,
 	})
 	h.BroadcastAll(broadcast)
 }
@@ -2004,10 +2019,53 @@ func (h *Hub) handleSetRadioStationMode(c *Client, data json.RawMessage) {
 	}
 
 	broadcast, _ := NewMessage("radio_station_update", RadioStationUpdatePayload{
-		ID:           d.StationID,
-		Name:         station.Name,
-		PlaybackMode: d.Mode,
-		ManagerIDs:   managerIDs,
+		ID:             d.StationID,
+		Name:           station.Name,
+		PlaybackMode:   d.Mode,
+		PublicControls: station.PublicControls,
+		ManagerIDs:     managerIDs,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+// --- Set radio station public controls ---
+
+type SetRadioStationPublicControlsData struct {
+	StationID string `json:"station_id"`
+	Enabled   bool   `json:"enabled"`
+}
+
+func (h *Hub) handleSetRadioStationPublicControls(c *Client, data json.RawMessage) {
+	var d SetRadioStationPublicControlsData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	if !h.canManageRadioStation(c, d.StationID) {
+		return
+	}
+
+	station, err := h.DB.GetRadioStationByID(d.StationID)
+	if err != nil || station == nil {
+		return
+	}
+
+	if err := h.DB.UpdateRadioStationPublicControls(d.StationID, d.Enabled); err != nil {
+		log.Printf("update radio station public controls: %v", err)
+		return
+	}
+
+	managerIDs, _ := h.DB.GetRadioStationManagers(d.StationID)
+	if managerIDs == nil {
+		managerIDs = []string{}
+	}
+
+	broadcast, _ := NewMessage("radio_station_update", RadioStationUpdatePayload{
+		ID:             d.StationID,
+		Name:           station.Name,
+		PlaybackMode:   station.PlaybackMode,
+		PublicControls: d.Enabled,
+		ManagerIDs:     managerIDs,
 	})
 	h.BroadcastAll(broadcast)
 }

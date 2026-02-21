@@ -3,12 +3,13 @@ package db
 import "fmt"
 
 type RadioStation struct {
-	ID           string  `json:"id"`
-	Name         string  `json:"name"`
-	CreatedBy    *string `json:"created_by"`
-	Position     int     `json:"position"`
-	PlaybackMode string  `json:"playback_mode"`
-	CreatedAt    string  `json:"created_at"`
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	CreatedBy      *string `json:"created_by"`
+	Position       int     `json:"position"`
+	PlaybackMode   string  `json:"playback_mode"`
+	PublicControls bool    `json:"public_controls"`
+	CreatedAt      string  `json:"created_at"`
 }
 
 type RadioPlaylist struct {
@@ -82,7 +83,7 @@ func (d *DB) DeleteRadioStation(id string) error {
 }
 
 func (d *DB) GetAllRadioStations() ([]RadioStation, error) {
-	rows, err := d.Query(`SELECT id, name, created_by, position, playback_mode, created_at FROM radio_stations ORDER BY position`)
+	rows, err := d.Query(`SELECT id, name, created_by, position, playback_mode, public_controls, created_at FROM radio_stations ORDER BY position`)
 	if err != nil {
 		return nil, fmt.Errorf("get radio stations: %w", err)
 	}
@@ -91,7 +92,7 @@ func (d *DB) GetAllRadioStations() ([]RadioStation, error) {
 	var stations []RadioStation
 	for rows.Next() {
 		var s RadioStation
-		if err := rows.Scan(&s.ID, &s.Name, &s.CreatedBy, &s.Position, &s.PlaybackMode, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.CreatedBy, &s.Position, &s.PlaybackMode, &s.PublicControls, &s.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan radio station: %w", err)
 		}
 		stations = append(stations, s)
@@ -105,8 +106,8 @@ func (d *DB) GetAllRadioStations() ([]RadioStation, error) {
 func (d *DB) GetRadioStationByID(id string) (*RadioStation, error) {
 	var s RadioStation
 	err := d.QueryRow(
-		`SELECT id, name, created_by, position, playback_mode, created_at FROM radio_stations WHERE id = ?`, id,
-	).Scan(&s.ID, &s.Name, &s.CreatedBy, &s.Position, &s.PlaybackMode, &s.CreatedAt)
+		`SELECT id, name, created_by, position, playback_mode, public_controls, created_at FROM radio_stations WHERE id = ?`, id,
+	).Scan(&s.ID, &s.Name, &s.CreatedBy, &s.Position, &s.PlaybackMode, &s.PublicControls, &s.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +121,11 @@ func (d *DB) UpdateRadioStationName(id, name string) error {
 
 func (d *DB) UpdateRadioStationPlaybackMode(id, mode string) error {
 	_, err := d.Exec(`UPDATE radio_stations SET playback_mode = ? WHERE id = ?`, mode, id)
+	return err
+}
+
+func (d *DB) UpdateRadioStationPublicControls(id string, enabled bool) error {
+	_, err := d.Exec(`UPDATE radio_stations SET public_controls = ? WHERE id = ?`, enabled, id)
 	return err
 }
 

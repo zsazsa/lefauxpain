@@ -486,6 +486,13 @@ export default function RadioPlayer() {
     return user.is_admin || s.manager_ids?.includes(user.id);
   };
 
+  const canControlPlayback = () => {
+    const s = station();
+    const user = currentUser();
+    if (!s || !user) return false;
+    return user.is_admin || s.manager_ids?.includes(user.id) || s.public_controls;
+  };
+
   const handleStartStation = () => {
     const sid = stationId();
     if (!sid) return;
@@ -676,7 +683,7 @@ export default function RadioPlayer() {
         }}>
           <Show when={pb()} fallback={
             <div style={{ display: "flex", "align-items": "center", "justify-content": "center", height: "28px" }}>
-              <Show when={startablePlaylists().length > 0} fallback={
+              <Show when={canControlPlayback() && startablePlaylists().length > 0} fallback={
                 <span style={{ "font-size": "10px", color: "var(--text-muted)", "font-style": "italic" }}>No playlists</span>
               }>
                 <button
@@ -795,7 +802,7 @@ export default function RadioPlayer() {
                   progress={progress()}
                   height={40}
                   precomputedPeaks={pb()?.track?.waveform}
-                  onSeek={handleWaveformSeek}
+                  onSeek={canControlPlayback() ? handleWaveformSeek : undefined}
                 />
                 <div style={{ display: "flex", "justify-content": "space-between", "margin-top": "2px" }}>
                   <span style={{ "font-size": "9px", color: "var(--text-muted)" }}>{formatTime(currentTime())}</span>
@@ -805,28 +812,32 @@ export default function RadioPlayer() {
 
               {/* Controls */}
               <div style={{ display: "flex", gap: "4px", "margin-top": "6px", "align-items": "center" }}>
-                <button onClick={() => handleSkip(-10)} style={controlBtnStyle} title="Back 10s">
-                  [&lt;&lt;10]
-                </button>
+                <Show when={canControlPlayback()}>
+                  <button onClick={() => handleSkip(-10)} style={controlBtnStyle} title="Back 10s">
+                    [&lt;&lt;10]
+                  </button>
+                </Show>
                 {() => {
                   const p = pb()!;
                   if (p.playing && locallyPaused()) {
                     return <button onClick={handleLocalResume} style={controlBtnStyle}>[play]</button>;
                   } else if (p.playing) {
-                    return <button onClick={handlePauseBtn} style={controlBtnStyle}>[pause]</button>;
+                    return <Show when={canControlPlayback()}><button onClick={handlePauseBtn} style={controlBtnStyle}>[pause]</button></Show>;
                   } else {
-                    return <button onClick={handleResumeBtn} style={controlBtnStyle}>[play]</button>;
+                    return <Show when={canControlPlayback()}><button onClick={handleResumeBtn} style={controlBtnStyle}>[play]</button></Show>;
                   }
                 }}
-                <button onClick={() => handleSkip(10)} style={controlBtnStyle} title="Forward 10s">
-                  [10&gt;&gt;]
-                </button>
-                <button onClick={handleNext} style={controlBtnStyle} title="Next track">
-                  [next]
-                </button>
-                <button onClick={handleStop} style={{ ...controlBtnStyle, color: "var(--danger)", "border-color": "var(--danger)" }} title="Stop">
-                  [stop]
-                </button>
+                <Show when={canControlPlayback()}>
+                  <button onClick={() => handleSkip(10)} style={controlBtnStyle} title="Forward 10s">
+                    [10&gt;&gt;]
+                  </button>
+                  <button onClick={handleNext} style={controlBtnStyle} title="Next track">
+                    [next]
+                  </button>
+                  <button onClick={handleStop} style={{ ...controlBtnStyle, color: "var(--danger)", "border-color": "var(--danger)" }} title="Stop">
+                    [stop]
+                  </button>
+                </Show>
               </div>
             </div>
           </Show>
@@ -836,7 +847,7 @@ export default function RadioPlayer() {
               <div style={{ "font-size": "11px", color: "var(--text-muted)", "font-style": "italic" }}>
                 Nothing playing
               </div>
-              <Show when={startablePlaylists().length > 0}>
+              <Show when={canControlPlayback() && startablePlaylists().length > 0}>
                 <button
                   onClick={handleStartStation}
                   style={{
@@ -1157,7 +1168,7 @@ function PlaylistSection(props: {
 }
 
 function StationManageMenu(props: {
-  station: { id: string; name: string; manager_ids?: string[]; playback_mode?: string };
+  station: { id: string; name: string; manager_ids?: string[]; playback_mode?: string; public_controls?: boolean };
   onClose: () => void;
 }) {
   const [mode, setMode] = createSignal<"main" | "rename" | "managers" | "playback" | "confirmDelete">("main");
@@ -1243,6 +1254,19 @@ function StationManageMenu(props: {
           onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
         >
           Playback Mode
+        </button>
+        <button
+          onClick={() => {
+            send("set_radio_station_public_controls", {
+              station_id: props.station.id,
+              enabled: !props.station.public_controls,
+            });
+          }}
+          style={manageMenuItemStyle}
+          onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "var(--accent-glow)")}
+          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+        >
+          Public Controls {props.station.public_controls ? "[ON]" : "[OFF]"}
         </button>
         <button
           onClick={() => setMode("confirmDelete")}

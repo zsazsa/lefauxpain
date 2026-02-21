@@ -97,12 +97,13 @@ type UserOfflineData struct {
 // Radio payload types
 
 type RadioStationPayload struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	CreatedBy    *string  `json:"created_by"`
-	Position     int      `json:"position"`
-	PlaybackMode string   `json:"playback_mode"`
-	ManagerIDs   []string `json:"manager_ids"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	CreatedBy      *string  `json:"created_by"`
+	Position       int      `json:"position"`
+	PlaybackMode   string   `json:"playback_mode"`
+	PublicControls bool     `json:"public_controls"`
+	ManagerIDs     []string `json:"manager_ids"`
 }
 
 type RadioPlaylistPayload struct {

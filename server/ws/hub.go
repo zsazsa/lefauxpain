@@ -503,6 +503,8 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleRadioTrackEnded(client, msg.Data)
 	case "set_radio_station_mode":
 		h.handleSetRadioStationMode(client, msg.Data)
+	case "set_radio_station_public_controls":
+		h.handleSetRadioStationPublicControls(client, msg.Data)
 	case "radio_tune":
 		h.handleRadioTune(client, msg.Data)
 	case "radio_untune":

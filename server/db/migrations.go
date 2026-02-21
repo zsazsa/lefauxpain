@@ -242,6 +242,9 @@ var migrations = []string{
 		fetched_at   DATETIME DEFAULT (datetime('now'))
 	);
 	CREATE INDEX idx_url_unfurls_message ON url_unfurls(message_id);`,
+
+	// Version 17: Per-station public controls toggle
+	`ALTER TABLE radio_stations ADD COLUMN public_controls INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (d *DB) migrate() error {

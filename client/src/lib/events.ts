@@ -409,7 +409,7 @@ export function initEventHandlers() {
         break;
 
       case "radio_station_create":
-        addRadioStation({ ...msg.d, manager_ids: msg.d.manager_ids || [], playback_mode: msg.d.playback_mode || "play_all" });
+        addRadioStation({ ...msg.d, manager_ids: msg.d.manager_ids || [], playback_mode: msg.d.playback_mode || "play_all", public_controls: msg.d.public_controls || false });
         break;
 
       case "radio_station_delete":
@@ -421,7 +421,7 @@ export function initEventHandlers() {
         break;
 
       case "radio_station_update":
-        updateRadioStation(msg.d.id, msg.d.name, msg.d.manager_ids || [], msg.d.playback_mode);
+        updateRadioStation(msg.d.id, msg.d.name, msg.d.manager_ids || [], msg.d.playback_mode, msg.d.public_controls);
         break;
 
       case "radio_playback":

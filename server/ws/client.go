@@ -258,12 +258,13 @@ func (c *Client) sendReady() error {
 			mgrs = []string{}
 		}
 		stationPayloads[i] = RadioStationPayload{
-			ID:           s.ID,
-			Name:         s.Name,
-			CreatedBy:    s.CreatedBy,
-			Position:     s.Position,
-			PlaybackMode: s.PlaybackMode,
-			ManagerIDs:   mgrs,
+			ID:             s.ID,
+			Name:           s.Name,
+			CreatedBy:      s.CreatedBy,
+			Position:       s.Position,
+			PlaybackMode:   s.PlaybackMode,
+			PublicControls: s.PublicControls,
+			ManagerIDs:     mgrs,
 		}
 	}
 
