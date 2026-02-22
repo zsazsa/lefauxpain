@@ -7,13 +7,15 @@ function loadStrudel() {
     strudelPromise = Promise.all([
       import("@strudel/codemirror"),
       import("@strudel/webaudio"),
-      import("@strudel/core"),
       import("@strudel/transpiler"),
-      import("@strudel/mini"),
+      import("@strudel/core"),
     ]);
   }
   return strudelPromise;
 }
+
+// Built by onMount after modules are loaded — uses the same module instances as StrudelMirror
+let prebakeFn: (() => Promise<void>) | null = null;
 
 export type StrudelReplHandle = {
   setCode: (code: string) => void;
@@ -39,20 +41,44 @@ export default function StrudelReplWrapper(props: Props) {
 
   onMount(async () => {
     try {
-      const [codemirror, webaudio, core, transpiler, _mini] = await loadStrudel();
+      const [codemirror, webaudio, transpiler, core] = await loadStrudel();
 
       if (!containerRef) return;
 
       const { StrudelMirror } = codemirror;
-      const { webaudioOutput, getAudioContext } = webaudio;
+      const { webaudioOutput, getAudioContext, initAudioOnFirstClick,
+              registerSynthSounds, registerZZFXSounds, samples } = webaudio;
+      const { transpiler: transpilerFn } = transpiler;
+      const { evalScope } = core;
+
+      // Ensure AudioContext gets resumed on first user gesture
+      initAudioOnFirstClick();
+
+      // Build prebake using the SAME module instances that StrudelMirror will use
+      if (!prebakeFn) {
+        prebakeFn = async () => {
+          await Promise.all([
+            evalScope(
+              core,
+              import("@strudel/mini"),
+              webaudio,
+              codemirror,
+            ),
+            registerSynthSounds(),
+            registerZZFXSounds(),
+            samples("github:tidalcycles/dirt-samples").catch(() => {}),
+            samples("github:tidalcycles/uzu-drumkit").catch(() => {}),
+          ]);
+        };
+      }
 
       mirror = new StrudelMirror({
         root: containerRef,
         initialCode: props.initialCode,
         defaultOutput: webaudioOutput,
         getTime: () => getAudioContext().currentTime,
-        transpiler: transpiler,
-        pattern: core.silence,
+        transpiler: transpilerFn,
+        prebake: prebakeFn,
         solo: false,
         onUpdateState: (state: any) => {
           if (state.code !== undefined && props.onCodeChange) {

@@ -5,6 +5,7 @@ export type Applet = { id: string; name: string };
 export const APPLETS: Applet[] = [
   { id: "media", name: "Media Library" },
   { id: "radio", name: "Radio Stations" },
+  { id: "strudel", name: "Patterns (Strudel)" },
 ];
 
 const STORAGE_KEY = "applet_prefs";

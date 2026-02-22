@@ -358,7 +358,7 @@ export default function Sidebar(props: SidebarProps) {
         </Show>
 
         {/* Strudel patterns */}
-        <Show when={isFeatureEnabled("strudel")}>
+        <Show when={isFeatureEnabled("strudel") && isAppletEnabled("strudel")}>
           <StrudelSidebar />
         </Show>
 

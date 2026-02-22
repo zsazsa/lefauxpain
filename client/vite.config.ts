@@ -19,5 +19,21 @@ export default defineConfig({
   build: {
     target: "esnext",
     outDir: "dist",
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Keep all strudel/superdough code in a single chunk so the sound
+          // registry (nanostores map) is shared between registration and playback
+          strudel: [
+            "superdough",
+            "@strudel/core",
+            "@strudel/webaudio",
+            "@strudel/mini",
+            "@strudel/codemirror",
+            "@strudel/transpiler",
+          ],
+        },
+      },
+    },
   },
 });
