@@ -22,6 +22,7 @@ import { theme, setTheme, themes, t, ThemeId } from "../../stores/theme";
 import { deletedChannels } from "../../stores/channels";
 import { send } from "../../lib/ws";
 import { APPLETS, isAppletEnabled, toggleApplet } from "../../stores/applets";
+import { enabledFeatures } from "../../stores/strudel";
 
 type PwDevice = { id: string; name: string; default: boolean };
 type AdminUser = {
@@ -1379,6 +1380,31 @@ export default function SettingsModal() {
                     )}
                   </For>
                 </Show>
+
+                {/* Features */}
+                <div style={{ ...sectionHeaderStyle, "margin-top": "20px" }}>Features</div>
+                <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", padding: "6px 0" }}>
+                  <span style={{ "font-size": "12px", color: "var(--text-primary)" }}>
+                    Strudel Live Coding
+                  </span>
+                  <button
+                    onClick={() => {
+                      const current = enabledFeatures().includes("strudel");
+                      send("set_feature", { feature: "strudel", enabled: !current });
+                    }}
+                    style={{
+                      "font-size": "11px",
+                      padding: "2px 8px",
+                      border: `1px solid ${enabledFeatures().includes("strudel") ? "var(--success)" : "var(--text-muted)"}`,
+                      "background-color": enabledFeatures().includes("strudel") ? "rgba(76,175,80,0.15)" : "transparent",
+                      color: enabledFeatures().includes("strudel") ? "var(--success)" : "var(--text-muted)",
+                      "font-weight": "600",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {enabledFeatures().includes("strudel") ? "[on]" : "[off]"}
+                  </button>
+                </div>
               </Show>
 
               {/* Email tab */}

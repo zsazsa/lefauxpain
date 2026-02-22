@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, lazy, onCleanup, onMount, Show } from "solid-js";
 import Login from "./components/Auth/Login";
 import Sidebar from "./components/Sidebar/Sidebar";
 import TextChannel from "./components/TextChannel/TextChannel";
@@ -21,6 +21,8 @@ import TerminalLayout from "./components/Terminal/TerminalLayout";
 import { watchingScreenShare } from "./stores/voice";
 import { watchingMedia, selectedMediaId } from "./stores/media";
 import { tunedStationId } from "./stores/radio";
+import { activePatternId } from "./stores/strudel";
+const StrudelEditor = lazy(() => import("./components/Strudel/StrudelEditor"));
 import MediaPlayer from "./components/MediaPlayer/MediaPlayer";
 import RadioPlayer from "./components/RadioPlayer/RadioPlayer";
 import Lightbox from "./components/Lightbox";
@@ -212,6 +214,10 @@ function App() {
             const watching = watchingScreenShare();
             if (watching) {
               return <ScreenShareView userId={watching.user_id} channelId={watching.channel_id} />;
+            }
+            const patternId = activePatternId();
+            if (patternId) {
+              return <StrudelEditor patternId={patternId} />;
             }
             const id = selectedChannelId();
             if (!id) {

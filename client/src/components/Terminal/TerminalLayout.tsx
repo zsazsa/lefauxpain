@@ -1,9 +1,11 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, lazy, Show } from "solid-js";
 import { selectedChannelId, channels, selectedChannel } from "../../stores/channels";
 import { connState } from "../../lib/ws";
 import { watchingScreenShare } from "../../stores/voice";
 import { watchingMedia, selectedMediaId } from "../../stores/media";
 import { tunedStationId } from "../../stores/radio";
+import { activePatternId } from "../../stores/strudel";
+const StrudelEditor = lazy(() => import("../Strudel/StrudelEditor"));
 import TerminalTitleBar from "./TerminalTitleBar";
 import TerminalInput from "./TerminalInput";
 import StatusStrip from "./StatusStrip";
@@ -17,6 +19,7 @@ import MembersDialog from "./dialogs/MembersDialog";
 import HelpDialog from "./dialogs/HelpDialog";
 import NotificationsDialog from "./dialogs/NotificationsDialog";
 import RadioDialog from "./dialogs/RadioDialog";
+import PatternListDialog from "./dialogs/PatternListDialog";
 import type { CommandContext } from "./commandExecutor";
 
 interface TerminalLayoutProps {
@@ -120,6 +123,10 @@ export default function TerminalLayout(props: TerminalLayoutProps) {
           if (watching) {
             return <ScreenShareView userId={watching.user_id} channelId={watching.channel_id} />;
           }
+          const patternId = activePatternId();
+          if (patternId) {
+            return <StrudelEditor patternId={patternId} />;
+          }
           const id = selectedChannelId();
           if (!id) {
             return (
@@ -183,6 +190,8 @@ export default function TerminalLayout(props: TerminalLayoutProps) {
             return <ChannelListDialog onClose={closeDialog} />;
           case "radio":
             return <RadioDialog onClose={closeDialog} />;
+          case "patterns":
+            return <PatternListDialog onClose={closeDialog} />;
           default:
             return null;
         }

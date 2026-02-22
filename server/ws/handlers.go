@@ -2199,3 +2199,384 @@ func (h *Hub) handleMediaStop(c *Client) {
 	msg, _ := NewMessage("media_playback", nil)
 	h.BroadcastAll(msg)
 }
+
+// --- Feature toggle handler ---
+
+type SetFeatureData struct {
+	Feature string `json:"feature"`
+	Enabled bool   `json:"enabled"`
+}
+
+func (h *Hub) handleSetFeature(c *Client, data json.RawMessage) {
+	if !c.User.IsAdmin {
+		return
+	}
+
+	var d SetFeatureData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	if d.Feature == "" {
+		return
+	}
+
+	key := "feature:" + d.Feature
+	if d.Enabled {
+		if err := h.DB.SetSetting(key, "1"); err != nil {
+			log.Printf("set feature %s: %v", d.Feature, err)
+			return
+		}
+	} else {
+		if err := h.DB.DeleteSetting(key); err != nil {
+			log.Printf("delete feature %s: %v", d.Feature, err)
+			return
+		}
+	}
+
+	broadcast, _ := NewMessage("feature_toggled", map[string]any{
+		"feature": d.Feature,
+		"enabled": d.Enabled,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+// --- Strudel handlers ---
+
+type CreateStrudelPatternData struct {
+	Name string `json:"name"`
+}
+
+type UpdateStrudelPatternData struct {
+	PatternID  string  `json:"pattern_id"`
+	Name       *string `json:"name"`
+	Code       *string `json:"code"`
+	Visibility *string `json:"visibility"`
+}
+
+type DeleteStrudelPatternData struct {
+	PatternID string `json:"pattern_id"`
+}
+
+type StrudelOpenData struct {
+	PatternID string `json:"pattern_id"`
+}
+
+type StrudelPlayData struct {
+	PatternID string   `json:"pattern_id"`
+	CPS       *float64 `json:"cps"`
+}
+
+type StrudelStopData struct {
+	PatternID string `json:"pattern_id"`
+}
+
+type StrudelCodeEditData struct {
+	PatternID string `json:"pattern_id"`
+	Code      string `json:"code"`
+}
+
+func (h *Hub) isStrudelEnabled() bool {
+	v, _ := h.DB.GetSetting("feature:strudel")
+	return v == "1"
+}
+
+func (h *Hub) canAccessStrudelPattern(c *Client, pattern *db.StrudelPattern) bool {
+	if pattern == nil {
+		return false
+	}
+	if pattern.OwnerID == c.UserID {
+		return true
+	}
+	return pattern.Visibility != "private"
+}
+
+func (h *Hub) canEditStrudelCode(c *Client, pattern *db.StrudelPattern) bool {
+	if pattern == nil {
+		return false
+	}
+	if pattern.OwnerID == c.UserID {
+		return true
+	}
+	return pattern.Visibility == "open"
+}
+
+func (h *Hub) handleCreateStrudelPattern(c *Client, data json.RawMessage) {
+	if !h.isStrudelEnabled() {
+		return
+	}
+
+	var d CreateStrudelPatternData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	name := strings.TrimSpace(d.Name)
+	if name == "" || len(name) > 64 {
+		return
+	}
+
+	patternID := uuid.New().String()
+	pattern, err := h.DB.CreateStrudelPattern(patternID, name, c.UserID)
+	if err != nil {
+		log.Printf("create strudel pattern: %v", err)
+		return
+	}
+
+	broadcast, _ := NewMessage("strudel_pattern_created", StrudelPatternPayload{
+		ID:         pattern.ID,
+		Name:       pattern.Name,
+		Code:       pattern.Code,
+		OwnerID:    pattern.OwnerID,
+		Visibility: pattern.Visibility,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleUpdateStrudelPattern(c *Client, data json.RawMessage) {
+	if !h.isStrudelEnabled() {
+		return
+	}
+
+	var d UpdateStrudelPatternData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	pattern, err := h.DB.GetStrudelPattern(d.PatternID)
+	if err != nil || pattern == nil {
+		return
+	}
+
+	// Validate name/visibility changes: owner only
+	if d.Name != nil || d.Visibility != nil {
+		if pattern.OwnerID != c.UserID {
+			return
+		}
+	}
+
+	// Validate code changes: owner or open
+	if d.Code != nil {
+		if !h.canEditStrudelCode(c, pattern) {
+			return
+		}
+	}
+
+	// Validate visibility value
+	if d.Visibility != nil {
+		switch *d.Visibility {
+		case "private", "public", "open":
+		default:
+			return
+		}
+	}
+
+	// Validate name length
+	if d.Name != nil {
+		name := strings.TrimSpace(*d.Name)
+		if name == "" || len(name) > 64 {
+			return
+		}
+		d.Name = &name
+	}
+
+	if err := h.DB.UpdateStrudelPattern(d.PatternID, d.Name, d.Code, d.Visibility); err != nil {
+		log.Printf("update strudel pattern: %v", err)
+		return
+	}
+
+	payload := map[string]any{"id": d.PatternID}
+	if d.Name != nil {
+		payload["name"] = *d.Name
+	}
+	if d.Code != nil {
+		payload["code"] = *d.Code
+	}
+	if d.Visibility != nil {
+		payload["visibility"] = *d.Visibility
+	}
+
+	broadcast, _ := NewMessage("strudel_pattern_updated", payload)
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleDeleteStrudelPattern(c *Client, data json.RawMessage) {
+	if !h.isStrudelEnabled() {
+		return
+	}
+
+	var d DeleteStrudelPatternData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	pattern, err := h.DB.GetStrudelPattern(d.PatternID)
+	if err != nil || pattern == nil {
+		return
+	}
+
+	// Owner or admin can delete
+	if pattern.OwnerID != c.UserID && !c.User.IsAdmin {
+		return
+	}
+
+	// Clear playback if active
+	h.ClearStrudelPlayback(d.PatternID)
+
+	if err := h.DB.DeleteStrudelPattern(d.PatternID); err != nil {
+		log.Printf("delete strudel pattern: %v", err)
+		return
+	}
+
+	broadcast, _ := NewMessage("strudel_pattern_deleted", map[string]string{
+		"pattern_id": d.PatternID,
+	})
+	h.BroadcastAll(broadcast)
+}
+
+func (h *Hub) handleStrudelOpen(c *Client, data json.RawMessage) {
+	if !h.isStrudelEnabled() {
+		return
+	}
+
+	var d StrudelOpenData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	pattern, err := h.DB.GetStrudelPattern(d.PatternID)
+	if err != nil || pattern == nil {
+		return
+	}
+
+	if !h.canAccessStrudelPattern(c, pattern) {
+		return
+	}
+
+	h.SetStrudelViewer(c.UserID, d.PatternID)
+	h.broadcastStrudelViewers(d.PatternID)
+}
+
+func (h *Hub) handleStrudelClose(c *Client) {
+	h.removeStrudelViewer(c.UserID)
+}
+
+func (h *Hub) handleStrudelPlay(c *Client, data json.RawMessage) {
+	if !h.isStrudelEnabled() {
+		return
+	}
+
+	var d StrudelPlayData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	pattern, err := h.DB.GetStrudelPattern(d.PatternID)
+	if err != nil || pattern == nil {
+		return
+	}
+
+	if !h.canAccessStrudelPattern(c, pattern) {
+		return
+	}
+
+	cps := 0.5
+	if d.CPS != nil && *d.CPS > 0 && *d.CPS <= 10 {
+		cps = *d.CPS
+	}
+
+	state := &StrudelPlaybackState{
+		PatternID: d.PatternID,
+		Code:      pattern.Code,
+		Playing:   true,
+		StartedAt: nowUnix(),
+		CPS:       cps,
+		UserID:    c.UserID,
+	}
+	h.SetStrudelPlayback(d.PatternID, state)
+
+	msg, _ := NewMessage("strudel_playback", &StrudelPlaybackPayload{
+		PatternID: d.PatternID,
+		Code:      pattern.Code,
+		Playing:   true,
+		StartedAt: state.StartedAt,
+		CPS:       cps,
+		UserID:    c.UserID,
+	})
+	h.BroadcastToStrudelViewers(d.PatternID, msg)
+}
+
+func (h *Hub) handleStrudelStop(c *Client, data json.RawMessage) {
+	if !h.isStrudelEnabled() {
+		return
+	}
+
+	var d StrudelStopData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	state := h.GetStrudelPlayback(d.PatternID)
+	if state == nil {
+		return
+	}
+
+	h.ClearStrudelPlayback(d.PatternID)
+
+	msg, _ := NewMessage("strudel_playback", map[string]any{
+		"pattern_id": d.PatternID,
+		"stopped":    true,
+	})
+	h.BroadcastToStrudelViewers(d.PatternID, msg)
+}
+
+func (h *Hub) handleStrudelCodeEdit(c *Client, data json.RawMessage) {
+	if !h.isStrudelEnabled() {
+		return
+	}
+
+	var d StrudelCodeEditData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	pattern, err := h.DB.GetStrudelPattern(d.PatternID)
+	if err != nil || pattern == nil {
+		return
+	}
+
+	if !h.canEditStrudelCode(c, pattern) {
+		return
+	}
+
+	// Persist code to DB
+	code := d.Code
+	if err := h.DB.UpdateStrudelPattern(d.PatternID, nil, &code, nil); err != nil {
+		log.Printf("update strudel code: %v", err)
+		return
+	}
+
+	// Update playback state code if playing
+	if state := h.GetStrudelPlayback(d.PatternID); state != nil {
+		h.strudelMu.Lock()
+		state.Code = code
+		h.strudelMu.Unlock()
+	}
+
+	// Broadcast to other viewers (not sender)
+	msg, _ := NewMessage("strudel_code_sync", map[string]any{
+		"pattern_id": d.PatternID,
+		"code":       code,
+		"user_id":    c.UserID,
+	})
+	viewers := h.GetStrudelViewers(d.PatternID)
+	h.mu.RLock()
+	for _, uid := range viewers {
+		if uid != c.UserID {
+			if client, ok := h.clients[uid]; ok {
+				client.Send(msg)
+			}
+		}
+	}
+	h.mu.RUnlock()
+}

@@ -30,6 +30,15 @@ type RadioPlaybackState struct {
 	Tracks     []RadioTrackPayload // cached track list for the playlist
 }
 
+type StrudelPlaybackState struct {
+	PatternID string
+	Code      string
+	Playing   bool
+	StartedAt float64
+	CPS       float64
+	UserID    string
+}
+
 type Hub struct {
 	DB             *db.DB
 	SFU            *sfu.SFU
@@ -45,19 +54,25 @@ type Hub struct {
 	radioMu        sync.RWMutex
 	radioListeners map[string]map[string]bool // stationID → set of userIDs
 	radioListMu    sync.RWMutex
+	strudelPlayback map[string]*StrudelPlaybackState // patternID → state
+	strudelMu       sync.RWMutex
+	strudelViewers  map[string]map[string]bool // patternID → set of userIDs
+	strudelViewMu   sync.RWMutex
 }
 
 func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
 	return &Hub{
-		DB:            database,
-		SFU:           sfuInstance,
-		DevMode:       devMode,
-		clients:       make(map[string]*Client),
-		register:      make(chan *Client),
-		unregister:    make(chan *Client),
-		broadcast:     make(chan []byte, 256),
-		radioPlayback:  make(map[string]*RadioPlaybackState),
-		radioListeners: make(map[string]map[string]bool),
+		DB:              database,
+		SFU:             sfuInstance,
+		DevMode:         devMode,
+		clients:         make(map[string]*Client),
+		register:        make(chan *Client),
+		unregister:      make(chan *Client),
+		broadcast:       make(chan []byte, 256),
+		radioPlayback:   make(map[string]*RadioPlaybackState),
+		radioListeners:  make(map[string]map[string]bool),
+		strudelPlayback: make(map[string]*StrudelPlaybackState),
+		strudelViewers:  make(map[string]map[string]bool),
 	}
 }
 
@@ -115,6 +130,9 @@ func (h *Hub) Run() {
 
 			// Remove from radio listeners
 			h.removeRadioListener(client.UserID)
+
+			// Remove from strudel viewers
+			h.removeStrudelViewer(client.UserID)
 
 			// Broadcast user_offline
 			msg, err := NewMessage("user_offline", UserOfflineData{
@@ -368,6 +386,125 @@ func (h *Hub) broadcastRadioListeners(stationID string) {
 	h.BroadcastAll(msg)
 }
 
+// --- Strudel viewers ---
+
+func (h *Hub) SetStrudelViewer(userID, patternID string) {
+	h.strudelViewMu.Lock()
+	// Remove from any previous pattern
+	for pid, users := range h.strudelViewers {
+		if users[userID] {
+			delete(users, userID)
+			if len(users) == 0 {
+				delete(h.strudelViewers, pid)
+			}
+		}
+	}
+	// Add to new pattern
+	if patternID != "" {
+		if h.strudelViewers[patternID] == nil {
+			h.strudelViewers[patternID] = make(map[string]bool)
+		}
+		h.strudelViewers[patternID][userID] = true
+	}
+	h.strudelViewMu.Unlock()
+}
+
+func (h *Hub) removeStrudelViewer(userID string) {
+	h.strudelViewMu.Lock()
+	for pid, users := range h.strudelViewers {
+		if users[userID] {
+			delete(users, userID)
+			if len(users) == 0 {
+				delete(h.strudelViewers, pid)
+			}
+			h.strudelViewMu.Unlock()
+			h.broadcastStrudelViewers(pid)
+			return
+		}
+	}
+	h.strudelViewMu.Unlock()
+}
+
+func (h *Hub) GetStrudelViewers(patternID string) []string {
+	h.strudelViewMu.RLock()
+	defer h.strudelViewMu.RUnlock()
+	users := h.strudelViewers[patternID]
+	result := make([]string, 0, len(users))
+	for uid := range users {
+		result = append(result, uid)
+	}
+	return result
+}
+
+func (h *Hub) GetAllStrudelViewers() map[string][]string {
+	h.strudelViewMu.RLock()
+	defer h.strudelViewMu.RUnlock()
+	result := make(map[string][]string)
+	for pid, users := range h.strudelViewers {
+		list := make([]string, 0, len(users))
+		for uid := range users {
+			list = append(list, uid)
+		}
+		result[pid] = list
+	}
+	return result
+}
+
+func (h *Hub) broadcastStrudelViewers(patternID string) {
+	viewers := h.GetStrudelViewers(patternID)
+	msg, _ := NewMessage("strudel_viewers", map[string]any{
+		"pattern_id": patternID,
+		"user_ids":   viewers,
+	})
+	h.BroadcastAll(msg)
+}
+
+func (h *Hub) BroadcastToStrudelViewers(patternID string, msg []byte) {
+	viewers := h.GetStrudelViewers(patternID)
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, uid := range viewers {
+		if client, ok := h.clients[uid]; ok {
+			client.Send(msg)
+		}
+	}
+}
+
+func (h *Hub) GetStrudelPlayback(patternID string) *StrudelPlaybackState {
+	h.strudelMu.RLock()
+	defer h.strudelMu.RUnlock()
+	return h.strudelPlayback[patternID]
+}
+
+func (h *Hub) SetStrudelPlayback(patternID string, state *StrudelPlaybackState) {
+	h.strudelMu.Lock()
+	h.strudelPlayback[patternID] = state
+	h.strudelMu.Unlock()
+}
+
+func (h *Hub) ClearStrudelPlayback(patternID string) {
+	h.strudelMu.Lock()
+	delete(h.strudelPlayback, patternID)
+	h.strudelMu.Unlock()
+}
+
+func (h *Hub) GetAllStrudelPlayback() map[string]*StrudelPlaybackPayload {
+	h.strudelMu.RLock()
+	defer h.strudelMu.RUnlock()
+	result := make(map[string]*StrudelPlaybackPayload)
+	for pid, state := range h.strudelPlayback {
+		result[pid] = &StrudelPlaybackPayload{
+			PatternID: state.PatternID,
+			Code:      state.Code,
+			Playing:   state.Playing,
+			StartedAt: state.StartedAt,
+			CPS:       state.CPS,
+			UserID:    state.UserID,
+		}
+	}
+	return result
+}
+
 func nowUnix() float64 {
 	return float64(time.Now().UnixMilli()) / 1000.0
 }
@@ -509,6 +646,24 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleRadioTune(client, msg.Data)
 	case "radio_untune":
 		h.handleRadioUntune(client)
+	case "set_feature":
+		h.handleSetFeature(client, msg.Data)
+	case "create_strudel_pattern":
+		h.handleCreateStrudelPattern(client, msg.Data)
+	case "update_strudel_pattern":
+		h.handleUpdateStrudelPattern(client, msg.Data)
+	case "delete_strudel_pattern":
+		h.handleDeleteStrudelPattern(client, msg.Data)
+	case "strudel_open":
+		h.handleStrudelOpen(client, msg.Data)
+	case "strudel_close":
+		h.handleStrudelClose(client)
+	case "strudel_play":
+		h.handleStrudelPlay(client, msg.Data)
+	case "strudel_stop":
+		h.handleStrudelStop(client, msg.Data)
+	case "strudel_code_edit":
+		h.handleStrudelCodeEdit(client, msg.Data)
 	case "ping":
 		pong, _ := NewMessage("pong", nil)
 		client.Send(pong)

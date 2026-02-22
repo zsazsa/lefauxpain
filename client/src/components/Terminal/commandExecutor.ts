@@ -5,6 +5,7 @@ import { startScreenShare, stopScreenShare, getIsPresenting } from "../../lib/sc
 import { subscribeScreenShare } from "../../lib/screenshare";
 import { send, connState, ping } from "../../lib/ws";
 import { radioStations, tunedStationId, setTunedStationId, getStationPlayback } from "../../stores/radio";
+import { strudelPatterns, activePatternId, setActivePatternId, isFeatureEnabled } from "../../stores/strudel";
 import { currentUser } from "../../stores/auth";
 import { setSettingsOpen, setSettingsTab } from "../../stores/settings";
 import { setTheme, themes, type ThemeId } from "../../stores/theme";
@@ -375,6 +376,98 @@ export function executeCommand(name: string, args: string, ctx: CommandContext):
         }
       } else {
         ctx.setStatus("Not tuned to any station");
+      }
+      return true;
+    }
+
+    // ── Strudel patterns ──────────────────────────
+    case "patterns":
+      if (!isFeatureEnabled("strudel")) {
+        ctx.setStatus("Strudel is not enabled");
+        return true;
+      }
+      ctx.openDialog("patterns");
+      return true;
+
+    case "pattern-new": {
+      if (!isFeatureEnabled("strudel")) {
+        ctx.setStatus("Strudel is not enabled");
+        return true;
+      }
+      const pname = args.trim();
+      if (!pname) {
+        ctx.setStatus("Usage: /pattern-new <name>");
+        return true;
+      }
+      send("create_strudel_pattern", { name: pname });
+      return true;
+    }
+
+    case "pattern-open": {
+      if (!isFeatureEnabled("strudel")) {
+        ctx.setStatus("Strudel is not enabled");
+        return true;
+      }
+      const pname = args.trim();
+      if (!pname) {
+        ctx.openDialog("patterns");
+        return true;
+      }
+      const pat = strudelPatterns().find(
+        (p) => p.name.toLowerCase() === pname.toLowerCase()
+      );
+      if (pat) {
+        setActivePatternId(pat.id);
+      } else {
+        ctx.setStatus(`Pattern "${pname}" not found`);
+      }
+      return true;
+    }
+
+    case "pattern-play": {
+      const pid = activePatternId();
+      if (!pid) {
+        ctx.setStatus("No pattern open");
+        return true;
+      }
+      send("strudel_play", { pattern_id: pid });
+      return true;
+    }
+
+    case "pattern-stop": {
+      const pid = activePatternId();
+      if (!pid) {
+        ctx.setStatus("No pattern open");
+        return true;
+      }
+      send("strudel_stop", { pattern_id: pid });
+      return true;
+    }
+
+    case "pattern-visibility": {
+      const pid = activePatternId();
+      if (!pid) {
+        ctx.setStatus("No pattern open");
+        return true;
+      }
+      const vis = args.trim();
+      if (!["private", "public", "open"].includes(vis)) {
+        ctx.setStatus("Usage: /pattern-visibility <private|public|open>");
+        return true;
+      }
+      send("update_strudel_pattern", { pattern_id: pid, visibility: vis });
+      return true;
+    }
+
+    case "pattern-delete": {
+      const pid = activePatternId();
+      if (!pid) {
+        ctx.setStatus("No pattern open");
+        return true;
+      }
+      const pat = strudelPatterns().find((p) => p.id === pid);
+      if (pat && confirm(`Delete pattern "${pat.name}"?`)) {
+        send("delete_strudel_pattern", { pattern_id: pid });
       }
       return true;
     }

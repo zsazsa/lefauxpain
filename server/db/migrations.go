@@ -245,6 +245,18 @@ var migrations = []string{
 
 	// Version 17: Per-station public controls toggle
 	`ALTER TABLE radio_stations ADD COLUMN public_controls INTEGER NOT NULL DEFAULT 0;`,
+
+	// Version 18: Strudel live coding patterns
+	`CREATE TABLE strudel_patterns (
+		id          TEXT PRIMARY KEY,
+		name        TEXT NOT NULL,
+		code        TEXT NOT NULL DEFAULT '',
+		owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		visibility  TEXT NOT NULL DEFAULT 'private',
+		created_at  DATETIME DEFAULT (datetime('now')),
+		updated_at  DATETIME DEFAULT (datetime('now'))
+	);
+	CREATE INDEX idx_strudel_patterns_owner ON strudel_patterns(owner_id);`,
 }
 
 func (d *DB) migrate() error {

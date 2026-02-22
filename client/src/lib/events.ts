@@ -66,6 +66,19 @@ import {
   tunedStationId,
   setClockOffset,
 } from "../stores/radio";
+import {
+  setEnabledFeatures,
+  setStrudelPatterns,
+  setStrudelPlayback,
+  setStrudelViewers,
+  addStrudelPattern,
+  removeStrudelPattern,
+  updateStrudelPattern,
+  updateStrudelPlaybackForPattern,
+  updateStrudelViewersForPattern,
+  toggleFeature,
+  activePatternId,
+} from "../stores/strudel";
 import { handleWebRTCOffer, handleWebRTCICE, joinVoice } from "./webrtc";
 import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./screenshare";
 import { playJoinSound, playLeaveSound } from "./sounds";
@@ -238,6 +251,26 @@ export function initEventHandlers() {
             }
           }
           setRadioStatus(statusMap);
+        }
+        // Enabled features
+        setEnabledFeatures(msg.d.enabled_features || []);
+        // Strudel data
+        setStrudelPatterns(msg.d.strudel_patterns || []);
+        {
+          const pb = msg.d.strudel_playback || {};
+          const mapped: Record<string, any> = {};
+          for (const [pid, state] of Object.entries(pb)) {
+            if (state && !(state as any).stopped) {
+              mapped[pid] = state;
+            }
+          }
+          setStrudelPlayback(mapped);
+        }
+        setStrudelViewers(msg.d.strudel_viewers || {});
+        // Re-send strudel_open if we were viewing a pattern (e.g. after reconnect)
+        {
+          const pid = activePatternId();
+          if (pid) send("strudel_open", { pattern_id: pid });
         }
         // Re-send tune if we were already tuned (e.g. after reconnect)
         {
@@ -459,6 +492,39 @@ export function initEventHandlers() {
 
       case "radio_listeners":
         updateRadioListeners(msg.d.station_id, msg.d.user_ids || []);
+        break;
+
+      case "feature_toggled":
+        toggleFeature(msg.d.feature, msg.d.enabled);
+        break;
+
+      case "strudel_pattern_created":
+        addStrudelPattern(msg.d);
+        break;
+
+      case "strudel_pattern_updated":
+        updateStrudelPattern(msg.d.id, msg.d);
+        break;
+
+      case "strudel_pattern_deleted":
+        removeStrudelPattern(msg.d.pattern_id);
+        break;
+
+      case "strudel_playback":
+        if (msg.d && !msg.d.stopped) {
+          updateStrudelPlaybackForPattern(msg.d.pattern_id, msg.d);
+        } else if (msg.d) {
+          updateStrudelPlaybackForPattern(msg.d.pattern_id, null);
+        }
+        break;
+
+      case "strudel_viewers":
+        updateStrudelViewersForPattern(msg.d.pattern_id, msg.d.user_ids || []);
+        break;
+
+      case "strudel_code_sync":
+        // Update the pattern's code in our local store
+        updateStrudelPattern(msg.d.pattern_id, { code: msg.d.code });
         break;
     }
   });

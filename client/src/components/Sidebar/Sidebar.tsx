@@ -24,7 +24,9 @@ import NotificationDropdown from "../Notifications/NotificationDropdown";
 import { t } from "../../stores/theme";
 import { isAppletEnabled } from "../../stores/applets";
 import RadioSidebar from "./RadioSidebar";
+import StrudelSidebar from "./StrudelSidebar";
 import { setUIMode } from "../../stores/mode";
+import { isFeatureEnabled } from "../../stores/strudel";
 
 interface SidebarProps {
   onLogout: () => void;
@@ -353,6 +355,11 @@ export default function Sidebar(props: SidebarProps) {
         {/* Radio stations */}
         <Show when={isAppletEnabled("radio")}>
           <RadioSidebar />
+        </Show>
+
+        {/* Strudel patterns */}
+        <Show when={isFeatureEnabled("strudel")}>
+          <StrudelSidebar />
         </Show>
 
         {/* Online users */}

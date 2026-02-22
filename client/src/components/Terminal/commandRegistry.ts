@@ -3,6 +3,7 @@ export type CommandCategory =
   | "chat"
   | "voice"
   | "radio"
+  | "strudel"
   | "settings"
   | "admin"
   | "channel"
@@ -58,6 +59,15 @@ export const commands: CommandDef[] = [
   { name: "radio-managers", description: "Manage station managers", category: "radio", args: "<station>" },
   { name: "radio-public", description: "Toggle public controls", category: "radio" },
 
+  // Strudel patterns
+  { name: "patterns", description: "List all patterns", category: "strudel" },
+  { name: "pattern-new", description: "Create a new pattern", category: "strudel", args: "<name>" },
+  { name: "pattern-open", description: "Open a pattern by name", category: "strudel", args: "<name>" },
+  { name: "pattern-play", description: "Play current pattern", category: "strudel" },
+  { name: "pattern-stop", description: "Stop current pattern", category: "strudel" },
+  { name: "pattern-visibility", description: "Set pattern visibility", category: "strudel", args: "<private|public|open>" },
+  { name: "pattern-delete", description: "Delete current pattern", category: "strudel" },
+
   // Settings
   { name: "settings", description: "Open settings", category: "settings" },
   { name: "theme", description: "Switch theme", category: "settings", args: "<name>" },
@@ -91,6 +101,7 @@ export const categoryLabels: Record<CommandCategory, string> = {
   chat: "Chat",
   voice: "Voice",
   radio: "Radio",
+  strudel: "Patterns",
   settings: "Settings",
   admin: "Admin",
   channel: "Channel Management",

@@ -303,6 +303,38 @@ func (c *Client) sendReady() error {
 		}
 	}
 
+	// Enabled features
+	var enabledFeatures []string
+	if v, _ := c.hub.DB.GetSetting("feature:strudel"); v == "1" {
+		enabledFeatures = append(enabledFeatures, "strudel")
+	}
+	if enabledFeatures == nil {
+		enabledFeatures = []string{}
+	}
+
+	// Strudel data (only if feature enabled)
+	var strudelPatternPayloads []StrudelPatternPayload
+	var strudelPlayback map[string]*StrudelPlaybackPayload
+	var strudelViewers map[string][]string
+	for _, f := range enabledFeatures {
+		if f == "strudel" {
+			dbPatterns, _ := c.hub.DB.ListStrudelPatterns(c.UserID)
+			strudelPatternPayloads = make([]StrudelPatternPayload, len(dbPatterns))
+			for i, p := range dbPatterns {
+				strudelPatternPayloads[i] = StrudelPatternPayload{
+					ID:         p.ID,
+					Name:       p.Name,
+					Code:       p.Code,
+					OwnerID:    p.OwnerID,
+					Visibility: p.Visibility,
+				}
+			}
+			strudelPlayback = c.hub.GetAllStrudelPlayback()
+			strudelViewers = c.hub.GetAllStrudelViewers()
+			break
+		}
+	}
+
 	msg, err := NewMessage("ready", ReadyData{
 		User: &UserPayload{
 			ID:          c.User.ID,
@@ -325,6 +357,10 @@ func (c *Client) sendReady() error {
 		RadioPlaylists:  playlistPayloads,
 		RadioListeners:  radioListeners,
 		ServerTime:      nowUnix(),
+		EnabledFeatures: enabledFeatures,
+		StrudelPatterns: strudelPatternPayloads,
+		StrudelPlayback: strudelPlayback,
+		StrudelViewers:  strudelViewers,
 	})
 	if err != nil {
 		return err

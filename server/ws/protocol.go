@@ -33,6 +33,10 @@ type ReadyData struct {
 	RadioPlaylists  []RadioPlaylistPayload            `json:"radio_playlists"`
 	RadioListeners  map[string][]string               `json:"radio_listeners"`
 	ServerTime      float64                           `json:"server_time"`
+	EnabledFeatures []string                          `json:"enabled_features"`
+	StrudelPatterns []StrudelPatternPayload           `json:"strudel_patterns,omitempty"`
+	StrudelPlayback map[string]*StrudelPlaybackPayload `json:"strudel_playback,omitempty"`
+	StrudelViewers  map[string][]string               `json:"strudel_viewers,omitempty"`
 }
 
 type MediaItemPayload struct {
@@ -145,6 +149,25 @@ type MessageUnfurlsPayload struct {
 	MessageID string          `json:"message_id"`
 	ChannelID string          `json:"channel_id"`
 	Unfurls   []UnfurlPayload `json:"unfurls"`
+}
+
+// Strudel payload types
+
+type StrudelPatternPayload struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Code       string `json:"code"`
+	OwnerID    string `json:"owner_id"`
+	Visibility string `json:"visibility"`
+}
+
+type StrudelPlaybackPayload struct {
+	PatternID string  `json:"pattern_id"`
+	Code      string  `json:"code"`
+	Playing   bool    `json:"playing"`
+	StartedAt float64 `json:"started_at"`
+	CPS       float64 `json:"cps"`
+	UserID    string  `json:"user_id"`
 }
 
 func NewMessage(op string, data any) ([]byte, error) {
