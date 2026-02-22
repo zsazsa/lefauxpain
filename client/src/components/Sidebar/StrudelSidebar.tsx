@@ -3,6 +3,7 @@ import {
   strudelPatterns,
   strudelPlayback,
   setActivePatternId,
+  setViewingPattern,
   activePatternId,
   getPatternViewers,
 } from "../../stores/strudel";
@@ -101,6 +102,7 @@ export default function StrudelSidebar() {
               <div
                 onClick={() => {
                   setActivePatternId(pattern.id);
+                  setViewingPattern(true);
                   if (isMobile()) setSidebarOpen(false);
                 }}
                 style={{

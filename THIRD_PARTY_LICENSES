@@ -1,0 +1,22 @@
+Third-Party Licenses
+====================
+
+This project includes the following third-party software:
+
+Strudel (live coding music)
+---------------------------
+Packages: @strudel/core, @strudel/mini, @strudel/webaudio, @strudel/codemirror,
+          @strudel/transpiler, @strudel/repl, @strudel/draw, @strudel/hydra,
+          @strudel/midi, @strudel/soundfonts, @strudel/tonal, superdough
+
+License: AGPL-3.0-or-later
+Copyright: (c) 2022 Alex McLean and contributors
+Source: https://github.com/tidalcycles/strudel
+Website: https://strudel.cc
+
+These packages are loaded client-side for the optional Strudel live coding
+pattern feature. The complete source code of this application is available
+at: https://github.com/kalman/GamersGuild
+
+The full text of the AGPL-3.0 license is available at:
+https://www.gnu.org/licenses/agpl-3.0.html

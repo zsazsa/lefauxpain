@@ -150,6 +150,20 @@ export default function StrudelEditor(props: Props) {
           >
             [x]
           </button>
+          <a
+            href="https://strudel.cc/workshop/getting-started/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              "font-size": "11px",
+              color: "var(--accent)",
+              "text-decoration": "none",
+              "flex-shrink": "0",
+            }}
+            title="Strudel getting started guide"
+          >
+            [learn]
+          </a>
           {editingName() ? (
             <input
               value={nameInput()}

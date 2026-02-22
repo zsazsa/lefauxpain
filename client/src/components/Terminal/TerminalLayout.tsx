@@ -4,7 +4,7 @@ import { connState } from "../../lib/ws";
 import { watchingScreenShare } from "../../stores/voice";
 import { watchingMedia, selectedMediaId } from "../../stores/media";
 import { tunedStationId } from "../../stores/radio";
-import { activePatternId } from "../../stores/strudel";
+import { activePatternId, viewingPattern } from "../../stores/strudel";
 const StrudelEditor = lazy(() => import("../Strudel/StrudelEditor"));
 import TerminalTitleBar from "./TerminalTitleBar";
 import TerminalInput from "./TerminalInput";
@@ -124,7 +124,7 @@ export default function TerminalLayout(props: TerminalLayoutProps) {
             return <ScreenShareView userId={watching.user_id} channelId={watching.channel_id} />;
           }
           const patternId = activePatternId();
-          if (patternId) {
+          if (patternId && viewingPattern()) {
             return <StrudelEditor patternId={patternId} />;
           }
           const id = selectedChannelId();

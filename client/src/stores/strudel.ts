@@ -32,10 +32,13 @@ const [strudelPatterns, setStrudelPatterns] = createSignal<StrudelPattern[]>([])
 const [strudelPlayback, setStrudelPlayback] = createSignal<Record<string, StrudelPlayback>>({});
 const [strudelViewers, setStrudelViewers] = createSignal<Record<string, string[]>>({});
 const [activePatternId, _setActivePatternId] = createSignal<string | null>(null);
+// Whether the pattern editor is "in front" vs a channel
+const [viewingPattern, setViewingPattern] = createSignal(false);
 
 const setActivePatternId = (id: string | null) => {
   const prev = activePatternId();
   _setActivePatternId(id);
+  setViewingPattern(!!id);
   if (id && id !== prev) {
     send("strudel_open", { pattern_id: id });
   } else if (!id && prev) {
@@ -52,6 +55,8 @@ export {
   setStrudelViewers,
   activePatternId,
   setActivePatternId,
+  viewingPattern,
+  setViewingPattern,
 };
 
 export function addStrudelPattern(pattern: StrudelPattern) {

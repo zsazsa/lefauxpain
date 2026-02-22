@@ -21,7 +21,7 @@ import TerminalLayout from "./components/Terminal/TerminalLayout";
 import { watchingScreenShare } from "./stores/voice";
 import { watchingMedia, selectedMediaId } from "./stores/media";
 import { tunedStationId } from "./stores/radio";
-import { activePatternId } from "./stores/strudel";
+import { activePatternId, viewingPattern } from "./stores/strudel";
 const StrudelEditor = lazy(() => import("./components/Strudel/StrudelEditor"));
 import MediaPlayer from "./components/MediaPlayer/MediaPlayer";
 import RadioPlayer from "./components/RadioPlayer/RadioPlayer";
@@ -216,7 +216,7 @@ function App() {
               return <ScreenShareView userId={watching.user_id} channelId={watching.channel_id} />;
             }
             const patternId = activePatternId();
-            if (patternId) {
+            if (patternId && viewingPattern()) {
               return <StrudelEditor patternId={patternId} />;
             }
             const id = selectedChannelId();

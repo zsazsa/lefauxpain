@@ -26,7 +26,7 @@ import { isAppletEnabled } from "../../stores/applets";
 import RadioSidebar from "./RadioSidebar";
 import StrudelSidebar from "./StrudelSidebar";
 import { setUIMode } from "../../stores/mode";
-import { isFeatureEnabled } from "../../stores/strudel";
+import { isFeatureEnabled, setViewingPattern } from "../../stores/strudel";
 
 interface SidebarProps {
   onLogout: () => void;
@@ -187,6 +187,7 @@ export default function Sidebar(props: SidebarProps) {
                   canManage={canManage(ch)}
                   onClick={() => {
                     setSelectedChannelId(ch.id);
+                    setViewingPattern(false);
                     if (currentVoiceChannelId() !== ch.id) {
                       joinVoice(ch.id);
                     }
@@ -270,6 +271,7 @@ export default function Sidebar(props: SidebarProps) {
                 canManage={canManage(ch)}
                 onClick={() => {
                   setSelectedChannelId(ch.id);
+                  setViewingPattern(false);
                   if (isMobile()) setSidebarOpen(false);
                 }}
               />
