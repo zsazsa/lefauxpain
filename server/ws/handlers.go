@@ -1175,14 +1175,7 @@ func (h *Hub) canManageRadioStation(c *Client, stationID string) bool {
 }
 
 func (h *Hub) canControlRadioPlayback(c *Client, stationID string) bool {
-	if h.canManageRadioStation(c, stationID) {
-		return true
-	}
-	station, err := h.DB.GetRadioStationByID(stationID)
-	if err != nil || station == nil {
-		return false
-	}
-	return station.PublicControls
+	return true
 }
 
 type CreateRadioStationData struct {

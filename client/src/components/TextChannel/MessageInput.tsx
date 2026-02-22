@@ -6,6 +6,7 @@ import { onlineUsers, allUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { isMobile } from "../../stores/responsive";
 import { isDesktop, tauriInvoke } from "../../lib/devices";
+import { setUIMode } from "../../stores/mode";
 
 interface MessageInputProps {
   channelId: string;
@@ -138,6 +139,13 @@ export default function MessageInput(props: MessageInputProps) {
     const atts = attachments();
 
     if (!content && atts.length === 0) return;
+
+    // Intercept /terminal to switch modes
+    if (content === "/terminal") {
+      setUIMode("terminal");
+      setText("");
+      return;
+    }
 
     for (const [username, userId] of pendingMentions) {
       content = content.replaceAll(`@${username}`, `<@${userId}>`);

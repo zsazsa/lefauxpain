@@ -24,6 +24,7 @@ import NotificationDropdown from "../Notifications/NotificationDropdown";
 import { t } from "../../stores/theme";
 import { isAppletEnabled } from "../../stores/applets";
 import RadioSidebar from "./RadioSidebar";
+import { setUIMode } from "../../stores/mode";
 
 interface SidebarProps {
   onLogout: () => void;
@@ -492,6 +493,17 @@ export default function Sidebar(props: SidebarProps) {
           {props.username}
         </span>
         <div style={{ display: "flex", gap: "4px" }}>
+          <button
+            onClick={() => setUIMode("terminal")}
+            style={{
+              padding: "2px 6px",
+              "font-size": "11px",
+              color: "var(--text-muted)",
+            }}
+            title="Terminal mode"
+          >
+            [{">_"}]
+          </button>
           <button
             onClick={() => setSettingsOpen(true)}
             style={{

@@ -487,10 +487,7 @@ export default function RadioPlayer() {
   };
 
   const canControlPlayback = () => {
-    const s = station();
-    const user = currentUser();
-    if (!s || !user) return false;
-    return user.is_admin || s.manager_ids?.includes(user.id) || s.public_controls;
+    return !!station() && !!currentUser();
   };
 
   const handleStartStation = () => {
