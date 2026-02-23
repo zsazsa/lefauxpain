@@ -49,7 +49,10 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 - Create and share live coding music patterns using [Strudel](https://strudel.cc/)
 - Three visibility modes: private (owner only), public (everyone can listen), open (everyone can edit)
 - Collaborative real-time code editing with synchronized audio playback
-- Built-in code editor with Tidal Dirt-Samples (218 sounds) and synth engines
+- Live auto-evaluation: code changes take effect immediately while playing
+- Built-in code editor with Tidal Dirt-Samples, GM Soundfonts, and synth engines
+- Sandboxed iframe execution — user code cannot access auth tokens, cookies, or the WS API
+- Auto-stop: playback halts when all viewers leave a pattern
 - Admin-gated feature (enable in Settings > Admin > Features)
 
 ### Applet System
@@ -87,6 +90,8 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 - WebSocket per-user rate limiting (30 msg/sec)
 - Server read/write timeouts
 - Token-based authentication
+- Strudel sandbox: iframe with opaque origin (`sandbox="allow-scripts"`) + CSP restricting `connect-src` and `script-src`
+- Server-side limits: 128KB max code size, 20 patterns per user, authorization on all pattern ops
 
 ## Quick Start (Self-Hosting)
 

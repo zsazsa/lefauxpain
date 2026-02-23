@@ -518,7 +518,34 @@ Communication happens via `window.postMessage()`:
 
 ### CSP (Content Security Policy)
 
-The sandbox HTML includes a CSP meta tag restricting `connect-src` to known safe domains (GitHub raw content, FreeSounds, strudel.cc). User code cannot `fetch()` from arbitrary domains.
+The sandbox HTML includes a CSP meta tag restricting network and script capabilities:
+
+```
+default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:;
+connect-src https://raw.githubusercontent.com https://*.freesound.org
+            https://strudel.cc https://felixroos.github.io 'self';
+media-src blob: data: 'self';
+script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:;
+```
+
+- `connect-src` restricts `fetch()` / `samples()` to known safe domains (GitHub raw, FreeSounds, strudel.cc, felixroos.github.io for GM soundfonts)
+- `script-src` includes `data:` for AudioWorklet `addModule()` which uses inlined data URIs
+- User code cannot `fetch()` from arbitrary domains
+
+### Server-Side Hardening
+
+Applets that accept user content should enforce server-side limits:
+
+- **Code size**: Strudel enforces a 128KB max on code edits (`handleStrudelCodeEdit`, `handleUpdateStrudelPattern`)
+- **Resource limits**: 20 patterns per user (`handleCreateStrudelPattern`)
+- **Authorization**: All ops (play, stop, edit, delete) verify access via `canAccessStrudelPattern` or `canEditStrudelCode`
+- **Auto-cleanup**: Playback stops automatically when the last viewer leaves a pattern
+
+### Additional Mitigations
+
+- **Soundfont URL lock**: After `registerSoundfonts()` prebake, `setSoundfontUrl` is frozen via `Object.defineProperty` to prevent user code from redirecting font loading to arbitrary CSP-whitelisted domains
+- **No innerHTML**: Error display uses `textContent` + `replaceChildren` instead of `innerHTML` to prevent XSS
+- **Suppress toggle loop**: Parent-initiated evaluate/stop suppresses `onToggle` callbacks to prevent feedback loops between iframe and parent
 
 ### Building a Sandboxed Applet
 
@@ -528,6 +555,8 @@ If your applet evaluates user-provided code:
 3. Embed via `<iframe sandbox="allow-scripts" src="/yourapplet-sandbox.html">`
 4. Use `postMessage` for all parent ↔ iframe communication
 5. Add a CSP `connect-src` allowlist to your sandbox HTML
+6. Add server-side size limits and authorization checks on all handler ops
+7. Lock any mutable configuration after initialization (e.g. URL setters)
 
 ## Safety Guarantees
 
