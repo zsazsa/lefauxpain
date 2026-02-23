@@ -33,7 +33,7 @@ export const commands: CommandDef[] = [
   { name: "delete", description: "Delete your most recent message", category: "chat" },
   { name: "react", description: "React to the most recent message", category: "chat", args: "<emoji>" },
   { name: "upload", description: "Attach a file to your next message", category: "chat" },
-{ name: "search", description: "Search messages in current channel", category: "chat", args: "<query>" },
+  { name: "search", description: "Search messages in current channel", category: "chat", args: "<query>" },
 
   // Voice
   { name: "mute", description: "Toggle self-mute", category: "voice" },
@@ -41,32 +41,6 @@ export const commands: CommandDef[] = [
   { name: "screen", description: "Toggle screen sharing", category: "voice" },
   { name: "watch", description: "Watch a user's screen share", category: "voice", args: "<user>" },
   { name: "volume", description: "Set per-user volume", category: "voice", args: "<user> <0-200>" },
-
-  // Radio
-  { name: "radio", description: "List all radio stations", category: "radio" },
-  { name: "radio-create", description: "Create a new radio station", category: "radio", args: "<name>" },
-  { name: "radio-delete", description: "Delete a radio station", category: "radio", args: "<station>" },
-  { name: "radio-tune", description: "Tune into a station", category: "radio", args: "<station>" },
-  { name: "radio-untune", description: "Stop listening to current station", category: "radio" },
-  { name: "radio-play", description: "Start/resume playback", category: "radio" },
-  { name: "radio-pause", description: "Pause playback", category: "radio" },
-  { name: "radio-skip", description: "Skip to next track", category: "radio" },
-  { name: "radio-stop", description: "Stop playback entirely", category: "radio" },
-  { name: "radio-seek", description: "Seek to position", category: "radio", args: "<time>" },
-  { name: "radio-upload", description: "Upload a track", category: "radio", args: "<station>" },
-  { name: "radio-queue", description: "Show station playlist", category: "radio" },
-  { name: "radio-mode", description: "Set playback mode", category: "radio", args: "<mode>" },
-  { name: "radio-managers", description: "Manage station managers", category: "radio", args: "<station>" },
-  { name: "radio-public", description: "Toggle public controls", category: "radio" },
-
-  // Strudel patterns
-  { name: "patterns", description: "List all patterns", category: "strudel" },
-  { name: "pattern-new", description: "Create a new pattern", category: "strudel", args: "<name>" },
-  { name: "pattern-open", description: "Open a pattern by name", category: "strudel", args: "<name>" },
-  { name: "pattern-play", description: "Play current pattern", category: "strudel" },
-  { name: "pattern-stop", description: "Stop current pattern", category: "strudel" },
-  { name: "pattern-visibility", description: "Set pattern visibility", category: "strudel", args: "<private|public|open>" },
-  { name: "pattern-delete", description: "Delete current pattern", category: "strudel" },
 
   // Settings
   { name: "settings", description: "Open settings", category: "settings" },
@@ -95,6 +69,11 @@ export const commands: CommandDef[] = [
   { name: "logout", description: "Log out", category: "system" },
   { name: "update", description: "Check for desktop app updates", category: "system" },
 ];
+
+/** Register additional commands (called by applet self-registration). */
+export function registerCommands(defs: CommandDef[]) {
+  commands.push(...defs);
+}
 
 export const categoryLabels: Record<CommandCategory, string> = {
   navigation: "Navigation",

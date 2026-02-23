@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import solidPlugin from "vite-plugin-solid";
+import { resolve } from "path";
 
 export default defineConfig({
   plugins: [solidPlugin()],
@@ -20,10 +21,15 @@ export default defineConfig({
     target: "esnext",
     outDir: "dist",
     rollupOptions: {
+      input: {
+        main: resolve(__dirname, "index.html"),
+        "strudel-sandbox": resolve(__dirname, "strudel-sandbox.html"),
+      },
       output: {
         manualChunks: {
           // Keep all strudel/superdough code in a single chunk so the sound
-          // registry (nanostores map) is shared between registration and playback
+          // registry (nanostores map) is shared between registration and playback.
+          // This chunk is only loaded by the sandbox iframe entry point.
           strudel: [
             "superdough",
             "@strudel/core",

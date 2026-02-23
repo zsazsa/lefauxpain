@@ -1,17 +1,14 @@
-import { createSignal, createEffect, on, Show, For, onCleanup } from "solid-js";
+import { createSignal, createEffect, on, Show, onCleanup, onMount } from "solid-js";
 import {
   strudelPatterns,
   strudelPlayback,
   setActivePatternId,
   getPatternViewers,
   getPatternPlayback,
-  updateStrudelPattern,
 } from "../../stores/strudel";
 import { currentUser } from "../../stores/auth";
 import { lookupUsername } from "../../stores/users";
 import { send } from "../../lib/ws";
-import { serverNow } from "../../stores/radio";
-import StrudelReplWrapper, { type StrudelReplHandle } from "./StrudelReplWrapper";
 
 interface Props {
   patternId: string;
@@ -24,9 +21,9 @@ export default function StrudelEditor(props: Props) {
   const isOwner = () => currentUser()?.id === pattern()?.owner_id;
   const canEdit = () => isOwner() || pattern()?.visibility === "open";
 
-  const [handle, setHandle] = createSignal<StrudelReplHandle | null>(null);
-  const [localCode, setLocalCode] = createSignal("");
   const [cps, setCps] = createSignal(0.5);
+  const [sandboxReady, setSandboxReady] = createSignal(false);
+  const [soundErrors, setSoundErrors] = createSignal<string[]>([]);
 
   // Editing state
   const [editingName, setEditingName] = createSignal(false);
@@ -38,30 +35,81 @@ export default function StrudelEditor(props: Props) {
 
   // Track if we're applying remote code to avoid feedback loops
   let applyingRemote = false;
+  let iframeRef: HTMLIFrameElement | undefined;
+  // Track the last code we know the iframe has, for dedup
+  let lastSentCode: string | undefined;
 
-  const handleCodeChange = (code: string) => {
-    if (applyingRemote) return;
-    setLocalCode(code);
-
-    if (canEdit()) {
-      clearTimeout(codeEditTimer);
-      codeEditTimer = window.setTimeout(() => {
-        send("strudel_code_edit", { pattern_id: props.patternId, code });
-      }, 200);
+  const postToSandbox = (msg: any) => {
+    if (iframeRef?.contentWindow) {
+      iframeRef.contentWindow.postMessage(msg, "*");
     }
   };
+
+  // Handle messages from the sandbox iframe
+  const handleMessage = (event: MessageEvent) => {
+    // Only accept messages from our iframe
+    if (!iframeRef || event.source !== iframeRef.contentWindow) return;
+
+    const { op } = event.data || {};
+    switch (op) {
+      case "ready":
+        setSandboxReady(true);
+        // Send initial code once sandbox is ready
+        const p = pattern();
+        if (p?.code) {
+          postToSandbox({ op: "set_code", code: p.code });
+          lastSentCode = p.code;
+        }
+        // If there's active playback, start it
+        const pb = playback();
+        if (pb?.playing) {
+          postToSandbox({ op: "evaluate", code: pb.code, cps: pb.cps });
+        }
+        break;
+
+      case "code_change":
+        if (applyingRemote) return;
+        lastSentCode = event.data.code;
+        if (canEdit()) {
+          clearTimeout(codeEditTimer);
+          codeEditTimer = window.setTimeout(() => {
+            send("strudel_code_edit", { pattern_id: props.patternId, code: event.data.code });
+          }, 200);
+        }
+        break;
+
+      case "state":
+        // Playback state change from iframe — currently handled via WS
+        break;
+
+      case "error":
+        console.warn("[strudel sandbox]", event.data.message);
+        break;
+
+      case "sound_error":
+        setSoundErrors((prev) => prev.includes(event.data.sound) ? prev : [...prev, event.data.sound]);
+        break;
+    }
+  };
+
+  onMount(() => {
+    window.addEventListener("message", handleMessage);
+  });
+
+  onCleanup(() => {
+    window.removeEventListener("message", handleMessage);
+  });
 
   // Receive remote code sync
   createEffect(on(
     () => pattern()?.code,
     (newCode) => {
-      if (newCode === undefined) return;
-      const h = handle();
-      if (!h) return;
-      // Only apply if different from what we have locally
-      if (newCode !== h.getCode()) {
+      if (newCode === undefined || !sandboxReady()) return;
+      // Only apply if different from what the iframe has
+      if (newCode !== lastSentCode) {
         applyingRemote = true;
-        h.setCode(newCode);
+        postToSandbox({ op: "set_code", code: newCode });
+        lastSentCode = newCode;
         applyingRemote = false;
       }
     }
@@ -69,20 +117,16 @@ export default function StrudelEditor(props: Props) {
 
   // Receive remote playback
   createEffect(on(playback, (pb) => {
-    const h = handle();
-    if (!h) return;
+    if (!sandboxReady()) return;
     if (pb && pb.playing) {
-      h.setCode(pb.code);
-      h.setCps(pb.cps);
-      h.evaluate().catch(() => {});
+      postToSandbox({ op: "evaluate", code: pb.code, cps: pb.cps });
     } else if (!pb) {
-      h.stop().catch(() => {});
+      postToSandbox({ op: "stop" });
     }
   }));
 
   const handlePlay = () => {
-    const h = handle();
-    if (!h) return;
+    setSoundErrors([]);
     send("strudel_play", { pattern_id: props.patternId, cps: cps() });
   };
 
@@ -330,15 +374,46 @@ export default function StrudelEditor(props: Props) {
         </div>
       </div>
 
-      {/* Editor */}
+      {/* Sandboxed Strudel iframe */}
       <div style={{ flex: "1", "min-height": "0", display: "flex", "flex-direction": "column" }}>
-        <StrudelReplWrapper
-          initialCode={pattern()?.code || ""}
-          readOnly={!canEdit()}
-          onCodeChange={handleCodeChange}
-          onHandle={setHandle}
+        <iframe
+          ref={iframeRef}
+          src="/strudel-sandbox.html"
+          sandbox="allow-scripts"
+          style={{
+            width: "100%",
+            height: "100%",
+            border: "none",
+            flex: "1",
+            "min-height": "0",
+          }}
         />
       </div>
+
+      {/* Sound errors */}
+      <Show when={soundErrors().length > 0}>
+        <div style={{
+          padding: "4px 16px",
+          "background-color": "rgba(244,67,54,0.1)",
+          "border-top": "1px solid var(--danger)",
+          "font-size": "10px",
+          color: "var(--danger)",
+          "flex-shrink": "0",
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "space-between",
+        }}>
+          <span>
+            Sounds not found: {soundErrors().join(", ")}
+          </span>
+          <button
+            onClick={() => setSoundErrors([])}
+            style={{ "font-size": "10px", color: "var(--danger)", padding: "0 4px" }}
+          >
+            [x]
+          </button>
+        </div>
+      </Show>
 
       {/* Status bar */}
       <div style={{

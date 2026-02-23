@@ -43,6 +43,7 @@ type Hub struct {
 	DB             *db.DB
 	SFU            *sfu.SFU
 	DevMode        bool
+	applets        *AppletRegistry
 	clients        map[string]*Client // userID → client
 	mu             sync.RWMutex
 	register       chan *Client
@@ -61,10 +62,16 @@ type Hub struct {
 }
 
 func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
+	applets := NewAppletRegistry()
+	applets.Register(RadioApplet())
+	applets.Register(MediaApplet())
+	applets.Register(StrudelApplet())
+
 	return &Hub{
 		DB:              database,
 		SFU:             sfuInstance,
 		DevMode:         devMode,
+		applets:         applets,
 		clients:         make(map[string]*Client),
 		register:        make(chan *Client),
 		unregister:      make(chan *Client),
@@ -128,11 +135,8 @@ func (h *Hub) Run() {
 				}
 			}
 
-			// Remove from radio listeners
-			h.removeRadioListener(client.UserID)
-
-			// Remove from strudel viewers
-			h.removeStrudelViewer(client.UserID)
+			// Applet cleanup (radio listeners, strudel viewers, etc.)
+			h.applets.OnDisconnect(h, client)
 
 			// Broadcast user_offline
 			msg, err := NewMessage("user_offline", UserOfflineData{
@@ -600,74 +604,15 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleMarkNotificationRead(client, msg.Data)
 	case "mark_all_notifications_read":
 		h.handleMarkAllNotificationsRead(client)
-	case "media_play":
-		h.handleMediaPlay(client, msg.Data)
-	case "media_pause":
-		h.handleMediaPause(client, msg.Data)
-	case "media_seek":
-		h.handleMediaSeek(client, msg.Data)
-	case "media_stop":
-		h.handleMediaStop(client)
-	case "create_radio_station":
-		h.handleCreateRadioStation(client, msg.Data)
-	case "delete_radio_station":
-		h.handleDeleteRadioStation(client, msg.Data)
-	case "rename_radio_station":
-		h.handleRenameRadioStation(client, msg.Data)
-	case "add_radio_station_manager":
-		h.handleAddRadioStationManager(client, msg.Data)
-	case "remove_radio_station_manager":
-		h.handleRemoveRadioStationManager(client, msg.Data)
-	case "create_radio_playlist":
-		h.handleCreateRadioPlaylist(client, msg.Data)
-	case "delete_radio_playlist":
-		h.handleDeleteRadioPlaylist(client, msg.Data)
-	case "reorder_radio_tracks":
-		h.handleReorderRadioTracks(client, msg.Data)
-	case "radio_play":
-		h.handleRadioPlay(client, msg.Data)
-	case "radio_pause":
-		h.handleRadioPause(client, msg.Data)
-	case "radio_resume":
-		h.handleRadioResume(client, msg.Data)
-	case "radio_seek":
-		h.handleRadioSeek(client, msg.Data)
-	case "radio_next":
-		h.handleRadioNext(client, msg.Data)
-	case "radio_stop":
-		h.handleRadioStop(client, msg.Data)
-	case "radio_track_ended":
-		h.handleRadioTrackEnded(client, msg.Data)
-	case "set_radio_station_mode":
-		h.handleSetRadioStationMode(client, msg.Data)
-	case "set_radio_station_public_controls":
-		h.handleSetRadioStationPublicControls(client, msg.Data)
-	case "radio_tune":
-		h.handleRadioTune(client, msg.Data)
-	case "radio_untune":
-		h.handleRadioUntune(client)
 	case "set_feature":
 		h.handleSetFeature(client, msg.Data)
-	case "create_strudel_pattern":
-		h.handleCreateStrudelPattern(client, msg.Data)
-	case "update_strudel_pattern":
-		h.handleUpdateStrudelPattern(client, msg.Data)
-	case "delete_strudel_pattern":
-		h.handleDeleteStrudelPattern(client, msg.Data)
-	case "strudel_open":
-		h.handleStrudelOpen(client, msg.Data)
-	case "strudel_close":
-		h.handleStrudelClose(client)
-	case "strudel_play":
-		h.handleStrudelPlay(client, msg.Data)
-	case "strudel_stop":
-		h.handleStrudelStop(client, msg.Data)
-	case "strudel_code_edit":
-		h.handleStrudelCodeEdit(client, msg.Data)
 	case "ping":
 		pong, _ := NewMessage("pong", nil)
 		client.Send(pong)
 	default:
-		log.Printf("unhandled op: %s from user %s", msg.Op, client.UserID)
+		// Dispatch to applet registry (radio, media, strudel, etc.)
+		if !h.applets.Dispatch(h, client, msg.Op, msg.Data) {
+			log.Printf("unhandled op: %s from user %s", msg.Op, client.UserID)
+		}
 	}
 }

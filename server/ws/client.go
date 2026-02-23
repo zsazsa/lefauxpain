@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/kalman/voicechat/db"
@@ -231,137 +230,37 @@ func (c *Client) sendReady() error {
 		screenShares = []sfu.ScreenShareState{}
 	}
 
-	// Get media library
-	dbMedia, _ := c.hub.DB.GetAllMedia()
-	mediaPayloads := make([]MediaItemPayload, len(dbMedia))
-	for i, m := range dbMedia {
-		mediaPayloads[i] = MediaItemPayload{
-			ID:        m.ID,
-			Filename:  m.Filename,
-			URL:       "/" + strings.ReplaceAll(m.Path, "\\", "/"),
-			MimeType:  m.MimeType,
-			SizeBytes: m.SizeBytes,
-			CreatedAt: m.CreatedAt,
-		}
-	}
+	// Enabled features (from feature-gated applets)
+	enabledFeatures := c.hub.applets.EnabledFeatures(c.hub)
 
-	// Get current media playback state
-	mediaPlayback := c.hub.GetMediaPlayback()
-
-	// Get radio stations
-	dbStations, _ := c.hub.DB.GetAllRadioStations()
-	allStationManagers, _ := c.hub.DB.GetAllRadioStationManagers()
-	stationPayloads := make([]RadioStationPayload, len(dbStations))
-	for i, s := range dbStations {
-		mgrs := allStationManagers[s.ID]
-		if mgrs == nil {
-			mgrs = []string{}
-		}
-		stationPayloads[i] = RadioStationPayload{
-			ID:             s.ID,
-			Name:           s.Name,
-			CreatedBy:      s.CreatedBy,
-			Position:       s.Position,
-			PlaybackMode:   s.PlaybackMode,
-			PublicControls: s.PublicControls,
-			ManagerIDs:     mgrs,
-		}
-	}
-
-	// Get radio playback states
-	radioPlayback := c.hub.GetAllRadioPlayback()
-
-	// Get radio listeners
-	radioListeners := c.hub.GetAllRadioListeners()
-
-	// Get all radio playlists with tracks
-	dbPlaylists, _ := c.hub.DB.GetAllPlaylists()
-	playlistPayloads := make([]RadioPlaylistPayload, len(dbPlaylists))
-	for i, p := range dbPlaylists {
-		dbTracks, _ := c.hub.DB.GetTracksByPlaylist(p.ID)
-		trackPayloads := make([]RadioTrackPayload, len(dbTracks))
-		for j, t := range dbTracks {
-			trackPayloads[j] = RadioTrackPayload{
-				ID:       t.ID,
-				Filename: t.Filename,
-				URL:      "/" + strings.ReplaceAll(t.Path, "\\", "/"),
-				Duration: t.Duration,
-				Position: t.Position,
-				Waveform: t.Waveform,
-			}
-		}
-		sid := ""
-		if p.StationID != nil {
-			sid = *p.StationID
-		}
-		playlistPayloads[i] = RadioPlaylistPayload{
-			ID:        p.ID,
-			Name:      p.Name,
-			UserID:    p.UserID,
-			StationID: sid,
-			Tracks:    trackPayloads,
-		}
-	}
-
-	// Enabled features
-	var enabledFeatures []string
-	if v, _ := c.hub.DB.GetSetting("feature:strudel"); v == "1" {
-		enabledFeatures = append(enabledFeatures, "strudel")
-	}
-	if enabledFeatures == nil {
-		enabledFeatures = []string{}
-	}
-
-	// Strudel data (only if feature enabled)
-	var strudelPatternPayloads []StrudelPatternPayload
-	var strudelPlayback map[string]*StrudelPlaybackPayload
-	var strudelViewers map[string][]string
-	for _, f := range enabledFeatures {
-		if f == "strudel" {
-			dbPatterns, _ := c.hub.DB.ListStrudelPatterns(c.UserID)
-			strudelPatternPayloads = make([]StrudelPatternPayload, len(dbPatterns))
-			for i, p := range dbPatterns {
-				strudelPatternPayloads[i] = StrudelPatternPayload{
-					ID:         p.ID,
-					Name:       p.Name,
-					Code:       p.Code,
-					OwnerID:    p.OwnerID,
-					Visibility: p.Visibility,
-				}
-			}
-			strudelPlayback = c.hub.GetAllStrudelPlayback()
-			strudelViewers = c.hub.GetAllStrudelViewers()
-			break
-		}
-	}
-
-	msg, err := NewMessage("ready", ReadyData{
-		User: &UserPayload{
+	// Build core ready data
+	readyMap := map[string]any{
+		"user": &UserPayload{
 			ID:          c.User.ID,
 			Username:    c.User.Username,
 			Email:       c.User.Email,
 			IsAdmin:     c.User.IsAdmin,
 			HasPassword: c.User.PasswordHash != nil,
 		},
-		Channels:        channelPayloads,
-		VoiceStates:     voiceStates,
-		OnlineUsers:     onlineUsers,
-		AllUsers:        allUsers,
-		Notifications:   notifPayloads,
-		ScreenShares:    screenShares,
-		MediaList:       mediaPayloads,
-		MediaPlayback:   mediaPlayback,
-		DeletedChannels: deletedChannelPayloads,
-		RadioStations:   stationPayloads,
-		RadioPlayback:   radioPlayback,
-		RadioPlaylists:  playlistPayloads,
-		RadioListeners:  radioListeners,
-		ServerTime:      nowUnix(),
-		EnabledFeatures: enabledFeatures,
-		StrudelPatterns: strudelPatternPayloads,
-		StrudelPlayback: strudelPlayback,
-		StrudelViewers:  strudelViewers,
-	})
+		"channels":         channelPayloads,
+		"voice_states":     voiceStates,
+		"online_users":     onlineUsers,
+		"all_users":        allUsers,
+		"notifications":    notifPayloads,
+		"screen_shares":    screenShares,
+		"server_time":      nowUnix(),
+		"enabled_features": enabledFeatures,
+	}
+	if deletedChannelPayloads != nil {
+		readyMap["deleted_channels"] = deletedChannelPayloads
+	}
+
+	// Merge applet contributions (radio, media, strudel, etc.)
+	for k, v := range c.hub.applets.ContributeReady(c.hub, c) {
+		readyMap[k] = v
+	}
+
+	msg, err := NewMessage("ready", readyMap)
 	if err != nil {
 		return err
 	}

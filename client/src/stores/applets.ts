@@ -2,11 +2,16 @@ import { createSignal } from "solid-js";
 
 export type Applet = { id: string; name: string };
 
-export const APPLETS: Applet[] = [
-  { id: "media", name: "Media Library" },
-  { id: "radio", name: "Radio Stations" },
-  { id: "strudel", name: "Patterns (Strudel)" },
-];
+const appletList: Applet[] = [];
+
+export function registerApplet(applet: Applet) {
+  if (!appletList.some((a) => a.id === applet.id)) {
+    appletList.push(applet);
+  }
+}
+
+// Dynamic list — populated by applet self-registration
+export const APPLETS = appletList;
 
 const STORAGE_KEY = "applet_prefs";
 
@@ -15,10 +20,8 @@ function loadPrefs(): Record<string, boolean> {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {}
-  // Default: all enabled
-  const defaults: Record<string, boolean> = {};
-  for (const a of APPLETS) defaults[a.id] = true;
-  return defaults;
+  // Default: all enabled (unrecognized applets default to true via isAppletEnabled)
+  return {};
 }
 
 function savePrefs(prefs: Record<string, boolean>) {

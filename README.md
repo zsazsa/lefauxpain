@@ -45,10 +45,19 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 - Auto-advances through playlist, stops after last track
 - Floating radio player panel with playlist management
 
+### Live Coding Patterns (Strudel)
+- Create and share live coding music patterns using [Strudel](https://strudel.cc/)
+- Three visibility modes: private (owner only), public (everyone can listen), open (everyone can edit)
+- Collaborative real-time code editing with synchronized audio playback
+- Built-in code editor with Tidal Dirt-Samples (218 sounds) and synth engines
+- Admin-gated feature (enable in Settings > Admin > Features)
+
 ### Applet System
-- Sidebar sections (Media Library, Radio Stations) are optional applets
-- Toggle applets on/off in Settings > Display
-- Preferences stored in localStorage per user
+- Features like Media Library, Radio Stations, and Live Coding are self-contained applets
+- Each applet registers its own WS handlers, DB schema, event handlers, sidebar UI, and commands
+- Admin can enable/disable server-gated applets (Settings > Admin > Features)
+- Users toggle sidebar visibility per-applet (Settings > Display)
+- See [docs/applet.md](docs/applet.md) for architecture details and how to build your own applet
 
 ### Admin & Users
 - Admin approval system ("Knock Knock") — new users can send a message when registering

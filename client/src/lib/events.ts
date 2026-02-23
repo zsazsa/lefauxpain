@@ -39,50 +39,17 @@ import {
 } from "../stores/voice";
 import { setNotificationList, addNotification } from "../stores/notifications";
 import {
-  setMediaList,
-  addMediaItem,
-  removeMediaItem,
-  setMediaPlayback,
-  setWatchingMedia,
-  mediaPlayback,
-  selectedMediaId,
-} from "../stores/media";
-import {
-  setRadioStations,
-  addRadioStation,
-  removeRadioStation,
-  renameRadioStation,
-  updateRadioStation,
-  setRadioPlayback,
-  setRadioPlaylists,
-  setRadioListeners,
-  setRadioStatus,
-  addRadioPlaylist,
-  removeRadioPlaylist,
-  updatePlaylistTracks,
-  updateRadioPlaybackForStation,
-  updateRadioListeners,
-  updateRadioStatusForStation,
-  tunedStationId,
-  setClockOffset,
-} from "../stores/radio";
-import {
   setEnabledFeatures,
-  setStrudelPatterns,
-  setStrudelPlayback,
-  setStrudelViewers,
-  addStrudelPattern,
-  removeStrudelPattern,
-  updateStrudelPattern,
-  updateStrudelPlaybackForPattern,
-  updateStrudelViewersForPattern,
   toggleFeature,
-  activePatternId,
 } from "../stores/strudel";
 import { handleWebRTCOffer, handleWebRTCICE, joinVoice } from "./webrtc";
 import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./screenshare";
 import { playJoinSound, playLeaveSound } from "./sounds";
 import { isDesktop } from "./devices";
+import { dispatchReady, dispatchEvent } from "./appletRegistry";
+
+// Ensure all applets register before events are dispatched
+import "../applets";
 
 // Typing state: channelId -> { userId -> timeout }
 type TypingState = Record<string, Record<string, number>>;
@@ -209,7 +176,6 @@ export function initEventHandlers() {
   return onMessage((msg: WSMessage) => {
     switch (msg.op) {
       case "ready":
-        if (msg.d.server_time) setClockOffset(msg.d.server_time);
         setUser(msg.d.user);
         setChannelList(msg.d.channels);
         setOnlineUserList(msg.d.online_users);
@@ -218,65 +184,11 @@ export function initEventHandlers() {
         setVoiceStateList(msg.d.voice_states || []);
         setNotificationList(msg.d.notifications || []);
         setScreenShares(msg.d.screen_shares || []);
-        setMediaList(msg.d.media_list || []);
-        setMediaPlayback(msg.d.media_playback || null);
         setDeletedChannels(msg.d.deleted_channels || []);
-        setRadioStations(msg.d.radio_stations || []);
-        setRadioPlaylists(msg.d.radio_playlists || []);
-        // Convert radio_playback object to our store format
-        {
-          const pb = msg.d.radio_playback || {};
-          const mapped: Record<string, any> = {};
-          for (const [sid, state] of Object.entries(pb)) {
-            if (state && !(state as any).stopped) {
-              mapped[sid] = state;
-            }
-          }
-          setRadioPlayback(mapped);
-        }
-        setRadioListeners(msg.d.radio_listeners || {});
-        // Derive initial radio_status from radio_playback
-        {
-          const pb = msg.d.radio_playback || {};
-          const statusMap: Record<string, any> = {};
-          for (const [sid, state] of Object.entries(pb)) {
-            if (state && !(state as any).stopped) {
-              const s = state as any;
-              statusMap[sid] = {
-                station_id: sid,
-                playing: s.playing,
-                track_name: s.track?.filename || "Playing",
-                user_id: s.user_id,
-              };
-            }
-          }
-          setRadioStatus(statusMap);
-        }
-        // Enabled features
+        // Enabled features (core)
         setEnabledFeatures(msg.d.enabled_features || []);
-        // Strudel data
-        setStrudelPatterns(msg.d.strudel_patterns || []);
-        {
-          const pb = msg.d.strudel_playback || {};
-          const mapped: Record<string, any> = {};
-          for (const [pid, state] of Object.entries(pb)) {
-            if (state && !(state as any).stopped) {
-              mapped[pid] = state;
-            }
-          }
-          setStrudelPlayback(mapped);
-        }
-        setStrudelViewers(msg.d.strudel_viewers || {});
-        // Re-send strudel_open if we were viewing a pattern (e.g. after reconnect)
-        {
-          const pid = activePatternId();
-          if (pid) send("strudel_open", { pattern_id: pid });
-        }
-        // Re-send tune if we were already tuned (e.g. after reconnect)
-        {
-          const sid = tunedStationId();
-          if (sid) send("radio_tune", { station_id: sid });
-        }
+        // Dispatch to applet ready handlers
+        dispatchReady(msg.d);
         // Auto-rejoin voice if we were in a channel before refresh
         {
           const savedChannel = sessionStorage.getItem("voice_channel");
@@ -372,8 +284,6 @@ export function initEventHandlers() {
       case "voice_state_update": {
         const myId = currentUser()?.id;
         const myChannel = currentVoiceChannelId();
-        // Play sounds only when a user actually joins or leaves our channel,
-        // not on mute/deafen/speaking state changes
         if (msg.d.user_id !== myId && myChannel) {
           const wasInChannel = voiceStates().some(
             (s) => s.user_id === msg.d.user_id && s.channel_id === myChannel
@@ -424,107 +334,13 @@ export function initEventHandlers() {
         addNotification(msg.d);
         break;
 
-      case "media_added":
-        addMediaItem(msg.d);
-        break;
-
-      case "media_removed":
-        removeMediaItem(msg.d.id);
-        // If the removed video was selected, close player
-        if (selectedMediaId() === msg.d.id) {
-          setMediaPlayback(null);
-          setWatchingMedia(false);
-        }
-        break;
-
-      case "media_playback":
-        setMediaPlayback(msg.d || null);
-        break;
-
-      case "radio_station_create":
-        addRadioStation({ ...msg.d, manager_ids: msg.d.manager_ids || [], playback_mode: msg.d.playback_mode || "play_all", public_controls: msg.d.public_controls || false });
-        break;
-
-      case "radio_station_delete":
-        removeRadioStation(msg.d.station_id);
-        break;
-
-      case "radio_station_rename":
-        renameRadioStation(msg.d.id, msg.d.name);
-        break;
-
-      case "radio_station_update":
-        updateRadioStation(msg.d.id, msg.d.name, msg.d.manager_ids || [], msg.d.playback_mode, msg.d.public_controls);
-        break;
-
-      case "radio_playback":
-        if (msg.d && !msg.d.stopped) {
-          updateRadioPlaybackForStation(msg.d.station_id, msg.d);
-        } else if (msg.d) {
-          updateRadioPlaybackForStation(msg.d.station_id, null);
-        }
-        break;
-
-      case "radio_playlist_created":
-        addRadioPlaylist(msg.d);
-        break;
-
-      case "radio_playlist_deleted":
-        removeRadioPlaylist(msg.d.playlist_id);
-        break;
-
-      case "radio_playlist_tracks":
-        updatePlaylistTracks(msg.d.playlist_id, msg.d.tracks || []);
-        break;
-
-      case "radio_status":
-        if (msg.d.stopped) {
-          updateRadioStatusForStation(msg.d.station_id, null);
-        } else {
-          updateRadioStatusForStation(msg.d.station_id, {
-            station_id: msg.d.station_id,
-            playing: msg.d.playing,
-            track_name: msg.d.track_name,
-            user_id: msg.d.user_id,
-          });
-        }
-        break;
-
-      case "radio_listeners":
-        updateRadioListeners(msg.d.station_id, msg.d.user_ids || []);
-        break;
-
       case "feature_toggled":
         toggleFeature(msg.d.feature, msg.d.enabled);
         break;
 
-      case "strudel_pattern_created":
-        addStrudelPattern(msg.d);
-        break;
-
-      case "strudel_pattern_updated":
-        updateStrudelPattern(msg.d.id, msg.d);
-        break;
-
-      case "strudel_pattern_deleted":
-        removeStrudelPattern(msg.d.pattern_id);
-        break;
-
-      case "strudel_playback":
-        if (msg.d && !msg.d.stopped) {
-          updateStrudelPlaybackForPattern(msg.d.pattern_id, msg.d);
-        } else if (msg.d) {
-          updateStrudelPlaybackForPattern(msg.d.pattern_id, null);
-        }
-        break;
-
-      case "strudel_viewers":
-        updateStrudelViewersForPattern(msg.d.pattern_id, msg.d.user_ids || []);
-        break;
-
-      case "strudel_code_sync":
-        // Update the pattern's code in our local store
-        updateStrudelPattern(msg.d.pattern_id, { code: msg.d.code });
+      default:
+        // Dispatch to applet event handlers
+        dispatchEvent(msg.op, msg.d);
         break;
     }
   });
