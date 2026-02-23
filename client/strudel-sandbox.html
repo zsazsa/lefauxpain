@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; connect-src https://raw.githubusercontent.com https://*.freesound.org https://strudel.cc https://felixroos.github.io 'self'; media-src blob: data: 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:">
+      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; connect-src https://raw.githubusercontent.com https://*.freesound.org https://strudel.cc https://felixroos.github.io 'self'; media-src blob: data: 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:">
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
@@ -18,7 +18,11 @@
       #strudel-root .cm-editor {
         flex: 1;
         min-height: 0;
-        overflow: auto;
+        overflow: hidden;
+        height: 100%;
+      }
+      #strudel-root .cm-editor .cm-scroller {
+        overflow: auto !important;
       }
       .loading {
         display: flex;

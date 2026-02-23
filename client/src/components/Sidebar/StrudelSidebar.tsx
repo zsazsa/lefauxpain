@@ -91,7 +91,10 @@ export default function StrudelSidebar() {
         {(pattern) => {
           const isPlaying = () => !!strudelPlayback()[pattern.id];
           const isActive = () => activePatternId() === pattern.id;
-          const viewerCount = () => getPatternViewers(pattern.id).length;
+          const viewerCount = () => {
+            const me = currentUser()?.id;
+            return getPatternViewers(pattern.id).filter((uid) => uid !== me).length;
+          };
           const isOwner = () => currentUser()?.id === pattern.owner_id;
 
           // Only show private patterns to owner

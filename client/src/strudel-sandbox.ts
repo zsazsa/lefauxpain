@@ -20,6 +20,9 @@
 
 let mirror: any = null;
 let suppressCodeChange = false;
+let suppressToggle = false;
+let autoEvalTimer: number | undefined;
+let lastKnownCode: string | undefined;
 
 // Intercept console to catch Strudel sound errors and forward to parent
 const origWarn = console.warn;
@@ -61,6 +64,7 @@ async function init() {
     const {
       webaudioOutput,
       getAudioContext,
+      initAudio,
       initAudioOnFirstClick,
       registerSynthSounds,
       registerZZFXSounds,
@@ -68,8 +72,9 @@ async function init() {
     } = webaudio;
     const { transpiler: transpilerFn } = transpiler;
     const { evalScope } = core;
-    const { registerSoundfonts } = soundfonts;
+    const { registerSoundfonts, setSoundfontUrl } = soundfonts;
 
+    // Init audio on first user gesture inside iframe (for Ctrl+Enter)
     initAudioOnFirstClick();
 
     const prebake = async () => {
@@ -86,6 +91,15 @@ async function init() {
         samples("github:tidalcycles/dirt-samples").catch(() => {}),
         samples("github:tidalcycles/uzu-drumkit").catch(() => {}),
       ]);
+      // Lock soundfont URL after registration — prevents user code from
+      // redirecting loadFont() to other CSP-whitelisted domains for eval()
+      try {
+        Object.defineProperty(soundfonts, "setSoundfontUrl", {
+          value: () => {},
+          writable: false,
+          configurable: false,
+        });
+      } catch {};
     };
 
     root.innerHTML = "";
@@ -98,16 +112,32 @@ async function init() {
       transpiler: transpilerFn,
       prebake,
       solo: false,
+      onToggle: (started: boolean) => {
+        if (!suppressToggle) {
+          parent.postMessage({ op: "state", isPlaying: started }, "*");
+        }
+      },
       onUpdateState: (state: any) => {
-        if (state.code !== undefined && !suppressCodeChange) {
+        if (state.code !== undefined && !suppressCodeChange && state.code !== lastKnownCode) {
+          lastKnownCode = state.code;
           parent.postMessage({ op: "code_change", code: state.code }, "*");
+          // Auto-evaluate on code change while playing
+          if (mirror?.repl?.scheduler?.started) {
+            clearTimeout(autoEvalTimer);
+            autoEvalTimer = window.setTimeout(() => {
+              mirror?.evaluate?.();
+            }, 300);
+          }
         }
       },
     });
 
     parent.postMessage({ op: "ready" }, "*");
   } catch (e: any) {
-    root.innerHTML = `<div class="error">${e.message || "Failed to load Strudel"}</div>`;
+    const errDiv = document.createElement("div");
+    errDiv.className = "error";
+    errDiv.textContent = e.message || "Failed to load Strudel";
+    root.replaceChildren(errDiv);
     parent.postMessage({ op: "error", message: e.message || "Failed to load Strudel" }, "*");
   }
 }
@@ -119,32 +149,43 @@ window.addEventListener("message", async (event) => {
   switch (op) {
     case "set_code": {
       suppressCodeChange = true;
+      lastKnownCode = event.data.code;
       mirror.setCode(event.data.code);
       suppressCodeChange = false;
       break;
     }
     case "evaluate": {
       try {
+        // Ensure AudioContext + worklets are loaded before playback
+        await initAudio();
         if (event.data.code !== undefined) {
           suppressCodeChange = true;
+          lastKnownCode = event.data.code;
           mirror.setCode(event.data.code);
           suppressCodeChange = false;
         }
         if (event.data.cps !== undefined && mirror.repl?.scheduler) {
           mirror.repl.scheduler.setCps(event.data.cps);
         }
+        // Suppress onToggle during parent-initiated evaluate to prevent feedback loop
+        suppressToggle = true;
         await mirror.evaluate();
-        parent.postMessage({ op: "state", isPlaying: true }, "*");
+        suppressToggle = false;
       } catch (e: any) {
+        suppressToggle = false;
         parent.postMessage({ op: "error", message: e.message }, "*");
       }
       break;
     }
     case "stop": {
       try {
+        clearTimeout(autoEvalTimer);
+        suppressToggle = true;
         await mirror.stop();
-        parent.postMessage({ op: "state", isPlaying: false }, "*");
-      } catch {}
+        suppressToggle = false;
+      } catch {
+        suppressToggle = false;
+      }
       break;
     }
     case "set_cps": {

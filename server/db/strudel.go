@@ -77,6 +77,19 @@ func (d *DB) DeleteStrudelPattern(id string) error {
 	return nil
 }
 
+// CountStrudelPatternsByOwner returns the number of patterns owned by the given user.
+func (d *DB) CountStrudelPatternsByOwner(ownerID string) (int, error) {
+	var count int
+	err := d.QueryRow(
+		`SELECT COUNT(*) FROM strudel_patterns WHERE owner_id = ?`,
+		ownerID,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count strudel patterns: %w", err)
+	}
+	return count, nil
+}
+
 // ListStrudelPatterns returns all non-private patterns plus the given user's private patterns.
 func (d *DB) ListStrudelPatterns(userID string) ([]StrudelPattern, error) {
 	rows, err := d.Query(

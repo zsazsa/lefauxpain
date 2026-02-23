@@ -38,6 +38,8 @@ export default function StrudelEditor(props: Props) {
   let iframeRef: HTMLIFrameElement | undefined;
   // Track the last code we know the iframe has, for dedup
   let lastSentCode: string | undefined;
+  // Track iframe's actual playing state to avoid redundant evaluate/stop
+  let iframePlaying = false;
 
   const postToSandbox = (msg: any) => {
     if (iframeRef?.contentWindow) {
@@ -64,6 +66,7 @@ export default function StrudelEditor(props: Props) {
         const pb = playback();
         if (pb?.playing) {
           postToSandbox({ op: "evaluate", code: pb.code, cps: pb.cps });
+          iframePlaying = true;
         }
         break;
 
@@ -79,7 +82,13 @@ export default function StrudelEditor(props: Props) {
         break;
 
       case "state":
-        // Playback state change from iframe — currently handled via WS
+        iframePlaying = event.data.isPlaying;
+        // Local Ctrl+Enter evaluation in iframe — sync to other users via WS
+        if (event.data.isPlaying && !playback()?.playing) {
+          send("strudel_play", { pattern_id: props.patternId, cps: cps() });
+        } else if (!event.data.isPlaying && playback()?.playing) {
+          send("strudel_stop", { pattern_id: props.patternId });
+        }
         break;
 
       case "error":
@@ -115,13 +124,15 @@ export default function StrudelEditor(props: Props) {
     }
   ));
 
-  // Receive remote playback
+  // Sync playback state to iframe — only when iframe state differs
   createEffect(on(playback, (pb) => {
     if (!sandboxReady()) return;
-    if (pb && pb.playing) {
+    if (pb && pb.playing && !iframePlaying) {
       postToSandbox({ op: "evaluate", code: pb.code, cps: pb.cps });
-    } else if (!pb) {
+      iframePlaying = true;
+    } else if (!pb && iframePlaying) {
       postToSandbox({ op: "stop" });
+      iframePlaying = false;
     }
   }));
 

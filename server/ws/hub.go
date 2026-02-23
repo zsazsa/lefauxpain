@@ -393,6 +393,7 @@ func (h *Hub) broadcastRadioListeners(stationID string) {
 // --- Strudel viewers ---
 
 func (h *Hub) SetStrudelViewer(userID, patternID string) {
+	var emptiedPattern string
 	h.strudelViewMu.Lock()
 	// Remove from any previous pattern
 	for pid, users := range h.strudelViewers {
@@ -400,6 +401,7 @@ func (h *Hub) SetStrudelViewer(userID, patternID string) {
 			delete(users, userID)
 			if len(users) == 0 {
 				delete(h.strudelViewers, pid)
+				emptiedPattern = pid
 			}
 		}
 	}
@@ -411,6 +413,10 @@ func (h *Hub) SetStrudelViewer(userID, patternID string) {
 		h.strudelViewers[patternID][userID] = true
 	}
 	h.strudelViewMu.Unlock()
+	// Stop playback on the old pattern if it has no viewers left
+	if emptiedPattern != "" {
+		h.stopStrudelIfNoViewers(emptiedPattern)
+	}
 }
 
 func (h *Hub) removeStrudelViewer(userID string) {
@@ -418,11 +424,16 @@ func (h *Hub) removeStrudelViewer(userID string) {
 	for pid, users := range h.strudelViewers {
 		if users[userID] {
 			delete(users, userID)
-			if len(users) == 0 {
+			empty := len(users) == 0
+			if empty {
 				delete(h.strudelViewers, pid)
 			}
 			h.strudelViewMu.Unlock()
 			h.broadcastStrudelViewers(pid)
+			// Stop playback when last viewer leaves
+			if empty {
+				h.stopStrudelIfNoViewers(pid)
+			}
 			return
 		}
 	}
@@ -490,6 +501,18 @@ func (h *Hub) ClearStrudelPlayback(patternID string) {
 	h.strudelMu.Lock()
 	delete(h.strudelPlayback, patternID)
 	h.strudelMu.Unlock()
+}
+
+// stopStrudelIfNoViewers clears playback and broadcasts stop when no viewers remain.
+func (h *Hub) stopStrudelIfNoViewers(patternID string) {
+	if state := h.GetStrudelPlayback(patternID); state != nil {
+		h.ClearStrudelPlayback(patternID)
+		msg, _ := NewMessage("strudel_playback", map[string]any{
+			"pattern_id": patternID,
+			"stopped":    true,
+		})
+		h.BroadcastAll(msg)
+	}
 }
 
 func (h *Hub) GetAllStrudelPlayback() map[string]*StrudelPlaybackPayload {

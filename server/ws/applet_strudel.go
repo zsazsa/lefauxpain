@@ -131,6 +131,9 @@ func (h *Hub) canEditStrudelCode(c *Client, pattern *db.StrudelPattern) bool {
 
 // --- Strudel handlers ---
 
+const maxStrudelCodeSize = 128 * 1024 // 128 KB
+const maxStrudelPatternsPerUser = 20
+
 func (h *Hub) handleCreateStrudelPattern(c *Client, data json.RawMessage) {
 	if !h.isStrudelEnabled() {
 		return
@@ -143,6 +146,16 @@ func (h *Hub) handleCreateStrudelPattern(c *Client, data json.RawMessage) {
 
 	name := strings.TrimSpace(d.Name)
 	if name == "" || len(name) > 64 {
+		return
+	}
+
+	// Per-user pattern count limit
+	count, err := h.DB.CountStrudelPatternsByOwner(c.UserID)
+	if err != nil {
+		log.Printf("count strudel patterns: %v", err)
+		return
+	}
+	if count >= maxStrudelPatternsPerUser {
 		return
 	}
 
@@ -185,9 +198,12 @@ func (h *Hub) handleUpdateStrudelPattern(c *Client, data json.RawMessage) {
 		}
 	}
 
-	// Validate code changes: owner or open
+	// Validate code changes: owner or open, and size limit
 	if d.Code != nil {
 		if !h.canEditStrudelCode(c, pattern) {
+			return
+		}
+		if len(*d.Code) > maxStrudelCodeSize {
 			return
 		}
 	}
@@ -346,6 +362,15 @@ func (h *Hub) handleStrudelStop(c *Client, data json.RawMessage) {
 		return
 	}
 
+	// Authorization: must be able to access the pattern
+	pattern, err := h.DB.GetStrudelPattern(d.PatternID)
+	if err != nil || pattern == nil {
+		return
+	}
+	if !h.canAccessStrudelPattern(c, pattern) {
+		return
+	}
+
 	state := h.GetStrudelPlayback(d.PatternID)
 	if state == nil {
 		return
@@ -376,6 +401,10 @@ func (h *Hub) handleStrudelCodeEdit(c *Client, data json.RawMessage) {
 	}
 
 	if !h.canEditStrudelCode(c, pattern) {
+		return
+	}
+
+	if len(d.Code) > maxStrudelCodeSize {
 		return
 	}
 
