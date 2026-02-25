@@ -195,10 +195,19 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 				if ch != nil {
 					chName = ch.Name
 				}
-				// Build content preview
+				// Build content preview with resolved mentions
 				var preview string
 				if d.Content != nil {
-					preview = *d.Content
+					preview = mentionRegex.ReplaceAllStringFunc(*d.Content, func(match string) string {
+						sub := mentionRegex.FindStringSubmatch(match)
+						if len(sub) < 2 {
+							return match
+						}
+						if u, err := h.DB.GetUserByID(sub[1]); err == nil {
+							return "@" + u.Username
+						}
+						return match
+					})
 					if len(preview) > 80 {
 						preview = preview[:80] + "..."
 					}

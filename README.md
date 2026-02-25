@@ -11,6 +11,7 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 ### Text Chat
 - Channels with real-time messaging via WebSocket
 - Replies, emoji reactions, @mentions (with notifications)
+- Browser notifications for @mentions when the tab is in the background (opt-in via Settings)
 - File/image uploads with thumbnails and attachment previews
 - Image lightbox viewer
 - Typing indicators
