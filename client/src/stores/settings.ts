@@ -5,6 +5,7 @@ export type AppSettings = {
   micGain: number; // 0.0 - 2.0
   inputDeviceId: string; // "" = default
   outputDeviceId: string; // "" = default
+  browserNotifications: boolean;
 };
 
 const defaults: AppSettings = {
@@ -12,6 +13,7 @@ const defaults: AppSettings = {
   micGain: 1.0,
   inputDeviceId: "",
   outputDeviceId: "",
+  browserNotifications: false,
 };
 
 function loadSettings(): AppSettings {

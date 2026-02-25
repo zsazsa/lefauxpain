@@ -47,6 +47,7 @@ import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./sc
 import { playJoinSound, playLeaveSound } from "./sounds";
 import { isDesktop } from "./devices";
 import { dispatchReady, dispatchEvent } from "./appletRegistry";
+import { showMentionNotification } from "./browserNotify";
 
 // Ensure all applets register before events are dispatched
 import "../applets";
@@ -332,6 +333,14 @@ export function initEventHandlers() {
 
       case "notification_create":
         addNotification(msg.d);
+        if (msg.d.type === "mention") {
+          showMentionNotification(
+            msg.d.data.author_username,
+            msg.d.data.channel_name,
+            msg.d.data.content_preview,
+            msg.d.id,
+          );
+        }
         break;
 
       case "feature_toggled":

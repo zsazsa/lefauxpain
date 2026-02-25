@@ -23,6 +23,7 @@ import { deletedChannels } from "../../stores/channels";
 import { send } from "../../lib/ws";
 import { APPLETS, isAppletEnabled, toggleApplet } from "../../stores/applets";
 import { enabledFeatures } from "../../stores/strudel";
+import { getNotificationPermission, requestNotificationPermission } from "../../lib/browserNotify";
 
 type PwDevice = { id: string; name: string; default: boolean };
 type AdminUser = {
@@ -832,6 +833,63 @@ export default function SettingsModal() {
                     </label>
                   )}
                 </For>
+
+                <div style={{ ...sectionHeaderStyle, "margin-top": "20px" }}>Notifications</div>
+                {(() => {
+                  const perm = () => getNotificationPermission();
+                  const disabled = () => perm() === "denied" || perm() === "unsupported";
+                  const statusText = () => {
+                    const p = perm();
+                    if (p === "denied") return "Blocked by browser \u2014 check site permissions";
+                    if (p === "unsupported") return "Not supported in this browser";
+                    return null;
+                  };
+                  return (
+                    <div>
+                      <label
+                        style={{
+                          display: "flex",
+                          "align-items": "center",
+                          gap: "8px",
+                          padding: "6px 0",
+                          "font-size": "12px",
+                          color: disabled() ? "var(--text-muted)" : "var(--text-primary)",
+                          cursor: disabled() ? "not-allowed" : "pointer",
+                          opacity: disabled() ? "0.6" : "1",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={settings().browserNotifications}
+                          disabled={disabled()}
+                          onChange={async () => {
+                            if (disabled()) return;
+                            if (settings().browserNotifications) {
+                              updateSettings({ browserNotifications: false });
+                              return;
+                            }
+                            const p = perm();
+                            if (p === "granted") {
+                              updateSettings({ browserNotifications: true });
+                            } else if (p === "default") {
+                              const granted = await requestNotificationPermission();
+                              if (granted) {
+                                updateSettings({ browserNotifications: true });
+                              }
+                            }
+                          }}
+                          style={{ "accent-color": "var(--accent)" }}
+                        />
+                        Browser notifications for @mentions
+                      </label>
+                      <Show when={statusText()}>
+                        <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "2px", "padding-left": "24px" }}>
+                          {statusText()}
+                        </div>
+                      </Show>
+                    </div>
+                  );
+                })()}
               </Show>
 
               {/* Audio tab */}
