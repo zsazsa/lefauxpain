@@ -1,6 +1,6 @@
 module github.com/kalman/voicechat
 
-go 1.24.13
+go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
@@ -9,7 +9,7 @@ require (
 	github.com/pion/webrtc/v4 v4.2.6
 	golang.org/x/crypto v0.48.0
 	golang.org/x/image v0.36.0
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.51.0
 	modernc.org/sqlite v1.45.0
 	nhooyr.io/websocket v1.8.17
 )
