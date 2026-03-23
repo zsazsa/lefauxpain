@@ -257,6 +257,10 @@ var migrations = []string{
 		updated_at  DATETIME DEFAULT (datetime('now'))
 	);
 	CREATE INDEX idx_strudel_patterns_owner ON strudel_patterns(owner_id);`,
+
+	// Version 19: Unlink attachments from already-deleted messages so orphan cleanup removes files
+	`UPDATE attachments SET message_id = NULL
+	 WHERE message_id IN (SELECT id FROM messages WHERE deleted_at IS NOT NULL);`,
 }
 
 func (d *DB) migrate() error {
