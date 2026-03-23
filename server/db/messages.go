@@ -193,6 +193,8 @@ func (d *DB) DeleteMessage(id string) error {
 		return err
 	}
 	d.Exec(`DELETE FROM url_unfurls WHERE message_id = ?`, id)
+	// Unlink attachments so the orphan cleanup goroutine deletes the files
+	d.Exec(`UPDATE attachments SET message_id = NULL WHERE message_id = ?`, id)
 	return nil
 }
 
