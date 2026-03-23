@@ -93,22 +93,44 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		unfurlsMap, _ := h.DB.GetUnfurlsByMessageIDs(msgIDs)
 		result := make([]messageResponse, len(messages))
 		for i, m := range messages {
-			attachments, _ := h.DB.GetAttachmentsByMessage(m.ID)
-			attachPayloads := make([]attachPayload, len(attachments))
-			for j, a := range attachments {
-				ap := attachPayload{
-					ID: a.ID, Filename: a.Filename,
-					URL: "/" + strings.ReplaceAll(a.Path, "\\", "/"),
-					MimeType: a.MimeType, Width: a.Width, Height: a.Height,
+			deleted := m.DeletedAt != nil
+
+			var attachPayloads []attachPayload
+			var reactions []db.ReactionGroup
+			var mentions []string
+			var msgUnfurls []unfurlPayload
+			if !deleted {
+				attachments, _ := h.DB.GetAttachmentsByMessage(m.ID)
+				attachPayloads = make([]attachPayload, len(attachments))
+				for j, a := range attachments {
+					ap := attachPayload{
+						ID: a.ID, Filename: a.Filename,
+						URL: "/" + strings.ReplaceAll(a.Path, "\\", "/"),
+						MimeType: a.MimeType, Width: a.Width, Height: a.Height,
+					}
+					if a.ThumbPath != nil {
+						t := "/" + strings.ReplaceAll(*a.ThumbPath, "\\", "/")
+						ap.ThumbURL = &t
+					}
+					attachPayloads[j] = ap
 				}
-				if a.ThumbPath != nil {
-					t := "/" + strings.ReplaceAll(*a.ThumbPath, "\\", "/")
-					ap.ThumbURL = &t
-				}
-				attachPayloads[j] = ap
+				reactions, _ = h.DB.GetReactionsByMessage(m.ID)
+				mentions, _ = h.DB.GetMentionsByMessage(m.ID)
+				msgUnfurls = buildUnfurlPayloads(unfurlsMap[m.ID])
 			}
-			reactions, _ := h.DB.GetReactionsByMessage(m.ID)
-			mentions, _ := h.DB.GetMentionsByMessage(m.ID)
+			if attachPayloads == nil {
+				attachPayloads = []attachPayload{}
+			}
+			if reactions == nil {
+				reactions = []db.ReactionGroup{}
+			}
+			if mentions == nil {
+				mentions = []string{}
+			}
+			if msgUnfurls == nil {
+				msgUnfurls = []unfurlPayload{}
+			}
+
 			var reply *replyPayload
 			if m.ReplyToID != nil {
 				rc, _ := h.DB.GetReplyContext(*m.ReplyToID)
@@ -134,9 +156,9 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 				Author:      authorPayload{ID: authorID, Username: m.AuthorUsername, AvatarURL: m.AuthorAvatarURL},
 				Content:     m.Content, ReplyTo: reply,
 				Attachments: attachPayloads, Reactions: reactions,
-				Mentions: mentions, Unfurls: buildUnfurlPayloads(unfurlsMap[m.ID]),
+				Mentions: mentions, Unfurls: msgUnfurls,
 				CreatedAt: m.CreatedAt, EditedAt: m.EditedAt,
-				Deleted: m.DeletedAt != nil,
+				Deleted: deleted,
 			}
 		}
 		writeJSON(w, http.StatusOK, result)
@@ -163,30 +185,54 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]messageResponse, len(messages))
 	for i, m := range messages {
-		// Get attachments
-		attachments, _ := h.DB.GetAttachmentsByMessage(m.ID)
-		attachPayloads := make([]attachPayload, len(attachments))
-		for j, a := range attachments {
-			ap := attachPayload{
-				ID:       a.ID,
-				Filename: a.Filename,
-				URL:      "/" + strings.ReplaceAll(a.Path, "\\", "/"),
-				MimeType: a.MimeType,
-				Width:    a.Width,
-				Height:   a.Height,
+		deleted := m.DeletedAt != nil
+
+		// Skip fetching related data for deleted messages
+		var attachPayloads []attachPayload
+		var reactions []db.ReactionGroup
+		var mentions []string
+		var msgUnfurls []unfurlPayload
+		if !deleted {
+			// Get attachments
+			attachments, _ := h.DB.GetAttachmentsByMessage(m.ID)
+			attachPayloads = make([]attachPayload, len(attachments))
+			for j, a := range attachments {
+				ap := attachPayload{
+					ID:       a.ID,
+					Filename: a.Filename,
+					URL:      "/" + strings.ReplaceAll(a.Path, "\\", "/"),
+					MimeType: a.MimeType,
+					Width:    a.Width,
+					Height:   a.Height,
+				}
+				if a.ThumbPath != nil {
+					t := "/" + strings.ReplaceAll(*a.ThumbPath, "\\", "/")
+					ap.ThumbURL = &t
+				}
+				attachPayloads[j] = ap
 			}
-			if a.ThumbPath != nil {
-				t := "/" + strings.ReplaceAll(*a.ThumbPath, "\\", "/")
-				ap.ThumbURL = &t
-			}
-			attachPayloads[j] = ap
+
+			// Get reactions
+			reactions, _ = h.DB.GetReactionsByMessage(m.ID)
+
+			// Get mentions
+			mentions, _ = h.DB.GetMentionsByMessage(m.ID)
+
+			// Get unfurls
+			msgUnfurls = buildUnfurlPayloads(unfurlsMap[m.ID])
 		}
-
-		// Get reactions
-		reactions, _ := h.DB.GetReactionsByMessage(m.ID)
-
-		// Get mentions
-		mentions, _ := h.DB.GetMentionsByMessage(m.ID)
+		if attachPayloads == nil {
+			attachPayloads = []attachPayload{}
+		}
+		if reactions == nil {
+			reactions = []db.ReactionGroup{}
+		}
+		if mentions == nil {
+			mentions = []string{}
+		}
+		if msgUnfurls == nil {
+			msgUnfurls = []unfurlPayload{}
+		}
 
 		// Get reply context
 		var reply *replyPayload
@@ -226,10 +272,10 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			Attachments: attachPayloads,
 			Reactions:   reactions,
 			Mentions:    mentions,
-			Unfurls:     buildUnfurlPayloads(unfurlsMap[m.ID]),
+			Unfurls:     msgUnfurls,
 			CreatedAt:   m.CreatedAt,
 			EditedAt:    m.EditedAt,
-			Deleted:     m.DeletedAt != nil,
+			Deleted:     deleted,
 		}
 	}
 
