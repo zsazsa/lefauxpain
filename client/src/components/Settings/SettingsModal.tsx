@@ -10,7 +10,7 @@ import {
 import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop, isTauri } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
 import { muteChannelMic, unmuteChannelMic } from "../../lib/webrtc";
-import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, updateEmail, approveUser, getEmailSettings, saveEmailSettings, sendTestEmail } from "../../lib/api";
+import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, updateEmail, approveUser, getEmailSettings, saveEmailSettings, sendTestEmail, getWebhookKeys, createWebhookKey, deleteWebhookKey, WebhookKey } from "../../lib/api";
 import { currentUser, setUser } from "../../stores/auth";
 import { allUsers, removeAllUser } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
@@ -39,7 +39,7 @@ type AdminUser = {
   created_at: string;
 };
 
-type Tab = "account" | "display" | "audio" | "admin" | "email" | "app" | "about";
+type Tab = "account" | "display" | "audio" | "admin" | "email" | "webhooks" | "app" | "about";
 
 export default function SettingsModal() {
   const [activeTab, setActiveTab] = createSignal<Tab>("account");
@@ -106,6 +106,15 @@ export default function SettingsModal() {
   const [emailTestPhase, setEmailTestPhase] = createSignal("idle");
   const [emailTestMsg, setEmailTestMsg] = createSignal("");
   const [emailValidErrors, setEmailValidErrors] = createSignal<Record<string, string>>({});
+
+  // Webhook keys state
+  const [webhookKeys, setWebhookKeys] = createSignal<WebhookKey[]>([]);
+  const [webhookError, setWebhookError] = createSignal("");
+  const [webhookLoading, setWebhookLoading] = createSignal(false);
+  const [newKeyName, setNewKeyName] = createSignal("");
+  const [createdKey, setCreatedKey] = createSignal<string | null>(null);
+  const [keyCopied, setKeyCopied] = createSignal(false);
+  const [confirmDeleteKey, setConfirmDeleteKey] = createSignal<string | null>(null);
 
   const fetchAdminUsers = async () => {
     setAdminError("");
@@ -375,6 +384,37 @@ export default function SettingsModal() {
     }
   };
 
+  const handleCreateWebhookKey = async () => {
+    const name = newKeyName().trim();
+    if (!name) return;
+    setWebhookLoading(true);
+    setWebhookError("");
+    setCreatedKey(null);
+    try {
+      const result = await createWebhookKey(name);
+      setCreatedKey(result.key);
+      setNewKeyName("");
+      // Refresh the list
+      const keys = await getWebhookKeys();
+      setWebhookKeys(keys);
+    } catch (e: any) {
+      setWebhookError(e.message || "Failed to create key");
+    } finally {
+      setWebhookLoading(false);
+    }
+  };
+
+  const handleDeleteWebhookKey = async (id: string) => {
+    setWebhookError("");
+    try {
+      await deleteWebhookKey(id);
+      setWebhookKeys((prev) => prev.filter((k) => k.id !== id));
+      setConfirmDeleteKey(null);
+    } catch (e: any) {
+      setWebhookError(e.message || "Failed to delete key");
+    }
+  };
+
   onMount(() => {
     enumerateDevices();
     fetchPwDevices();
@@ -416,6 +456,16 @@ export default function SettingsModal() {
     const open = settingsOpen();
     if (open && activeTab() === "email" && currentUser()?.is_admin) {
       fetchEmailSettings();
+    }
+  });
+
+  // Fetch webhook keys when webhooks tab is selected
+  createEffect(() => {
+    if (settingsOpen() && activeTab() === "webhooks" && currentUser()?.is_admin) {
+      setWebhookError("");
+      getWebhookKeys()
+        .then((keys) => setWebhookKeys(keys))
+        .catch((e) => setWebhookError(e.message || "Failed to load webhook keys"));
     }
   });
 
@@ -563,6 +613,7 @@ export default function SettingsModal() {
     if (currentUser()?.is_admin) {
       list.push({ id: "admin", label: "Admin" });
       list.push({ id: "email", label: "Email" });
+      list.push({ id: "webhooks", label: "Webhooks" });
     }
     if (isTauri) {
       list.push({ id: "app", label: "App" });
@@ -1777,6 +1828,201 @@ export default function SettingsModal() {
                       {emailTestMsg()}
                     </div>
                   )}
+                </div>
+              </Show>
+
+              {/* Webhooks tab */}
+              <Show when={activeTab() === "webhooks"}>
+                <div>
+                  <div style={sectionHeaderStyle}>Webhook API Keys</div>
+                  <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-bottom": "16px" }}>
+                    API keys allow external systems to post messages to channels. Keys are hashed — the full key is shown only once at creation.
+                  </div>
+
+                  {/* Error display */}
+                  {webhookError() && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-bottom": "8px" }}>
+                      {webhookError()}
+                    </div>
+                  )}
+
+                  {/* Created key display — shown once after creation */}
+                  {createdKey() && (
+                    <div style={{
+                      "background-color": "rgba(76,175,80,0.1)",
+                      border: "1px solid var(--success)",
+                      padding: "12px",
+                      "margin-bottom": "16px",
+                      "font-size": "11px",
+                    }}>
+                      <div style={{ color: "var(--success)", "font-weight": "600", "margin-bottom": "8px", "font-family": "var(--font-display)", "letter-spacing": "1px", "text-transform": "uppercase" }}>
+                        Key Created — Copy It Now
+                      </div>
+                      <div style={{ color: "var(--text-muted)", "margin-bottom": "8px", "font-size": "10px" }}>
+                        This key will not be shown again. Store it securely.
+                      </div>
+                      <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+                        <code style={{
+                          flex: "1",
+                          "font-family": "var(--font-mono)",
+                          "font-size": "11px",
+                          color: "var(--text-primary)",
+                          "background-color": "#1a1a2e",
+                          padding: "6px 10px",
+                          border: "1px solid rgba(201,168,76,0.4)",
+                          "word-break": "break-all",
+                          "user-select": "all",
+                        }}>
+                          {createdKey()}
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(createdKey()!);
+                            setKeyCopied(true);
+                            setTimeout(() => setKeyCopied(false), 2000);
+                          }}
+                          style={{
+                            "font-size": "11px",
+                            padding: "4px 12px",
+                            border: keyCopied() ? "1px solid var(--success)" : "1px solid var(--cyan)",
+                            "background-color": keyCopied() ? "rgba(76,175,80,0.15)" : "rgba(0,188,212,0.1)",
+                            color: keyCopied() ? "var(--success)" : "var(--cyan)",
+                            cursor: "pointer",
+                            "white-space": "nowrap",
+                            "font-family": "var(--font-display)",
+                            "letter-spacing": "1px",
+                          }}
+                        >
+                          {keyCopied() ? "[copied]" : "[copy]"}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setCreatedKey(null)}
+                        style={{
+                          "margin-top": "8px",
+                          "font-size": "10px",
+                          padding: "2px 8px",
+                          border: "1px solid var(--text-muted)",
+                          "background-color": "transparent",
+                          color: "var(--text-muted)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        [dismiss]
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Create new key form */}
+                  <div style={{ "margin-bottom": "20px" }}>
+                    <div style={labelStyle}>Create New Key</div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <input
+                        type="text"
+                        placeholder="Key name (e.g. kindlyqr-agents)"
+                        value={newKeyName()}
+                        onInput={(e) => setNewKeyName(e.currentTarget.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && newKeyName().trim()) {
+                            handleCreateWebhookKey();
+                          }
+                        }}
+                        style={{ ...inputStyle, flex: "1" }}
+                      />
+                      <button
+                        onClick={() => handleCreateWebhookKey()}
+                        disabled={webhookLoading() || !newKeyName().trim()}
+                        style={{
+                          ...actionBtnStyle,
+                          opacity: (webhookLoading() || !newKeyName().trim()) ? "0.5" : "1",
+                          cursor: (webhookLoading() || !newKeyName().trim()) ? "not-allowed" : "pointer",
+                          "white-space": "nowrap",
+                        }}
+                      >
+                        {webhookLoading() ? "[creating...]" : "[create key]"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Key list */}
+                  <div style={sectionHeaderStyle}>Active Keys</div>
+                  {webhookKeys().length === 0 && (
+                    <div style={{ "font-size": "11px", color: "var(--text-muted)", "font-style": "italic" }}>
+                      No webhook keys configured.
+                    </div>
+                  )}
+                  <For each={webhookKeys()}>
+                    {(wk) => (
+                      <div style={{
+                        "border-bottom": "1px solid rgba(201,168,76,0.1)",
+                        padding: "10px 0",
+                        display: "flex",
+                        "align-items": "center",
+                        "justify-content": "space-between",
+                      }}>
+                        <div>
+                          <div style={{ "font-size": "12px", color: "var(--text-primary)", "margin-bottom": "2px" }}>
+                            {wk.name}
+                          </div>
+                          <div style={{ "font-size": "10px", color: "var(--text-muted)", "font-family": "var(--font-mono)" }}>
+                            {wk.key_prefix} · {new Date(wk.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: "4px", "flex-shrink": "0" }}>
+                          {confirmDeleteKey() === wk.id ? (
+                            <>
+                              <button
+                                onClick={() => handleDeleteWebhookKey(wk.id)}
+                                style={{
+                                  "font-size": "11px",
+                                  padding: "2px 8px",
+                                  color: "var(--danger)",
+                                  border: "1px solid var(--danger)",
+                                  "background-color": "rgba(232,64,64,0.15)",
+                                  cursor: "pointer",
+                                  "font-family": "var(--font-display)",
+                                  "letter-spacing": "1px",
+                                }}
+                              >
+                                [confirm]
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteKey(null)}
+                                style={{
+                                  "font-size": "11px",
+                                  padding: "2px 8px",
+                                  color: "var(--text-muted)",
+                                  border: "1px solid var(--text-muted)",
+                                  "background-color": "transparent",
+                                  cursor: "pointer",
+                                  "font-family": "var(--font-display)",
+                                  "letter-spacing": "1px",
+                                }}
+                              >
+                                [cancel]
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteKey(wk.id)}
+                              style={{
+                                "font-size": "11px",
+                                padding: "2px 8px",
+                                color: "var(--danger)",
+                                border: "1px solid var(--danger)",
+                                "background-color": "transparent",
+                                cursor: "pointer",
+                                "font-family": "var(--font-display)",
+                                "letter-spacing": "1px",
+                              }}
+                            >
+                              [revoke]
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </For>
                 </div>
               </Show>
 

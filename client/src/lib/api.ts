@@ -248,3 +248,29 @@ export function previewUnfurl(url: string): Promise<{
 }> {
   return request(`/unfurl?url=${encodeURIComponent(url)}`);
 }
+
+export interface WebhookKey {
+  id: string;
+  key_prefix: string;
+  name: string;
+  created_at: string;
+}
+
+export interface WebhookKeyCreated extends WebhookKey {
+  key: string;
+}
+
+export function getWebhookKeys(): Promise<WebhookKey[]> {
+  return request("/admin/webhook-keys");
+}
+
+export function createWebhookKey(name: string): Promise<WebhookKeyCreated> {
+  return request("/admin/webhook-keys", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteWebhookKey(id: string) {
+  return request(`/admin/webhook-keys/${id}`, { method: "DELETE" });
+}
