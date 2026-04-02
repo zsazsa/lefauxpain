@@ -77,6 +77,8 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 
 	// Admin routes (authenticated)
 	adminHandler := &AdminHandler{DB: database, Hub: hub, EmailService: emailService, EncKey: encKey}
+	webhookHandler := &WebhookHandler{DB: database, Hub: hub}
+	webhookRL := NewIPRateLimiter(10, time.Minute)
 	mux.HandleFunc("/api/v1/admin/users", authMW.Wrap(adminHandler.ListUsers))
 	mux.HandleFunc("/api/v1/admin/settings/email/test", authMW.Wrap(adminHandler.SendTestEmail))
 	mux.HandleFunc("/api/v1/admin/settings/email", authMW.Wrap(adminHandler.GetEmailSettings))
@@ -102,6 +104,22 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 		}
 		adminHandler.DeleteUser(w, r)
 	}))
+
+	// Webhook routes (API key auth, no bearer token needed)
+	mux.HandleFunc("/api/v1/webhooks/incoming", webhookRL.Wrap(webhookHandler.Incoming))
+
+	// Admin webhook key management (authenticated)
+	mux.HandleFunc("/api/v1/admin/webhook-keys", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			webhookHandler.AdminListKeys(w, r)
+		case http.MethodPost:
+			webhookHandler.AdminCreateKey(w, r)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+	}))
+	mux.HandleFunc("/api/v1/admin/webhook-keys/", authMW.Wrap(webhookHandler.AdminDeleteKey))
 
 	// Radio track upload/delete (authenticated + rate limited)
 	radioHandler := &RadioHandler{DB: database, Store: store, Hub: hub}
