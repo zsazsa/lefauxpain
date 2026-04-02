@@ -269,6 +269,16 @@ var migrations = []string{
 		name TEXT NOT NULL,
 		created_at DATETIME DEFAULT (datetime('now'))
 	);`,
+
+	// Version 21: Store webhook keys as SHA-256 hashes instead of plaintext
+	`DROP TABLE IF EXISTS webhook_keys;
+	CREATE TABLE webhook_keys (
+		id TEXT PRIMARY KEY,
+		key_hash TEXT UNIQUE NOT NULL,
+		key_prefix TEXT NOT NULL,
+		name TEXT NOT NULL,
+		created_at DATETIME DEFAULT (datetime('now'))
+	);`,
 }
 
 func (d *DB) migrate() error {

@@ -2,6 +2,7 @@ package db
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
@@ -13,17 +14,31 @@ const BotUserID = "00000000-0000-0000-0000-000000000000"
 
 type WebhookKey struct {
 	ID        string `json:"id"`
-	Key       string `json:"key"`
+	KeyPrefix string `json:"key_prefix"`
 	Name      string `json:"name"`
 	CreatedAt string `json:"created_at"`
 }
 
+type WebhookKeyCreated struct {
+	ID        string `json:"id"`
+	Key       string `json:"key"`
+	KeyPrefix string `json:"key_prefix"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+}
+
+func hashKey(key string) string {
+	h := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(h[:])
+}
+
 // ValidateWebhookKey checks if the given key exists and returns the associated record.
 func (d *DB) ValidateWebhookKey(key string) (*WebhookKey, error) {
+	h := hashKey(key)
 	wk := &WebhookKey{}
 	err := d.QueryRow(
-		`SELECT id, key, name, created_at FROM webhook_keys WHERE key = ?`, key,
-	).Scan(&wk.ID, &wk.Key, &wk.Name, &wk.CreatedAt)
+		`SELECT id, key_prefix, name, created_at FROM webhook_keys WHERE key_hash = ?`, h,
+	).Scan(&wk.ID, &wk.KeyPrefix, &wk.Name, &wk.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -33,28 +48,30 @@ func (d *DB) ValidateWebhookKey(key string) (*WebhookKey, error) {
 	return wk, nil
 }
 
-// CreateWebhookKey generates a new random API key and stores it.
-func (d *DB) CreateWebhookKey(name string) (*WebhookKey, error) {
+// CreateWebhookKey generates a new random API key, stores only the hash and prefix, and returns the full key once.
+func (d *DB) CreateWebhookKey(name string) (*WebhookKeyCreated, error) {
 	id := uuid.New().String()
 	keyBytes := make([]byte, 32)
 	if _, err := rand.Read(keyBytes); err != nil {
 		return nil, fmt.Errorf("generate webhook key: %w", err)
 	}
 	key := "whk_" + hex.EncodeToString(keyBytes)
+	h := hashKey(key)
+	prefix := key[:8] + "..." + key[len(key)-4:]
 
 	_, err := d.Exec(
-		`INSERT INTO webhook_keys (id, key, name) VALUES (?, ?, ?)`,
-		id, key, name,
+		`INSERT INTO webhook_keys (id, key_hash, key_prefix, name) VALUES (?, ?, ?, ?)`,
+		id, h, prefix, name,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create webhook key: %w", err)
 	}
-	return &WebhookKey{ID: id, Key: key, Name: name}, nil
+	return &WebhookKeyCreated{ID: id, Key: key, KeyPrefix: prefix, Name: name}, nil
 }
 
-// ListWebhookKeys returns all webhook keys with keys truncated for display.
+// ListWebhookKeys returns all webhook keys with their display prefixes.
 func (d *DB) ListWebhookKeys() ([]WebhookKey, error) {
-	rows, err := d.Query(`SELECT id, key, name, created_at FROM webhook_keys ORDER BY created_at DESC`)
+	rows, err := d.Query(`SELECT id, key_prefix, name, created_at FROM webhook_keys ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list webhook keys: %w", err)
 	}
@@ -63,12 +80,8 @@ func (d *DB) ListWebhookKeys() ([]WebhookKey, error) {
 	var keys []WebhookKey
 	for rows.Next() {
 		var wk WebhookKey
-		if err := rows.Scan(&wk.ID, &wk.Key, &wk.Name, &wk.CreatedAt); err != nil {
+		if err := rows.Scan(&wk.ID, &wk.KeyPrefix, &wk.Name, &wk.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan webhook key: %w", err)
-		}
-		// Truncate key for display: show prefix + last 4 chars
-		if len(wk.Key) > 8 {
-			wk.Key = wk.Key[:4] + "..." + wk.Key[len(wk.Key)-4:]
 		}
 		keys = append(keys, wk)
 	}
