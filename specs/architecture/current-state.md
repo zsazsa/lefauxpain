@@ -226,3 +226,27 @@ ssh kalman@172.233.131.169 "sudo systemctl start voicechat"
 ```
 
 nginx serves static files from `/opt/voicechat/static/`, proxies `/api/` and `/ws` to Go on :8080, serves uploads/thumbs/avatars directly from `/opt/voicechat/data/`. SSL via Let's Encrypt.
+
+## Webhook API
+
+External systems can post messages to channels via the webhook REST API.
+
+### Authentication
+
+Webhook requests use API key authentication via the `X-Webhook-Key` header. Keys are managed by admins.
+
+### Endpoints
+
+**POST /api/v1/webhooks/incoming** — Post a message to a channel
+- Headers: `X-Webhook-Key: <key>`, `Content-Type: application/json`
+- Body: `{"channel": "#channel-name", "content": "message text"}`
+- Response: `201 {"id": "msg-uuid", "channel_id": "ch-uuid", "created_at": "..."}`
+- Rate limit: 10 requests/minute per IP
+
+**GET /api/v1/admin/webhook-keys** — List all webhook keys (admin, truncated keys)
+**POST /api/v1/admin/webhook-keys** — Create a new key (admin). Body: `{"name": "key-name"}`
+**DELETE /api/v1/admin/webhook-keys/{id}** — Revoke a key (admin)
+
+### Bot User
+
+Webhook messages are attributed to a "Lightover Agent" bot user (ID: `00000000-0000-0000-0000-000000000000`). This user is created lazily on first webhook use, cannot log in (no password), and appears as any other user in the message feed.
