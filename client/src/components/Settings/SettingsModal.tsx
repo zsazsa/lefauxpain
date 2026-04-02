@@ -613,8 +613,8 @@ export default function SettingsModal() {
     if (currentUser()?.is_admin) {
       list.push({ id: "admin", label: "Admin" });
       list.push({ id: "email", label: "Email" });
-      list.push({ id: "webhooks", label: "Webhooks" });
     }
+    list.push({ id: "webhooks", label: "Webhooks" });
     if (isTauri) {
       list.push({ id: "app", label: "App" });
     }
@@ -1839,6 +1839,20 @@ export default function SettingsModal() {
                     API keys allow external systems to post messages to channels. Keys are hashed — the full key is shown only once at creation.
                   </div>
 
+                  <Show when={!currentUser()?.is_admin}>
+                    <div style={{
+                      "background-color": "rgba(201,168,76,0.08)",
+                      border: "1px solid rgba(201,168,76,0.25)",
+                      padding: "12px",
+                      "font-size": "11px",
+                      color: "var(--text-secondary)",
+                    }}>
+                      Only admins can create and manage webhook keys. Contact your server admin to request one.
+                    </div>
+                  </Show>
+
+                  <Show when={currentUser()?.is_admin}>
+
                   {/* Error display */}
                   {webhookError() && (
                     <div style={{ color: "var(--danger)", "font-size": "11px", "margin-bottom": "8px" }}>
@@ -2023,6 +2037,7 @@ export default function SettingsModal() {
                       </div>
                     )}
                   </For>
+                  </Show>
                 </div>
               </Show>
 

@@ -21,6 +21,16 @@ function getAudioContext(): AudioContext {
 }
 
 export function setupAudioPipeline(stream: MediaStream, trackId: string) {
+  // Clean up existing node for this track (renegotiation sends ontrack again)
+  const existing = userNodes.get(trackId);
+  if (existing) {
+    existing.audio.pause();
+    existing.audio.srcObject = null;
+    existing.source.disconnect();
+    existing.analyser.disconnect();
+    userNodes.delete(trackId);
+  }
+
   const ctx = getAudioContext();
 
   // Resume context if suspended (browsers require user gesture)
@@ -57,6 +67,16 @@ export function setupAudioPipeline(stream: MediaStream, trackId: string) {
     volume: s.masterVolume,
     localMuted: false,
   });
+}
+
+export function cleanupTrack(trackId: string) {
+  const node = userNodes.get(trackId);
+  if (!node) return;
+  node.audio.pause();
+  node.audio.srcObject = null;
+  node.source.disconnect();
+  node.analyser.disconnect();
+  userNodes.delete(trackId);
 }
 
 export function cleanupAudioPipeline() {

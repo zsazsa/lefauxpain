@@ -1,6 +1,6 @@
 import { send } from "./ws";
 import { setJoinedVoiceChannel, setVoiceStats } from "../stores/voice";
-import { setupAudioPipeline, cleanupAudioPipeline, setAllIncomingGain } from "./audio";
+import { setupAudioPipeline, cleanupAudioPipeline, cleanupTrack, setAllIncomingGain } from "./audio";
 import { startSpeakingDetection, stopSpeakingDetection, isDesktop, tauriInvoke } from "./devices";
 import { playJoinSound, playLeaveSound } from "./sounds";
 import { settings } from "../stores/settings";
@@ -122,9 +122,21 @@ export async function joinVoice(channelId: string) {
       audioConstraints.deviceId = { exact: s.inputDeviceId };
     }
     console.log("[voice] getUserMedia constraints:", JSON.stringify(audioConstraints));
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: audioConstraints,
-    });
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+      });
+    } catch (err) {
+      if (audioConstraints.deviceId && (err as DOMException)?.name === "OverconstrainedError") {
+        console.warn("[voice] Saved device not found, falling back to default mic");
+        delete audioConstraints.deviceId;
+        localStream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints,
+        });
+      } else {
+        throw err;
+      }
+    }
     const tracks = localStream.getAudioTracks();
     console.log("[voice] getUserMedia succeeded, tracks:", tracks.map(t => ({
       label: t.label,
@@ -233,14 +245,28 @@ export async function handleWebRTCOffer(sdp: string) {
     // Handle incoming tracks from other users
     peerConnection.ontrack = (event) => {
       console.log("[voice] ontrack: streams:", event.streams.length, "track:", event.track.kind, event.track.id);
+      const track = event.track;
+      let stream: MediaStream;
       if (event.streams.length > 0) {
-        setupAudioPipeline(event.streams[0], event.track.id);
+        stream = event.streams[0];
       } else {
         // Pion may not associate streams in renegotiation — create one from the track
         console.log("[voice] ontrack: no streams, creating MediaStream from track");
-        const stream = new MediaStream([event.track]);
-        setupAudioPipeline(stream, event.track.id);
+        stream = new MediaStream([track]);
       }
+      setupAudioPipeline(stream, track.id);
+
+      // Clean up when the remote track ends (peer left / renegotiation replaced it)
+      track.onended = () => {
+        console.log("[voice] remote track ended:", track.id);
+        cleanupTrack(track.id);
+      };
+      track.onmute = () => {
+        console.log("[voice] remote track muted:", track.id);
+      };
+      track.onunmute = () => {
+        console.log("[voice] remote track unmuted:", track.id);
+      };
     };
 
     // Send ICE candidates

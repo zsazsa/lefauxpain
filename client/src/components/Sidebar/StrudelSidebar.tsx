@@ -5,6 +5,7 @@ import {
   setActivePatternId,
   setViewingPattern,
   activePatternId,
+  viewingPattern,
   getPatternViewers,
 } from "../../stores/strudel";
 import { currentUser } from "../../stores/auth";
@@ -90,7 +91,7 @@ export default function StrudelSidebar() {
       <For each={strudelPatterns()}>
         {(pattern) => {
           const isPlaying = () => !!strudelPlayback()[pattern.id];
-          const isActive = () => activePatternId() === pattern.id;
+          const isActive = () => activePatternId() === pattern.id && viewingPattern();
           const viewerCount = () => {
             const me = currentUser()?.id;
             return getPatternViewers(pattern.id).filter((uid) => uid !== me).length;
