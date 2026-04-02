@@ -104,6 +104,23 @@ func (d *DB) GetChannelByName(name string) (*Channel, error) {
 }
 
 // GetBotUser returns the bot user used for webhook messages.
+// Creates the bot user on first access if it doesn't exist.
 func (d *DB) GetBotUser() (*User, error) {
+	user, err := d.GetUserByID(BotUserID)
+	if err != nil {
+		return nil, err
+	}
+	if user != nil {
+		return user, nil
+	}
+	// Lazily create bot user — not in migration to avoid interfering with
+	// the "first registered user is admin" logic (which counts all users).
+	_, err = d.Exec(
+		`INSERT OR IGNORE INTO users (id, username, password_hash, is_admin, approved, created_at) VALUES (?, ?, NULL, 0, 1, datetime('now'))`,
+		BotUserID, "Lightover Agent",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create bot user: %w", err)
+	}
 	return d.GetUserByID(BotUserID)
 }

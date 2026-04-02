@@ -262,16 +262,13 @@ var migrations = []string{
 	`UPDATE attachments SET message_id = NULL
 	 WHERE message_id IN (SELECT id FROM messages WHERE deleted_at IS NOT NULL);`,
 
-	// Version 20: Webhook keys for external integrations + bot user for webhook messages
+	// Version 20: Webhook keys for external integrations
 	`CREATE TABLE IF NOT EXISTS webhook_keys (
 		id TEXT PRIMARY KEY,
 		key TEXT UNIQUE NOT NULL,
 		name TEXT NOT NULL,
 		created_at DATETIME DEFAULT (datetime('now'))
-	);
-
-	INSERT OR IGNORE INTO users (id, username, password_hash, is_admin, approved, created_at)
-	VALUES ('00000000-0000-0000-0000-000000000000', 'Lightover Agent', NULL, 0, 1, datetime('now'));`,
+	);`,
 }
 
 func (d *DB) migrate() error {
