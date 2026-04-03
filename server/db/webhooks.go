@@ -130,7 +130,7 @@ func (d *DB) GetBotUser() (*User, error) {
 	// the "first registered user is admin" logic (which counts all users).
 	_, err = d.Exec(
 		`INSERT OR IGNORE INTO users (id, username, password_hash, is_admin, approved, created_at) VALUES (?, ?, NULL, 0, 1, datetime('now'))`,
-		BotUserID, "Lightover Agent",
+		BotUserID, "KindlyQR_bot",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create bot user: %w", err)
