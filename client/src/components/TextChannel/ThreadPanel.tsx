@@ -172,32 +172,42 @@ export default function ThreadPanel(props: { channelId: string; send: (op: strin
         {/* Thread tab */}
         <Show when={threadPanelTab() === "thread"}>
           <div style={{ flex: "1", overflow: "auto", padding: "8px 12px" }}>
-            <Show when={findThreadRoot(activeThreadId()!)}>
-              {(root) => (
-                <div style={{
-                  "border-bottom": "1px solid var(--border-gold)",
-                  "padding-bottom": "8px",
-                  "margin-bottom": "8px",
-                }}>
-                  <MessageItem message={root()} highlighted={false} />
-                  <button
-                    onClick={() => handleStar(root().id)}
-                    style={{
-                      "font-size": "10px",
-                      color: "var(--accent)",
-                      background: "none",
-                      border: "1px solid var(--accent)",
-                      padding: "2px 6px",
-                      cursor: "pointer",
-                      "margin-top": "4px",
-                      "margin-left": "60px",
-                    }}
-                  >
-                    [star]
-                  </button>
-                </div>
-              )}
-            </Show>
+            {(() => {
+              const tid = activeThreadId();
+              const root = tid ? findThreadRoot(tid) : null;
+              return (
+                <Show when={root} fallback={
+                  <div style={{ color: "var(--text-muted)", "font-size": "11px", padding: "8px 0" }}>
+                    Thread
+                  </div>
+                }>
+                  {(rootMsg) => (
+                    <div style={{
+                      "border-bottom": "1px solid var(--border-gold)",
+                      "padding-bottom": "8px",
+                      "margin-bottom": "8px",
+                    }}>
+                      <MessageItem message={rootMsg()} highlighted={false} />
+                      <button
+                        onClick={() => handleStar(rootMsg().id)}
+                        style={{
+                          "font-size": "10px",
+                          color: "var(--accent)",
+                          background: "none",
+                          border: "1px solid var(--accent)",
+                          padding: "2px 6px",
+                          cursor: "pointer",
+                          "margin-top": "4px",
+                          "margin-left": "60px",
+                        }}
+                      >
+                        [star]
+                      </button>
+                    </div>
+                  )}
+                </Show>
+              );
+            })()}
 
             <Show when={loading()}>
               <div style={{ color: "var(--text-muted)", "font-size": "11px", padding: "12px 0" }}>
