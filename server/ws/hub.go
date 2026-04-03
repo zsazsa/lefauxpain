@@ -188,6 +188,22 @@ func (h *Hub) OnlineUsers() []UserPayload {
 	return users
 }
 
+func (h *Hub) BroadcastToMembers(msg []byte, channelID string) {
+	memberIDs, _ := h.DB.GetChannelMemberIDs(channelID)
+	memberSet := make(map[string]bool, len(memberIDs))
+	for _, id := range memberIDs {
+		memberSet[id] = true
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for userID, client := range h.clients {
+		if memberSet[userID] || (client.User != nil && client.User.IsAdmin) {
+			client.Send(msg)
+		}
+	}
+}
+
 func (h *Hub) SendTo(userID string, msg []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

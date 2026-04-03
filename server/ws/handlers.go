@@ -162,6 +162,14 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		return
 	}
 
+	// Membership enforcement for non-public channels
+	if ch.Visibility != "public" {
+		isMember, _ := h.DB.IsChannelMember(d.ChannelID, c.UserID)
+		if !isMember && !c.User.IsAdmin {
+			return
+		}
+	}
+
 	msgID := uuid.New().String()
 	msg, err := h.DB.CreateMessage(msgID, d.ChannelID, c.UserID, d.Content, d.ReplyToID)
 	if err != nil {
@@ -321,7 +329,11 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		ThreadID:    threadID,
 		CreatedAt:   msg.CreatedAt,
 	})
-	h.BroadcastAll(broadcast)
+	if ch.Visibility != "public" {
+		h.BroadcastToMembers(broadcast, ch.ID)
+	} else {
+		h.BroadcastAll(broadcast)
+	}
 
 	// Async URL unfurling
 	if d.Content != nil {
@@ -602,6 +614,8 @@ func (h *Hub) handleCreateChannel(c *Client, data json.RawMessage) {
 		Type:       ch.Type,
 		Position:   ch.Position,
 		ManagerIDs: []string{c.UserID},
+		Visibility: ch.Visibility,
+		Description: ch.Description,
 	})
 	h.BroadcastAll(broadcast)
 }
@@ -708,6 +722,8 @@ func (h *Hub) handleRestoreChannel(c *Client, data json.RawMessage) {
 		Type:       ch.Type,
 		Position:   ch.Position,
 		ManagerIDs: managerIDs,
+		Visibility: ch.Visibility,
+		Description: ch.Description,
 	})
 	h.BroadcastAll(broadcast)
 }

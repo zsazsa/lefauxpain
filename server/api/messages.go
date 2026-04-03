@@ -79,6 +79,15 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	channelID := parts[4]
 
+	user := UserFromContext(r.Context())
+	if user != nil {
+		canAccess, _ := h.DB.CanAccessChannel(channelID, user.ID, user.IsAdmin)
+		if !canAccess {
+			writeError(w, http.StatusForbidden, "not a member of this channel")
+			return
+		}
+	}
+
 	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
@@ -347,7 +356,17 @@ func (h *MessageHandler) GetThreadHistory(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid path")
 		return
 	}
+	channelID := parts[4]
 	threadID := parts[6]
+
+	user := UserFromContext(r.Context())
+	if user != nil {
+		canAccess, _ := h.DB.CanAccessChannel(channelID, user.ID, user.IsAdmin)
+		if !canAccess {
+			writeError(w, http.StatusForbidden, "not a member of this channel")
+			return
+		}
+	}
 
 	limit := 100
 	if l := r.URL.Query().Get("limit"); l != "" {

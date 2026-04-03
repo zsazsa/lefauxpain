@@ -23,6 +23,7 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	authHandler := &AuthHandler{DB: database, Hub: hub, EmailService: emailService}
 	authMW := &AuthMiddleware{DB: database}
 	channelHandler := &ChannelHandler{DB: database}
+	channelSettingsHandler := &ChannelSettingsHandler{DB: database, Hub: hub}
 	messageHandler := &MessageHandler{DB: database}
 	starsHandler := &StarsHandler{DB: database}
 	uploadHandler := &UploadHandler{DB: database, Store: store, MaxSize: cfg.MaxUploadSize}
@@ -67,6 +68,22 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 		}
 		if strings.HasSuffix(r.URL.Path, "/threads") {
 			messageHandler.GetThreadsList(w, r)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/settings") {
+			channelSettingsHandler.UpdateSettings(w, r)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/access-requests") {
+			channelSettingsHandler.HandleAccessRequests(w, r)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/request-access") {
+			channelSettingsHandler.RequestAccess(w, r)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/members") {
+			channelSettingsHandler.HandleMembers(w, r)
 			return
 		}
 		http.NotFound(w, r)

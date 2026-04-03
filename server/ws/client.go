@@ -133,7 +133,7 @@ func (c *Client) authenticate() (*db.User, error) {
 }
 
 func (c *Client) sendReady() error {
-	channels, err := c.hub.DB.GetAllChannels()
+	channelsWithMembership, err := c.hub.DB.GetChannelsForUser(c.UserID, c.User.IsAdmin)
 	if err != nil {
 		return err
 	}
@@ -141,18 +141,22 @@ func (c *Client) sendReady() error {
 	// Get all channel managers in one query
 	allManagers, _ := c.hub.DB.GetAllChannelManagers()
 
-	channelPayloads := make([]ChannelPayload, len(channels))
-	for i, ch := range channels {
-		mgrs := allManagers[ch.ID]
+	channelPayloads := make([]ChannelPayload, len(channelsWithMembership))
+	for i, cwm := range channelsWithMembership {
+		mgrs := allManagers[cwm.ID]
 		if mgrs == nil {
 			mgrs = []string{}
 		}
 		channelPayloads[i] = ChannelPayload{
-			ID:         ch.ID,
-			Name:       ch.Name,
-			Type:       ch.Type,
-			Position:   ch.Position,
-			ManagerIDs: mgrs,
+			ID:          cwm.ID,
+			Name:        cwm.Name,
+			Type:        cwm.Type,
+			Position:    cwm.Position,
+			ManagerIDs:  mgrs,
+			Visibility:  cwm.Visibility,
+			Description: cwm.Description,
+			IsMember:    cwm.IsMember,
+			Role:        cwm.Role,
 		}
 	}
 
@@ -167,6 +171,7 @@ func (c *Client) sendReady() error {
 				Type:       ch.Type,
 				Position:   ch.Position,
 				ManagerIDs: []string{},
+				Visibility: ch.Visibility,
 			})
 		}
 	}

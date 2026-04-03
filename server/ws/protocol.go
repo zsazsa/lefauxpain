@@ -73,11 +73,15 @@ type UserPayload struct {
 }
 
 type ChannelPayload struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Type       string   `json:"type"`
-	Position   int      `json:"position"`
-	ManagerIDs []string `json:"manager_ids"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	Position    int      `json:"position"`
+	ManagerIDs  []string `json:"manager_ids"`
+	Visibility  string   `json:"visibility"`
+	Description *string  `json:"description,omitempty"`
+	IsMember    bool     `json:"is_member,omitempty"`
+	Role        string   `json:"role,omitempty"`
 }
 
 type VoiceStatePayload struct {

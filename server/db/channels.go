@@ -494,6 +494,17 @@ func (d *DB) HasPendingRequest(channelID, userID string) (bool, error) {
 	return count > 0, nil
 }
 
+func (d *DB) UpdateChannelSettings(channelID, name, description, visibility string) error {
+	_, err := d.Exec(
+		`UPDATE channels SET name = ?, description = ?, visibility = ? WHERE id = ?`,
+		name, description, visibility, channelID,
+	)
+	if err != nil {
+		return fmt.Errorf("update channel settings: %w", err)
+	}
+	return nil
+}
+
 // Backward-compatible manager functions (delegate to channel_members)
 
 func (d *DB) AddChannelManager(channelID, userID string) error {
