@@ -395,13 +395,17 @@ func (h *MessageHandler) GetThreadHistory(w http.ResponseWriter, r *http.Request
 		}
 
 		resp := messageResponse{
-			ID:        m.ID,
-			Author:    authorP,
-			Content:   m.Content,
-			ReplyTo:   reply,
-			ThreadID:  m.ThreadID,
-			CreatedAt: m.CreatedAt,
-			EditedAt:  m.EditedAt,
+			ID:          m.ID,
+			ChannelID:   m.ChannelID,
+			Author:      authorP,
+			Content:     m.Content,
+			ReplyTo:     reply,
+			Attachments: []attachPayload{},
+			Reactions:   []db.ReactionGroup{},
+			Mentions:    []string{},
+			ThreadID:    m.ThreadID,
+			CreatedAt:   m.CreatedAt,
+			EditedAt:    m.EditedAt,
 		}
 		response = append(response, resp)
 	}
