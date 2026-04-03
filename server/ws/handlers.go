@@ -152,7 +152,7 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 	if d.Content == nil && len(d.AttachmentIDs) == 0 {
 		return
 	}
-	if d.Content != nil && len(*d.Content) > 4000 {
+	if d.Content != nil && len(*d.Content) > 32000 {
 		return
 	}
 

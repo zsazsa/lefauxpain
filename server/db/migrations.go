@@ -339,6 +339,24 @@ var migrations = []string{
 		UNIQUE(channel_id, path)
 	);
 	CREATE INDEX idx_documents_channel ON documents(channel_id);`,
+
+	// Version 26: Increase message content limit to 32000 chars
+	`CREATE TABLE messages_new (
+		id          TEXT PRIMARY KEY,
+		channel_id  TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+		author_id   TEXT REFERENCES users(id) ON DELETE SET NULL,
+		content     TEXT CHECK(content IS NULL OR length(content) <= 32000),
+		reply_to_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+		thread_id   TEXT REFERENCES messages(id) ON DELETE SET NULL,
+		created_at  DATETIME DEFAULT (datetime('now')),
+		edited_at   DATETIME,
+		deleted_at  DATETIME
+	);
+	INSERT INTO messages_new SELECT id, channel_id, author_id, content, reply_to_id, thread_id, created_at, edited_at, deleted_at FROM messages;
+	DROP TABLE messages;
+	ALTER TABLE messages_new RENAME TO messages;
+	CREATE INDEX idx_messages_channel_time ON messages(channel_id, created_at DESC);
+	CREATE INDEX idx_messages_thread ON messages(thread_id, created_at ASC);`,
 }
 
 func (d *DB) migrate() error {

@@ -47,6 +47,8 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   const [docSaving, setDocSaving] = createSignal(false);
   const [newDocMode, setNewDocMode] = createSignal(false);
   const [currentFolder, setCurrentFolder] = createSignal("/");
+  const [pastedText, setPastedText] = createSignal<string | null>(null);
+  const PASTE_THRESHOLD = 500;
   let resizing = false;
 
   const handleResizeStart = (e: MouseEvent) => {
@@ -135,15 +137,19 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
 
   const handleThreadSend = () => {
-    const content = threadInput().trim();
-    if (!content) return;
+    const typed = threadInput().trim();
+    const pasted = pastedText();
+    if (!typed && !pasted) return;
     const threadId = activeThreadId();
     if (!threadId) return;
+
+    // Combine typed text with pasted attachment
+    const fullContent = pasted ? (typed ? typed + "\n\n" + pasted : pasted) : typed;
 
     // Send to thread
     props.send("send_message", {
       channel_id: props.channelId,
-      content,
+      content: fullContent,
       reply_to_id: null,
       thread_id: threadId,
       attachment_ids: [],
@@ -151,7 +157,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
 
     // Also send to channel if checked
     if (alsoSendToChannel()) {
-      const threadContent = `replied to a thread\n${content}`;
+      const threadContent = `replied to a thread\n${typed || "(pasted content)"}`;
       props.send("send_message", {
         channel_id: props.channelId,
         content: threadContent,
@@ -161,6 +167,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
     }
 
     setThreadInput("");
+    setPastedText(null);
   };
 
   const handleOpenDoc = async (path: string) => {
@@ -431,17 +438,45 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
               />
               Also send to #{props.channelName}
             </label>
-            <input
-              type="text"
+            <Show when={pastedText()}>
+              <div style={{
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "space-between",
+                padding: "4px 8px",
+                "background-color": "rgba(201,168,76,0.08)",
+                border: "1px solid var(--border-gold)",
+                "border-bottom": "none",
+                "font-size": "11px",
+                color: "var(--text-muted)",
+              }}>
+                <span>{"\uD83D\uDCCE"} Pasted text ({pastedText()!.length.toLocaleString()} chars)</span>
+                <button
+                  onClick={() => setPastedText(null)}
+                  style={{ color: "var(--danger)", background: "none", border: "none", cursor: "pointer", "font-size": "11px" }}
+                >
+                  [x]
+                </button>
+              </div>
+            </Show>
+            <textarea
               placeholder="Reply in thread..."
               value={threadInput()}
               onInput={(e) => setThreadInput(e.currentTarget.value)}
+              onPaste={(e) => {
+                const text = e.clipboardData?.getData("text/plain") || "";
+                if (text.length > PASTE_THRESHOLD) {
+                  e.preventDefault();
+                  setPastedText(text);
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleThreadSend();
                 }
               }}
+              rows={2}
               style={{
                 width: "100%",
                 padding: "6px 10px",
@@ -450,6 +485,9 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 border: "1px solid var(--border-gold)",
                 "font-size": "12px",
                 "font-family": "var(--font-mono)",
+                resize: "vertical",
+                "max-height": "120px",
+                "box-sizing": "border-box",
               }}
             />
           </div>
