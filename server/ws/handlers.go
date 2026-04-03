@@ -182,6 +182,8 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		// Explicit thread_id from client (replying within thread panel)
 		threadID = d.ThreadID
 		h.DB.SetThreadID(msgID, *d.ThreadID)
+		// Ensure the thread root also has its thread_id set
+		h.DB.SetThreadID(*d.ThreadID, *d.ThreadID)
 	} else if d.ReplyToID != nil {
 		// Replying from main feed — create or join a thread
 		parent, _ := h.DB.GetMessageByID(*d.ReplyToID)
