@@ -43,66 +43,104 @@ function usernameColor(userId: string): string {
 }
 
 // Render content with mention highlighting and clickable links
-function renderContent(content: string): any {
-  // Match mentions OR https/http URLs
-  const tokenRe = /<@([0-9a-fA-F-]{36})>|(https?:\/\/[^\s<>"'`]+)/gi;
+function renderMarkdownLine(text: string): any {
+  // Process inline markdown: **bold**, *italic*, mentions, URLs
+  const tokenRe = /\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|<@([0-9a-fA-F-]{36})>|(https?:\/\/[^\s<>"'`]+)/g;
   const result: any[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
 
-  while ((m = tokenRe.exec(content)) !== null) {
+  while ((m = tokenRe.exec(text)) !== null) {
     if (m.index > lastIndex) {
-      result.push(content.slice(lastIndex, m.index));
+      result.push(text.slice(lastIndex, m.index));
     }
 
     if (m[1]) {
+      // **bold**
+      result.push(<span style={{ "font-weight": "600", color: "var(--text-primary)" }}>{m[1]}</span>);
+    } else if (m[2]) {
+      // *italic*
+      result.push(<span style={{ "font-style": "italic" }}>{m[2]}</span>);
+    } else if (m[3]) {
+      // `code`
+      result.push(<code style={{ "background-color": "var(--bg-tertiary)", padding: "1px 4px", "font-size": "11px" }}>{m[3]}</code>);
+    } else if (m[4]) {
       // Mention
-      const userId = m[1];
-      const name = lookupUsername(userId) || "unknown";
+      const name = lookupUsername(m[4]) || "unknown";
       result.push(
-        <span
-          style={{
-            "background-color": "var(--mention-bg)",
-            color: "var(--mention-text)",
-            padding: "0 3px",
-          }}
-        >
+        <span style={{ "background-color": "var(--mention-bg)", color: "var(--mention-text)", padding: "0 3px" }}>
           @{name}
         </span>
       );
-    } else if (m[2]) {
-      // URL — strip trailing punctuation that's likely part of the sentence
-      let url = m[2];
+    } else if (m[5]) {
+      // URL
+      let url = m[5];
       let trailing = "";
       while (url.length > 1 && /[.,;:!?)>\]]+$/.test(url)) {
         trailing = url[url.length - 1] + trailing;
         url = url.slice(0, -1);
       }
-      // Adjust regex position to account for stripped chars
       tokenRe.lastIndex -= trailing.length;
-
       result.push(
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            color: "var(--accent)",
-            "text-decoration": "underline",
-          }}
-        >
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", "text-decoration": "underline" }}>
           {url}
         </a>
       );
     }
-
     lastIndex = tokenRe.lastIndex;
   }
 
-  if (lastIndex < content.length) {
-    result.push(content.slice(lastIndex));
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex));
   }
-  return result.length > 0 ? result : content;
+  return result.length > 0 ? result : text;
+}
+
+function renderContent(content: string): any {
+  const lines = content.split("\n");
+  const result: any[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // --- horizontal rule
+    if (/^-{3,}$/.test(line.trim())) {
+      result.push(<hr style={{ border: "none", "border-top": "1px solid var(--border-gold)", margin: "4px 0" }} />);
+      continue;
+    }
+
+    // ### headings
+    const headingMatch = line.match(/^(#{1,4})\s+(.+)/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const sizes: Record<number, string> = { 1: "15px", 2: "14px", 3: "13px", 4: "12px" };
+      result.push(
+        <div style={{ "font-weight": "600", "font-size": sizes[level] || "12px", color: "var(--accent)", "margin-top": "4px", "margin-bottom": "2px" }}>
+          {renderMarkdownLine(headingMatch[2])}
+        </div>
+      );
+      continue;
+    }
+
+    // - list items
+    const listMatch = line.match(/^(\s*)[-*]\s+(.+)/);
+    if (listMatch) {
+      const indent = Math.floor((listMatch[1] || "").length / 2);
+      result.push(
+        <div style={{ "padding-left": `${indent * 12 + 8}px` }}>
+          <span style={{ color: "var(--accent)", "margin-right": "4px" }}>{"\u2022"}</span>
+          {renderMarkdownLine(listMatch[2])}
+        </div>
+      );
+      continue;
+    }
+
+    // Normal line
+    if (i > 0) result.push(<br />);
+    result.push(renderMarkdownLine(line));
+  }
+
+  return result;
 }
 
 function truncate(s: string, max: number): string {

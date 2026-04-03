@@ -189,3 +189,9 @@ input {
   padding-left: 2px;
   margin-top: 2px;
 }
+/* Tighter spacing between messages in thread panel */
+.thread-compact > div {
+  margin-bottom: 0 !important;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
