@@ -46,6 +46,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   const [docPath, setDocPath] = createSignal("");
   const [docSaving, setDocSaving] = createSignal(false);
   const [newDocMode, setNewDocMode] = createSignal(false);
+  const [currentFolder, setCurrentFolder] = createSignal("/");
   let resizing = false;
 
   const handleResizeStart = (e: MouseEvent) => {
@@ -578,20 +579,79 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
         <Show when={threadPanelTab() === "docs"}>
           <div style={{ flex: "1", overflow: "auto", padding: "8px 12px", display: "flex", "flex-direction": "column" }}>
             <Show when={!activeDoc() && !newDocMode()}>
-              {/* File browser */}
-              <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", "margin-bottom": "12px" }}>
-                <div style={{
-                  "font-family": "var(--font-display)",
-                  "font-size": "11px",
-                  "font-weight": "600",
-                  "text-transform": "uppercase",
-                  "letter-spacing": "2px",
-                  color: "var(--text-muted)",
-                }}>
-                  Documents
-                </div>
+              {/* Breadcrumb */}
+              <div style={{ display: "flex", "align-items": "center", gap: "4px", "margin-bottom": "8px", "font-size": "11px" }}>
+                <For each={currentFolder().split("/").filter(Boolean)}>
+                  {(part, i) => {
+                    const pathUpTo = "/" + currentFolder().split("/").filter(Boolean).slice(0, i() + 1).join("/");
+                    return (
+                      <>
+                        <span style={{ color: "var(--border-gold)" }}>/</span>
+                        <span
+                          onClick={() => setCurrentFolder(pathUpTo)}
+                          style={{ color: "var(--cyan)", cursor: "pointer" }}
+                        >
+                          {part}
+                        </span>
+                      </>
+                    );
+                  }}
+                </For>
+                <Show when={currentFolder() !== "/"}>
+                  <span style={{ color: "var(--border-gold)" }}>/</span>
+                </Show>
+                <Show when={currentFolder() === "/"}>
+                  <span style={{ color: "var(--text-muted)" }}>/</span>
+                </Show>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: "flex", gap: "6px", "margin-bottom": "12px" }}>
+                <Show when={currentFolder() !== "/"}>
+                  <button
+                    onClick={() => {
+                      const parts = currentFolder().split("/").filter(Boolean);
+                      parts.pop();
+                      setCurrentFolder(parts.length ? "/" + parts.join("/") : "/");
+                    }}
+                    style={{
+                      "font-size": "11px",
+                      color: "var(--text-muted)",
+                      border: "1px solid var(--text-muted)",
+                      background: "none",
+                      padding: "2px 8px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    [..]
+                  </button>
+                </Show>
                 <button
-                  onClick={handleNewDoc}
+                  onClick={() => {
+                    const name = prompt("Folder name:");
+                    if (name && name.trim()) {
+                      const folderPath = (currentFolder() === "/" ? "/" : currentFolder() + "/") + name.trim();
+                      putDoc(props.channelId, folderPath + "/.folder", "").then(() => {
+                        listDocs(props.channelId).then(setDocsList);
+                      });
+                    }
+                  }}
+                  style={{
+                    "font-size": "11px",
+                    color: "var(--text-muted)",
+                    border: "1px solid var(--text-muted)",
+                    background: "none",
+                    padding: "2px 8px",
+                    cursor: "pointer",
+                  }}
+                >
+                  [+ folder]
+                </button>
+                <button
+                  onClick={() => {
+                    setDocPath(currentFolder() === "/" ? "/" : currentFolder() + "/");
+                    setNewDocMode(true);
+                  }}
                   style={{
                     "font-size": "11px",
                     color: "var(--accent)",
@@ -601,39 +661,87 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                     cursor: "pointer",
                   }}
                 >
-                  [+ new]
+                  [+ doc]
                 </button>
               </div>
 
-              <Show when={docsList().length === 0}>
-                <div style={{ "font-size": "11px", color: "var(--text-muted)", "font-style": "italic" }}>
-                  No documents yet.
-                </div>
-              </Show>
+              {/* Folder tree */}
+              {(() => {
+                const prefix = currentFolder() === "/" ? "/" : currentFolder() + "/";
+                const items = docsList().filter((d: any) => d.path.startsWith(prefix));
 
-              <For each={docsList()}>
-                {(doc) => {
-                  const fileName = doc.path.split("/").pop() || doc.path;
-                  const folder = doc.path.substring(0, doc.path.lastIndexOf("/")) || "/";
-                  return (
-                    <div
-                      onClick={() => handleOpenDoc(doc.path)}
-                      style={{
-                        padding: "6px 0",
-                        "border-bottom": "1px solid rgba(201,168,76,0.1)",
-                        cursor: "pointer",
+                // Extract unique subfolders and direct files
+                const folders = new Set<string>();
+                const files: any[] = [];
+
+                for (const doc of items) {
+                  const rest = doc.path.substring(prefix.length);
+                  const slashIdx = rest.indexOf("/");
+                  if (slashIdx > 0) {
+                    folders.add(rest.substring(0, slashIdx));
+                  } else if (rest && rest !== ".folder") {
+                    files.push(doc);
+                  }
+                }
+
+                return (
+                  <>
+                    {/* Subfolders */}
+                    <For each={[...folders].sort()}>
+                      {(folder) => (
+                        <div
+                          onClick={() => setCurrentFolder(prefix + folder)}
+                          style={{
+                            padding: "5px 0",
+                            "border-bottom": "1px solid rgba(201,168,76,0.05)",
+                            cursor: "pointer",
+                            display: "flex",
+                            "align-items": "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <span style={{ color: "var(--accent)", "font-size": "12px" }}>{"\uD83D\uDCC1"}</span>
+                          <span style={{ "font-size": "12px", color: "var(--text-primary)" }}>{folder}/</span>
+                        </div>
+                      )}
+                    </For>
+
+                    {/* Files */}
+                    <For each={files}>
+                      {(doc) => {
+                        const fileName = doc.path.split("/").pop() || doc.path;
+                        return (
+                          <div
+                            onClick={() => handleOpenDoc(doc.path)}
+                            style={{
+                              padding: "5px 0",
+                              "border-bottom": "1px solid rgba(201,168,76,0.05)",
+                              cursor: "pointer",
+                              display: "flex",
+                              "align-items": "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <span style={{ color: "var(--text-muted)", "font-size": "12px" }}>{"\uD83D\uDCC4"}</span>
+                            <div style={{ flex: "1" }}>
+                              <span style={{ "font-size": "12px", color: "var(--text-primary)" }}>{fileName}</span>
+                              <span style={{ "font-size": "10px", color: "var(--text-muted)", "margin-left": "8px" }}>
+                                {new Date(doc.updated_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                        );
                       }}
-                    >
-                      <div style={{ "font-size": "12px", color: "var(--text-primary)" }}>
-                        {fileName}
+                    </For>
+
+                    <Show when={folders.size === 0 && files.length === 0}>
+                      <div style={{ "font-size": "11px", color: "var(--text-muted)", "font-style": "italic", padding: "8px 0" }}>
+                        Empty folder.
                       </div>
-                      <div style={{ "font-size": "10px", color: "var(--text-muted)" }}>
-                        {folder} · {new Date(doc.updated_at).toLocaleDateString()}
-                      </div>
-                    </div>
-                  );
-                }}
-              </For>
+                    </Show>
+                  </>
+                );
+              })()}
             </Show>
 
             <Show when={activeDoc() || newDocMode()}>
