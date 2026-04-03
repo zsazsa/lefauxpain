@@ -180,11 +180,11 @@ input {
   }
 }
 
-/* Thread panel — stack content below timestamp/author for full width */
-.thread-compact .msg-line {
+/* Message content wraps below timestamp/author for full width */
+.msg-line {
   flex-wrap: wrap !important;
 }
-.thread-compact .msg-content {
+.msg-content {
   flex-basis: 100% !important;
   padding-left: 2px;
   margin-top: 2px;
