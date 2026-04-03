@@ -179,3 +179,9 @@ input {
     max-width: 100% !important;
   }
 }
+
+/* Thread panel — ensure messages use full available width */
+.thread-messages-compact {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}

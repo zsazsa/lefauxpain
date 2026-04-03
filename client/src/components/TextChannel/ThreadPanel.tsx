@@ -28,6 +28,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   const [threadInput, setThreadInput] = createSignal("");
   const [loading, setLoading] = createSignal(false);
   const [alsoSendToChannel, setAlsoSendToChannel] = createSignal(false);
+  const [starredIds, setStarredIds] = createSignal<Set<string>>(new Set());
   let messagesEndRef: HTMLDivElement | undefined;
 
   createEffect(() => {
@@ -45,9 +46,12 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   });
 
   createEffect(() => {
-    if (threadPanelTab() === "starred" && threadPanelOpen()) {
+    if (threadPanelOpen()) {
       getStarredMessages()
-        .then((msgs) => setStarredMessages(msgs))
+        .then((msgs) => {
+          setStarredMessages(msgs);
+          setStarredIds(new Set(msgs.map((m: any) => m.id)));
+        })
         .catch(() => {});
     }
   });
@@ -96,17 +100,17 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
     setThreadInput("");
   };
 
-  const handleStar = async (messageId: string) => {
-    await starMessage(messageId);
-    if (threadPanelTab() === "starred") {
+  const toggleStar = async (messageId: string) => {
+    if (starredIds().has(messageId)) {
+      await unstarMessage(messageId);
+      setStarredIds((prev) => { const next = new Set(prev); next.delete(messageId); return next; });
+      setStarredMessages((prev) => prev.filter((m) => m.id !== messageId));
+    } else {
+      await starMessage(messageId);
+      setStarredIds((prev) => new Set([...prev, messageId]));
       const msgs = await getStarredMessages();
       setStarredMessages(msgs);
     }
-  };
-
-  const handleUnstar = async (messageId: string) => {
-    await unstarMessage(messageId);
-    setStarredMessages((prev) => prev.filter((m) => m.id !== messageId));
   };
 
   return (
@@ -202,19 +206,19 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                     }}>
                       <MessageItem message={rootMsg()} highlighted={false} />
                       <button
-                        onClick={() => handleStar(rootMsg().id)}
+                        onClick={() => toggleStar(rootMsg().id)}
                         style={{
                           "font-size": "10px",
-                          color: "var(--accent)",
+                          color: starredIds().has(rootMsg().id) ? "var(--danger)" : "var(--accent)",
                           background: "none",
-                          border: "1px solid var(--accent)",
+                          border: `1px solid ${starredIds().has(rootMsg().id) ? "var(--danger)" : "var(--accent)"}`,
                           padding: "2px 6px",
                           cursor: "pointer",
                           "margin-top": "4px",
                           "margin-left": "60px",
                         }}
                       >
-                        [star]
+                        {starredIds().has(rootMsg().id) ? "[unstar]" : "[star]"}
                       </button>
                     </div>
                   )}
@@ -227,9 +231,11 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 Loading thread...
               </div>
             </Show>
-            <For each={threadMessages().filter((m) => m.id !== activeThreadId())}>
-              {(msg) => <MessageItem message={msg} highlighted={false} />}
-            </For>
+            <div class="thread-messages-compact">
+              <For each={threadMessages().filter((m) => m.id !== activeThreadId())}>
+                {(msg) => <MessageItem message={msg} highlighted={false} />}
+              </For>
+            </div>
             <div ref={messagesEndRef} />
           </div>
 
@@ -317,7 +323,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                     </Show>
                   </div>
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleUnstar(msg.id); }}
+                    onClick={(e) => { e.stopPropagation(); toggleStar(msg.id); }}
                     style={{
                       "font-size": "10px",
                       color: "var(--danger)",
