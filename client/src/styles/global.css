@@ -180,8 +180,12 @@ input {
   }
 }
 
-/* Thread panel — ensure messages use full available width */
-.thread-messages-compact {
-  word-break: break-word;
-  overflow-wrap: break-word;
+/* Thread panel — stack content below timestamp/author for full width */
+.thread-compact .msg-line {
+  flex-wrap: wrap !important;
+}
+.thread-compact .msg-content {
+  flex-basis: 100% !important;
+  padding-left: 2px;
+  margin-top: 2px;
 }

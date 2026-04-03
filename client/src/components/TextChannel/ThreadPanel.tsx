@@ -231,7 +231,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 Loading thread...
               </div>
             </Show>
-            <div class="thread-messages-compact">
+            <div class="thread-compact">
               <For each={threadMessages().filter((m) => m.id !== activeThreadId())}>
                 {(msg) => <MessageItem message={msg} highlighted={false} />}
               </For>

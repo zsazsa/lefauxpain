@@ -286,7 +286,7 @@ export default function MessageItem(props: MessageProps) {
       </Show>
 
       {/* Main message line: [time] username > content */}
-      <div style={{ display: "flex", "align-items": "baseline", gap: "0" }}>
+      <div class="msg-line" style={{ display: "flex", "align-items": "baseline", gap: "0" }}>
         <span style={{ color: "var(--text-muted)", "flex-shrink": "0" }}>
           [{formatTime(props.message.created_at)}]
         </span>
@@ -296,7 +296,7 @@ export default function MessageItem(props: MessageProps) {
         <span style={{ color: "var(--border-gold)", "flex-shrink": "0", margin: "0 6px" }}>
           {">"}
         </span>
-        <span style={{ color: props.message.deleted ? "var(--text-muted)" : "var(--text-primary)", "word-break": "break-word", "min-width": "0", flex: "1" }}>
+        <span class="msg-content" style={{ color: props.message.deleted ? "var(--text-muted)" : "var(--text-primary)", "word-break": "break-word", "min-width": "0", flex: "1" }}>
           {(() => {
             if (props.message.deleted) {
               return <span style={{ "font-style": "italic" }}>[message was deleted]</span>;
