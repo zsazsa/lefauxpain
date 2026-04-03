@@ -401,7 +401,7 @@ export default function MessageItem(props: MessageProps) {
           }}
         >
           <button
-            onClick={(e) => handleActionClick(e, () => openThread(props.message.id))}
+            onClick={(e) => handleActionClick(e, () => setReplyingTo(props.message))}
             style={{
               padding: "3px 8px",
               "font-size": "11px",
@@ -411,6 +411,18 @@ export default function MessageItem(props: MessageProps) {
             }}
           >
             [reply]
+          </button>
+          <button
+            onClick={(e) => handleActionClick(e, () => openThread(props.message.id))}
+            style={{
+              padding: "3px 8px",
+              "font-size": "11px",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border-gold)",
+              "background-color": "var(--bg-secondary)",
+            }}
+          >
+            [thread]
           </button>
           <button
             onClick={(e) =>
@@ -477,15 +489,8 @@ export default function MessageItem(props: MessageProps) {
           }}
         >
           <button
-            onClick={() => {
-              // If this message is already a thread root, open the existing thread
-              // Otherwise, open a new thread with this message as root
-              const threadId = props.message.thread_id === props.message.id
-                ? props.message.id
-                : props.message.id;
-              openThread(threadId);
-            }}
-            title="Reply in thread"
+            onClick={() => setReplyingTo(props.message)}
+            title="Reply"
             style={{
               padding: "2px 6px",
               "font-size": "11px",
@@ -493,6 +498,17 @@ export default function MessageItem(props: MessageProps) {
             }}
           >
             [reply]
+          </button>
+          <button
+            onClick={() => openThread(props.message.id)}
+            title="Reply in thread"
+            style={{
+              padding: "2px 6px",
+              "font-size": "11px",
+              color: "var(--text-secondary)",
+            }}
+          >
+            [thread]
           </button>
           <button
             onClick={(e) => {

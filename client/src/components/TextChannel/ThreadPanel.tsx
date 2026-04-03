@@ -23,10 +23,11 @@ function findThreadRoot(threadId: string): any | null {
   return null;
 }
 
-export default function ThreadPanel(props: { channelId: string; send: (op: string, data: any) => void }) {
+export default function ThreadPanel(props: { channelId: string; channelName: string; send: (op: string, data: any) => void }) {
   const [starredMessages, setStarredMessages] = createSignal<any[]>([]);
   const [threadInput, setThreadInput] = createSignal("");
   const [loading, setLoading] = createSignal(false);
+  const [alsoSendToChannel, setAlsoSendToChannel] = createSignal(false);
   let messagesEndRef: HTMLDivElement | undefined;
 
   createEffect(() => {
@@ -72,6 +73,7 @@ export default function ThreadPanel(props: { channelId: string; send: (op: strin
     const threadId = activeThreadId();
     if (!threadId) return;
 
+    // Send to thread
     props.send("send_message", {
       channel_id: props.channelId,
       content,
@@ -79,6 +81,17 @@ export default function ThreadPanel(props: { channelId: string; send: (op: strin
       thread_id: threadId,
       attachment_ids: [],
     });
+
+    // Also send to channel if checked
+    if (alsoSendToChannel()) {
+      const threadContent = `replied to a thread\n${content}`;
+      props.send("send_message", {
+        channel_id: props.channelId,
+        content: threadContent,
+        reply_to_id: threadId,
+        attachment_ids: [],
+      });
+    }
 
     setThreadInput("");
   };
@@ -224,6 +237,23 @@ export default function ThreadPanel(props: { channelId: string; send: (op: strin
             padding: "8px 12px",
             "border-top": "1px solid var(--border-gold)",
           }}>
+            <label style={{
+              display: "flex",
+              "align-items": "center",
+              gap: "6px",
+              "font-size": "11px",
+              color: "var(--text-muted)",
+              padding: "4px 0",
+              cursor: "pointer",
+            }}>
+              <input
+                type="checkbox"
+                checked={alsoSendToChannel()}
+                onChange={(e) => setAlsoSendToChannel(e.currentTarget.checked)}
+                style={{ cursor: "pointer" }}
+              />
+              Also send to #{props.channelName}
+            </label>
             <input
               type="text"
               placeholder="Reply in thread..."

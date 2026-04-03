@@ -4,7 +4,7 @@ import { currentVoiceChannelId } from "../../stores/voice";
 import { leaveVoice } from "../../lib/webrtc";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
 import { send } from "../../lib/ws";
-import { setThreadPanelOpen, setThreadPanelTab } from "../../stores/messages";
+import { threadPanelOpen, setThreadPanelOpen, setThreadPanelTab } from "../../stores/messages";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import ThreadPanel from "./ThreadPanel";
@@ -102,6 +102,25 @@ export default function TextChannel(props: TextChannelProps) {
           >
             [*]
           </button>
+          <button
+            onClick={() => {
+              if (threadPanelOpen()) {
+                setThreadPanelOpen(false);
+              } else {
+                setThreadPanelTab("starred");
+                setThreadPanelOpen(true);
+              }
+            }}
+            style={{
+              color: threadPanelOpen() ? "var(--accent)" : "var(--text-muted)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              "font-size": "12px",
+            }}
+          >
+            {threadPanelOpen() ? "[<]" : "[>]"}
+          </button>
         </div>
       </div>
 
@@ -114,7 +133,7 @@ export default function TextChannel(props: TextChannelProps) {
           {/* Input */}
           <MessageInput channelId={props.channelId} channelName={channel()?.name || ""} />
         </div>
-        <ThreadPanel channelId={props.channelId} send={(op, data) => send(op, data)} />
+        <ThreadPanel channelId={props.channelId} channelName={channel()?.name || ""} send={(op, data) => send(op, data)} />
       </div>
     </div>
   );
