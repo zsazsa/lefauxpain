@@ -13,6 +13,22 @@ import { channels, setSelectedChannelId } from "../../stores/channels";
 import { lookupUsername } from "../../stores/users";
 import MessageItem from "./Message";
 
+function renderInline(text: string): any {
+  const parts: any[] = [];
+  const re = /\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (m[1]) parts.push(<span style={{ "font-weight": "600", color: "var(--text-primary)" }}>{m[1]}</span>);
+    else if (m[2]) parts.push(<span style={{ "font-style": "italic" }}>{m[2]}</span>);
+    else if (m[3]) parts.push(<code style={{ "background-color": "var(--bg-tertiary)", padding: "1px 4px", "font-size": "11px" }}>{m[3]}</code>);
+    last = re.lastIndex;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length ? parts : text;
+}
+
 function stripMentions(content: string): string {
   return content.replace(/<@([0-9a-fA-F-]{36})>/g, (_, id) => {
     const name = lookupUsername(id);
@@ -47,6 +63,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   const [docSaving, setDocSaving] = createSignal(false);
   const [newDocMode, setNewDocMode] = createSignal(false);
   const [currentFolder, setCurrentFolder] = createSignal("/");
+  const [docEditMode, setDocEditMode] = createSignal(false);
   const [pastedText, setPastedText] = createSignal<string | null>(null);
   const PASTE_THRESHOLD = 500;
   let resizing = false;
@@ -177,6 +194,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
       setDocContent(doc.content);
       setDocPath(doc.path);
       setNewDocMode(false);
+      setDocEditMode(false);
     } catch (e) {}
   };
 
@@ -820,7 +838,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
             </Show>
 
             <Show when={activeDoc() || newDocMode()}>
-              {/* Document editor */}
+              {/* Document header */}
               <div style={{ display: "flex", "align-items": "center", gap: "8px", "margin-bottom": "8px" }}>
                 <button
                   onClick={handleBackToList}
@@ -835,59 +853,128 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 >
                   [back]
                 </button>
-                <input
-                  type="text"
-                  value={docPath()}
-                  onInput={(e) => setDocPath(e.currentTarget.value)}
-                  placeholder="/folder/document.md"
-                  disabled={!!activeDoc()}
-                  style={{
-                    flex: "1",
-                    padding: "4px 8px",
-                    "background-color": activeDoc() ? "transparent" : "#1a1a2e",
-                    color: "var(--text-primary)",
-                    border: activeDoc() ? "none" : "1px solid rgba(201,168,76,0.4)",
-                    "font-size": "11px",
-                    "font-family": "var(--font-mono)",
-                  }}
-                />
+                <Show when={newDocMode()}>
+                  <input
+                    type="text"
+                    value={docPath()}
+                    onInput={(e) => setDocPath(e.currentTarget.value)}
+                    placeholder="/folder/document.md"
+                    style={{
+                      flex: "1",
+                      padding: "4px 8px",
+                      "background-color": "#1a1a2e",
+                      color: "var(--text-primary)",
+                      border: "1px solid rgba(201,168,76,0.4)",
+                      "font-size": "11px",
+                      "font-family": "var(--font-mono)",
+                    }}
+                  />
+                </Show>
+                <Show when={activeDoc()}>
+                  <span style={{ flex: "1", "font-size": "11px", color: "var(--text-primary)", "font-family": "var(--font-mono)" }}>
+                    {docPath()}
+                  </span>
+                  <button
+                    onClick={() => setDocEditMode(!docEditMode())}
+                    style={{
+                      "font-size": "11px",
+                      color: docEditMode() ? "var(--accent)" : "var(--text-muted)",
+                      border: `1px solid ${docEditMode() ? "var(--accent)" : "var(--text-muted)"}`,
+                      background: docEditMode() ? "var(--accent-glow)" : "none",
+                      padding: "2px 6px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {docEditMode() ? "[view]" : "[edit]"}
+                  </button>
+                </Show>
               </div>
 
-              <textarea
-                value={docContent()}
-                onInput={(e) => setDocContent(e.currentTarget.value)}
-                style={{
+              {/* Rendered view (default for existing docs) */}
+              <Show when={activeDoc() && !docEditMode()}>
+                <div style={{
                   flex: "1",
-                  width: "100%",
-                  padding: "8px",
-                  "background-color": "#1a1a2e",
+                  overflow: "auto",
+                  padding: "12px",
+                  "font-size": "13px",
+                  "line-height": "1.6",
                   color: "var(--text-primary)",
-                  border: "1px solid rgba(201,168,76,0.4)",
-                  "font-size": "12px",
-                  "font-family": "var(--font-mono)",
-                  resize: "none",
-                  "min-height": "200px",
-                  "line-height": "1.5",
-                  "box-sizing": "border-box",
-                }}
-              />
+                }}>
+                  {(() => {
+                    const content = docContent();
+                    const lines = content.split("\n");
+                    return lines.map((line, i) => {
+                      // Headings
+                      const h1 = line.match(/^# (.+)/);
+                      if (h1) return <h1 style={{ "font-size": "18px", "font-weight": "600", color: "var(--accent)", margin: "16px 0 8px", "font-family": "var(--font-display)" }}>{h1[1]}</h1>;
+                      const h2 = line.match(/^## (.+)/);
+                      if (h2) return <h2 style={{ "font-size": "15px", "font-weight": "600", color: "var(--accent)", margin: "14px 0 6px", "font-family": "var(--font-display)" }}>{h2[1]}</h2>;
+                      const h3 = line.match(/^### (.+)/);
+                      if (h3) return <h3 style={{ "font-size": "13px", "font-weight": "600", color: "var(--accent)", margin: "12px 0 4px", "font-family": "var(--font-display)" }}>{h3[1]}</h3>;
+
+                      // Horizontal rule
+                      if (/^-{3,}$/.test(line.trim())) return <hr style={{ border: "none", "border-top": "1px solid var(--border-gold)", margin: "12px 0" }} />;
+
+                      // Bullet list
+                      const bullet = line.match(/^(\s*)[-*] (.+)/);
+                      if (bullet) {
+                        const indent = Math.floor((bullet[1] || "").length / 2);
+                        return <div style={{ "padding-left": `${indent * 16 + 8}px`, "margin-bottom": "2px" }}>
+                          <span style={{ color: "var(--accent)", "margin-right": "6px" }}>{"\u2022"}</span>
+                          {renderInline(bullet[2])}
+                        </div>;
+                      }
+
+                      // Empty line
+                      if (!line.trim()) return <div style={{ height: "8px" }} />;
+
+                      // Normal paragraph
+                      return <div style={{ "margin-bottom": "4px" }}>{renderInline(line)}</div>;
+                    });
+                  })()}
+                </div>
+              </Show>
+
+              {/* Edit mode (textarea) */}
+              <Show when={docEditMode() || newDocMode()}>
+                <textarea
+                  value={docContent()}
+                  onInput={(e) => setDocContent(e.currentTarget.value)}
+                  style={{
+                    flex: "1",
+                    width: "100%",
+                    padding: "8px",
+                    "background-color": "#1a1a2e",
+                    color: "var(--text-primary)",
+                    border: "1px solid rgba(201,168,76,0.4)",
+                    "font-size": "12px",
+                    "font-family": "var(--font-mono)",
+                    resize: "none",
+                    "min-height": "200px",
+                    "line-height": "1.5",
+                    "box-sizing": "border-box",
+                  }}
+                />
+              </Show>
 
               <div style={{ display: "flex", gap: "8px", "margin-top": "8px" }}>
-                <button
-                  onClick={handleSaveDoc}
-                  disabled={docSaving()}
-                  style={{
-                    "font-size": "11px",
-                    color: "var(--accent)",
-                    border: "1px solid var(--accent)",
-                    "background-color": "var(--accent-glow)",
-                    padding: "4px 12px",
-                    cursor: docSaving() ? "wait" : "pointer",
-                    opacity: docSaving() ? "0.5" : "1",
-                  }}
-                >
-                  {docSaving() ? "[saving...]" : "[save]"}
-                </button>
+                <Show when={docEditMode() || newDocMode()}>
+                  <button
+                    onClick={handleSaveDoc}
+                    disabled={docSaving()}
+                    style={{
+                      "font-size": "11px",
+                      color: "var(--accent)",
+                      border: "1px solid var(--accent)",
+                      "background-color": "var(--accent-glow)",
+                      padding: "4px 12px",
+                      cursor: docSaving() ? "wait" : "pointer",
+                      opacity: docSaving() ? "0.5" : "1",
+                    }}
+                  >
+                    {docSaving() ? "[saving...]" : "[save]"}
+                  </button>
+                </Show>
                 <Show when={activeDoc()}>
                   <button
                     onClick={handleDeleteDoc}
