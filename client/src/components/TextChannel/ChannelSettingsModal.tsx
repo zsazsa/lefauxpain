@@ -306,18 +306,70 @@ export default function ChannelSettingsModal(props: ChannelSettingsModalProps) {
             <Show when={activeSection() === "members"}>
               <div style={sectionHeaderStyle}>Members</div>
 
-              <div style={{ display: "flex", gap: "8px", "margin-bottom": "16px" }}>
-                <input
-                  type="text"
-                  placeholder="username"
-                  value={addUsername()}
-                  onInput={(e) => setAddUsername(e.currentTarget.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleAddMember(); }}
-                  style={{ ...inputStyle, flex: "1" }}
-                />
-                <button onClick={handleAddMember} style={actionBtnStyle}>
-                  [add]
-                </button>
+              <div style={{ position: "relative", "margin-bottom": "16px" }}>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input
+                    type="text"
+                    placeholder="Type username..."
+                    value={addUsername()}
+                    onInput={(e) => setAddUsername(e.currentTarget.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddMember(); }}
+                    style={{ ...inputStyle, flex: "1" }}
+                  />
+                  <button onClick={handleAddMember} style={actionBtnStyle}>
+                    [add]
+                  </button>
+                </div>
+                <Show when={addUsername().length > 0}>
+                  {(() => {
+                    const memberIds = new Set(members().map((m: any) => m.user_id));
+                    const suggestions = allUsers().filter(
+                      (u) => u.username.toLowerCase().includes(addUsername().toLowerCase()) && !memberIds.has(u.id)
+                    ).slice(0, 5);
+                    return (
+                      <Show when={suggestions.length > 0}>
+                        <div style={{
+                          position: "absolute",
+                          top: "100%",
+                          left: "0",
+                          right: "60px",
+                          "z-index": "10",
+                          "background-color": "var(--bg-primary)",
+                          border: "1px solid var(--border-gold)",
+                          "max-height": "150px",
+                          overflow: "auto",
+                        }}>
+                          <For each={suggestions}>
+                            {(user) => (
+                              <button
+                                onClick={() => {
+                                  setAddUsername(user.username);
+                                  handleAddMember();
+                                }}
+                                style={{
+                                  display: "block",
+                                  width: "100%",
+                                  "text-align": "left",
+                                  padding: "6px 10px",
+                                  color: "var(--text-primary)",
+                                  "background-color": "transparent",
+                                  border: "none",
+                                  "border-bottom": "1px solid rgba(201,168,76,0.1)",
+                                  cursor: "pointer",
+                                  "font-size": "12px",
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = "var(--accent-glow)"}
+                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                              >
+                                {user.username}
+                              </button>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
+                    );
+                  })()}
+                </Show>
               </div>
 
               <For each={members()} fallback={

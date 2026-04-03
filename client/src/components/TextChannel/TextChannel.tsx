@@ -1,5 +1,5 @@
 import { Show, onMount, onCleanup, createSignal } from "solid-js";
-import { channels } from "../../stores/channels";
+import { channels, channelSettingsId, setChannelSettingsId } from "../../stores/channels";
 import { currentUser } from "../../stores/auth";
 import { currentVoiceChannelId } from "../../stores/voice";
 import { leaveVoice } from "../../lib/webrtc";
@@ -18,7 +18,6 @@ interface TextChannelProps {
 
 export default function TextChannel(props: TextChannelProps) {
   const channel = () => channels().find((c) => c.id === props.channelId);
-  const [channelSettingsOpen, setChannelSettingsOpen] = createSignal(false);
   const [accessRequested, setAccessRequested] = createSignal(false);
   const [accessError, setAccessError] = createSignal("");
   let glitchRef: HTMLSpanElement | undefined;
@@ -100,14 +99,6 @@ export default function TextChannel(props: TextChannelProps) {
               }}
             >
               [disconnect]
-            </button>
-          </Show>
-          <Show when={channel()?.role === "owner" || currentUser()?.is_admin}>
-            <button
-              onClick={() => setChannelSettingsOpen(true)}
-              style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", "font-size": "12px" }}
-            >
-              [{"\u2699"}]
             </button>
           </Show>
           <button
@@ -201,9 +192,9 @@ export default function TextChannel(props: TextChannelProps) {
       </Show>
 
       <ChannelSettingsModal
-        channelId={props.channelId}
-        open={channelSettingsOpen()}
-        onClose={() => setChannelSettingsOpen(false)}
+        channelId={channelSettingsId() || props.channelId}
+        open={channelSettingsId() !== null}
+        onClose={() => setChannelSettingsId(null)}
       />
     </div>
   );

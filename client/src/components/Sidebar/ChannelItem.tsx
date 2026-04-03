@@ -1,6 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import type { Channel } from "../../stores/channels";
-import ChannelManageMenu from "./ChannelManageMenu";
+import { setChannelSettingsId } from "../../stores/channels";
 
 interface ChannelItemProps {
   channel: Channel;
@@ -12,7 +12,6 @@ interface ChannelItemProps {
 export default function ChannelItem(props: ChannelItemProps) {
   const isRestricted = () => props.channel.visibility !== "public" && !props.channel.is_member;
   const icon = () => isRestricted() ? "\uD83D\uDD12" : (props.channel.type === "voice" ? "\u23E3" : "#");
-  const [menuOpen, setMenuOpen] = createSignal(false);
   const [hovered, setHovered] = createSignal(false);
 
   return (
@@ -60,11 +59,11 @@ export default function ChannelItem(props: ChannelItemProps) {
         <span style={{ flex: "1", "min-width": "0", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
           {props.channel.name}
         </span>
-        <Show when={props.canManage && (hovered() || menuOpen())}>
+        <Show when={props.canManage && hovered()}>
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setMenuOpen((v) => !v);
+              setChannelSettingsId(props.channel.id);
             }}
             style={{
               "font-size": "11px",
@@ -78,9 +77,6 @@ export default function ChannelItem(props: ChannelItemProps) {
           </button>
         </Show>
       </div>
-      <Show when={menuOpen()}>
-        <ChannelManageMenu channel={props.channel} onClose={() => setMenuOpen(false)} />
-      </Show>
     </div>
   );
 }

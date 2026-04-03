@@ -27,7 +27,9 @@ function setSelectedChannelId(id: string | null) {
   }
 }
 
-export { channels, selectedChannelId, setSelectedChannelId, deletedChannels, setDeletedChannels };
+const [channelSettingsId, setChannelSettingsId] = createSignal<string | null>(null);
+
+export { channels, selectedChannelId, setSelectedChannelId, deletedChannels, setDeletedChannels, channelSettingsId, setChannelSettingsId };
 
 export function setChannelList(chs: Channel[]) {
   setChannels(chs.sort((a, b) => a.position - b.position));
