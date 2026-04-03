@@ -132,17 +132,13 @@ export default function MessageList(props: MessageListProps) {
     });
   }
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages (only when near bottom and page is focused)
   createEffect(() => {
     const _ = messages();
-    if (containerRef && !initialLoad()) {
-      // Only scroll if already near bottom
-      const { scrollTop, scrollHeight, clientHeight } = containerRef;
-      if (scrollHeight - scrollTop - clientHeight < 200) {
-        requestAnimationFrame(() => {
-          containerRef!.scrollTop = containerRef!.scrollHeight;
-        });
-      }
+    if (containerRef && !initialLoad() && nearBottom() && document.hasFocus()) {
+      requestAnimationFrame(() => {
+        containerRef!.scrollTop = containerRef!.scrollHeight;
+      });
     }
   });
 
