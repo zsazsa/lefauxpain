@@ -291,6 +291,32 @@ var migrations = []string{
 		PRIMARY KEY (user_id, message_id)
 	);
 	CREATE INDEX idx_starred_user ON starred_messages(user_id, created_at DESC);`,
+
+	// Version 23: Channel membership, roles, and visibility
+	`ALTER TABLE channels ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public';
+	ALTER TABLE channels ADD COLUMN description TEXT;
+
+	CREATE TABLE channel_members (
+		channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+		user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		role       TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('owner', 'member')),
+		created_at DATETIME DEFAULT (datetime('now')),
+		PRIMARY KEY (channel_id, user_id)
+	);
+	CREATE INDEX idx_channel_members_user ON channel_members(user_id);
+
+	CREATE TABLE channel_access_requests (
+		id         TEXT PRIMARY KEY,
+		channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+		user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		status     TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied')),
+		created_at DATETIME DEFAULT (datetime('now')),
+		UNIQUE(channel_id, user_id)
+	);
+	CREATE INDEX idx_channel_requests_channel ON channel_access_requests(channel_id, status);
+
+	INSERT OR IGNORE INTO channel_members (channel_id, user_id, role)
+		SELECT channel_id, user_id, 'owner' FROM channel_managers;`,
 }
 
 func (d *DB) migrate() error {

@@ -105,8 +105,8 @@ func (d *DB) DeleteWebhookKey(id string) error {
 func (d *DB) GetChannelByName(name string) (*Channel, error) {
 	c := &Channel{}
 	err := d.QueryRow(
-		`SELECT id, name, type, position, created_by, created_at FROM channels WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL`, name,
-	).Scan(&c.ID, &c.Name, &c.Type, &c.Position, &c.CreatedBy, &c.CreatedAt)
+		`SELECT id, name, type, position, visibility, description, created_by, created_at FROM channels WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL`, name,
+	).Scan(&c.ID, &c.Name, &c.Type, &c.Position, &c.Visibility, &c.Description, &c.CreatedBy, &c.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
