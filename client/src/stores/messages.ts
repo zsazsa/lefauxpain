@@ -63,7 +63,7 @@ export { messagesByChannel, replyingTo, setReplyingTo, scrollToMessageId, setScr
 const [threadPanelOpen, setThreadPanelOpen] = createSignal(false);
 const [activeThreadId, setActiveThreadId] = createSignal<string | null>(null);
 const [threadMessages, setThreadMessages] = createSignal<Message[]>([]);
-const [threadPanelTab, setThreadPanelTab] = createSignal<"thread" | "starred">("thread");
+const [threadPanelTab, setThreadPanelTab] = createSignal<"thread" | "threads" | "starred">("thread");
 
 export {
   threadPanelOpen, setThreadPanelOpen,

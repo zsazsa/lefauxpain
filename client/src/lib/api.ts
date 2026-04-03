@@ -275,6 +275,10 @@ export function deleteWebhookKey(id: string) {
   return request(`/admin/webhook-keys/${id}`, { method: "DELETE" });
 }
 
+export function getChannelThreads(channelId: string): Promise<any[]> {
+  return request(`/channels/${channelId}/threads`);
+}
+
 export function getThreadMessages(channelId: string, threadId: string, before?: string) {
   const params = new URLSearchParams({ limit: "100" });
   if (before) params.set("before", before);

@@ -8,7 +8,7 @@ import {
   openThread,
   setScrollToMessageId,
 } from "../../stores/messages";
-import { getThreadMessages, getStarredMessages, starMessage, unstarMessage } from "../../lib/api";
+import { getThreadMessages, getChannelThreads, getStarredMessages, starMessage, unstarMessage } from "../../lib/api";
 import { lookupUsername } from "../../stores/users";
 import MessageItem from "./Message";
 
@@ -37,6 +37,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   const [loading, setLoading] = createSignal(false);
   const [alsoSendToChannel, setAlsoSendToChannel] = createSignal(false);
   const [starredIds, setStarredIds] = createSignal<Set<string>>(new Set());
+  const [channelThreads, setChannelThreads] = createSignal<any[]>([]);
   const [panelWidth, setPanelWidth] = createSignal(400);
   let resizing = false;
 
@@ -89,6 +90,15 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
           setStarredMessages(msgs);
           setStarredIds(new Set(msgs.map((m: any) => m.id)));
         })
+        .catch(() => {});
+    }
+  });
+
+  // Fetch channel threads when Threads tab opens
+  createEffect(() => {
+    if (threadPanelTab() === "threads" && threadPanelOpen()) {
+      getChannelThreads(props.channelId)
+        .then((threads) => setChannelThreads(threads))
         .catch(() => {});
     }
   });
@@ -205,6 +215,25 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
               }}
             >
               Thread
+            </button>
+            <button
+              onClick={() => setThreadPanelTab("threads")}
+              style={{
+                "font-family": "var(--font-display)",
+                "font-size": "11px",
+                "letter-spacing": "1px",
+                "text-transform": "uppercase",
+                color: threadPanelTab() === "threads" ? "var(--accent)" : "var(--text-muted)",
+                background: "none",
+                border: "none",
+                "border-bottom-width": "2px",
+                "border-bottom-style": "solid",
+                "border-bottom-color": threadPanelTab() === "threads" ? "var(--accent)" : "transparent",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >
+              Threads
             </button>
             <button
               onClick={() => setThreadPanelTab("starred")}
@@ -338,6 +367,44 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
           </div>
         </Show>
 
+        {/* Threads tab — list all threads in this channel */}
+        <Show when={threadPanelTab() === "threads"}>
+          <div style={{ flex: "1", overflow: "auto", padding: "8px 12px" }}>
+            <Show when={channelThreads().length === 0}>
+              <div style={{ color: "var(--text-muted)", "font-size": "11px", "font-style": "italic", padding: "12px 0" }}>
+                No threads in this channel.
+              </div>
+            </Show>
+            <For each={channelThreads()}>
+              {(thread) => (
+                <div
+                  onClick={() => openThread(thread.thread_id)}
+                  style={{
+                    "border-bottom": "1px solid rgba(201,168,76,0.1)",
+                    padding: "8px 0",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center" }}>
+                    <span style={{ "font-size": "12px", color: "var(--text-primary)", "font-weight": "600" }}>
+                      {thread.author_username || "unknown"}
+                    </span>
+                    <span style={{ "font-size": "10px", color: "var(--text-muted)" }}>
+                      {new Date(thread.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div style={{ "font-size": "11px", color: "var(--text-secondary)", "margin-top": "2px" }}>
+                    {thread.content ? stripMentions(thread.content).slice(0, 80) + (thread.content.length > 80 ? "..." : "") : "[no content]"}
+                  </div>
+                  <div style={{ "font-size": "10px", color: "var(--cyan)", "margin-top": "3px" }}>
+                    {thread.reply_count} {thread.reply_count === 1 ? "reply" : "replies"} · last {thread.last_reply_author}
+                  </div>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+
         {/* Starred tab */}
         <Show when={threadPanelTab() === "starred"}>
           <div style={{ flex: "1", overflow: "auto", padding: "8px 12px" }}>
@@ -355,8 +422,26 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 }}>
                   <div
                     onClick={() => {
-                      // Always open in thread tab — the message becomes the thread root
-                      openThread(msg.id);
+                      if (msg.thread_id) {
+                        // Message is in a thread — open thread and scroll to this message
+                        const rootId = msg.thread_id;
+                        openThread(rootId);
+                        // Highlight the specific message after thread loads
+                        setTimeout(() => {
+                          const el = document.querySelector(`[data-message-id="${msg.id}"]`);
+                          if (el) {
+                            el.scrollIntoView({ behavior: "smooth", block: "center" });
+                            el.animate(
+                              [{ backgroundColor: "rgba(201,168,76,0.15)" }, { backgroundColor: "transparent" }],
+                              { duration: 1500 }
+                            );
+                          }
+                        }, 500);
+                      } else {
+                        // Standalone message — scroll to it in main feed
+                        setThreadPanelOpen(false);
+                        setScrollToMessageId(msg.id);
+                      }
                     }}
                   >
                     <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center" }}>
@@ -370,9 +455,9 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                     <div style={{ "font-size": "11px", color: "var(--text-secondary)", "margin-top": "2px" }}>
                       {msg.content ? stripMentions(msg.content).slice(0, 100) + (msg.content.length > 100 ? "..." : "") : "[attachment]"}
                     </div>
-                    <Show when={msg.thread_id && msg.thread_id === msg.id}>
+                    <Show when={msg.thread_id}>
                       <div style={{ "font-size": "10px", color: "var(--cyan)", "margin-top": "2px" }}>
-                        Thread
+                        In thread
                       </div>
                     </Show>
                   </div>

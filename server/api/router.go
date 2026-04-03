@@ -65,6 +65,10 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 			}
 			return
 		}
+		if strings.HasSuffix(r.URL.Path, "/threads") {
+			messageHandler.GetThreadsList(w, r)
+			return
+		}
 		http.NotFound(w, r)
 	}))
 

@@ -339,3 +339,52 @@ func (d *DB) GetThreadParticipants(threadID string) ([]string, error) {
 	}
 	return ids, nil
 }
+
+// ThreadListItem holds a thread root message with its summary info.
+type ThreadListItem struct {
+	ThreadID        string  `json:"thread_id"`
+	Content         *string `json:"content"`
+	AuthorID        *string `json:"author_id"`
+	AuthorUsername  string  `json:"author_username"`
+	ReplyCount      int     `json:"reply_count"`
+	LastReplyAt     string  `json:"last_reply_at"`
+	LastReplyAuthor string  `json:"last_reply_author"`
+	CreatedAt       string  `json:"created_at"`
+}
+
+// GetChannelThreads returns all thread roots in a channel with reply counts, newest activity first.
+func (d *DB) GetChannelThreads(channelID string) ([]ThreadListItem, error) {
+	rows, err := d.Query(`
+		SELECT
+			root.id,
+			root.content,
+			root.author_id,
+			COALESCE(u.username, '') as author_username,
+			COUNT(reply.id) - 1 as reply_count,
+			MAX(reply.created_at) as last_reply_at,
+			COALESCE((SELECT u2.username FROM messages m2 JOIN users u2 ON m2.author_id = u2.id
+				WHERE m2.thread_id = root.id AND m2.deleted_at IS NULL
+				ORDER BY m2.created_at DESC LIMIT 1), '') as last_reply_author,
+			root.created_at
+		FROM messages root
+		JOIN messages reply ON reply.thread_id = root.id AND reply.deleted_at IS NULL
+		LEFT JOIN users u ON root.author_id = u.id
+		WHERE root.channel_id = ? AND root.thread_id = root.id AND root.deleted_at IS NULL
+		GROUP BY root.id
+		ORDER BY last_reply_at DESC
+	`, channelID)
+	if err != nil {
+		return nil, fmt.Errorf("get channel threads: %w", err)
+	}
+	defer rows.Close()
+
+	var items []ThreadListItem
+	for rows.Next() {
+		var t ThreadListItem
+		if err := rows.Scan(&t.ThreadID, &t.Content, &t.AuthorID, &t.AuthorUsername, &t.ReplyCount, &t.LastReplyAt, &t.LastReplyAuthor, &t.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan thread list item: %w", err)
+		}
+		items = append(items, t)
+	}
+	return items, nil
+}

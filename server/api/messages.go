@@ -416,6 +416,31 @@ func (h *MessageHandler) GetThreadHistory(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, response)
 }
 
+// GetThreadsList handles GET /api/v1/channels/{channelId}/threads
+func (h *MessageHandler) GetThreadsList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 6 {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	channelID := parts[4]
+
+	threads, err := h.DB.GetChannelThreads(channelID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if threads == nil {
+		threads = []db.ThreadListItem{}
+	}
+	writeJSON(w, http.StatusOK, threads)
+}
+
 func buildUnfurlPayloads(unfurls []db.URLUnfurl) []unfurlPayload {
 	if len(unfurls) == 0 {
 		return []unfurlPayload{}
