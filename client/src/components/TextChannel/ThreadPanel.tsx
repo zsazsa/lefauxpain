@@ -9,6 +9,7 @@ import {
   setScrollToMessageId,
 } from "../../stores/messages";
 import { getThreadMessages, getChannelThreads, getStarredMessages, starMessage, unstarMessage } from "../../lib/api";
+import { channels, setSelectedChannelId } from "../../stores/channels";
 import { lookupUsername } from "../../stores/users";
 import MessageItem from "./Message";
 
@@ -422,6 +423,11 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 }}>
                   <div
                     onClick={() => {
+                      // Switch to the correct channel first
+                      if (msg.channel_id) {
+                        setSelectedChannelId(msg.channel_id);
+                      }
+
                       if (msg.thread_id) {
                         // Message is in a thread — open thread and scroll to this message
                         const rootId = msg.thread_id;
@@ -440,7 +446,8 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                       } else {
                         // Standalone message — scroll to it in main feed
                         setThreadPanelOpen(false);
-                        setScrollToMessageId(msg.id);
+                        // Give time for channel switch to render
+                        setTimeout(() => setScrollToMessageId(msg.id), 300);
                       }
                     }}
                   >
@@ -449,7 +456,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                         {msg.author_username || "unknown"}
                       </span>
                       <span style={{ "font-size": "10px", color: "var(--text-muted)" }}>
-                        {new Date(msg.created_at).toLocaleDateString()}
+                        #{channels().find((c: any) => c.id === msg.channel_id)?.name || "?"} · {new Date(msg.created_at).toLocaleDateString()}
                       </span>
                     </div>
                     <div style={{ "font-size": "11px", color: "var(--text-secondary)", "margin-top": "2px" }}>
