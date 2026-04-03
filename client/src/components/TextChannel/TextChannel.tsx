@@ -3,8 +3,11 @@ import { channels } from "../../stores/channels";
 import { currentVoiceChannelId } from "../../stores/voice";
 import { leaveVoice } from "../../lib/webrtc";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
+import { send } from "../../lib/ws";
+import { setThreadPanelOpen, setThreadPanelTab } from "../../stores/messages";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
+import ThreadPanel from "./ThreadPanel";
 
 interface TextChannelProps {
   channelId: string;
@@ -78,27 +81,41 @@ export default function TextChannel(props: TextChannelProps) {
             {channel()?.name}
           </span>
         </div>
-        <Show when={isMobile() && currentVoiceChannelId()}>
+        <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+          <Show when={isMobile() && currentVoiceChannelId()}>
+            <button
+              onClick={() => leaveVoice()}
+              style={{
+                padding: "4px 10px",
+                "font-size": "11px",
+                border: "1px solid var(--danger)",
+                "background-color": "rgba(232,64,64,0.15)",
+                color: "var(--danger)",
+              }}
+            >
+              [disconnect]
+            </button>
+          </Show>
           <button
-            onClick={() => leaveVoice()}
-            style={{
-              padding: "4px 10px",
-              "font-size": "11px",
-              border: "1px solid var(--danger)",
-              "background-color": "rgba(232,64,64,0.15)",
-              color: "var(--danger)",
-            }}
+            onClick={() => { setThreadPanelTab("starred"); setThreadPanelOpen(true); }}
+            style={{ color: "var(--accent)", background: "none", border: "none", cursor: "pointer", "font-size": "12px" }}
           >
-            [disconnect]
+            [*]
           </button>
-        </Show>
+        </div>
       </div>
 
-      {/* Messages */}
-      <MessageList channelId={props.channelId} />
+      {/* Messages + Thread Panel */}
+      <div style={{ display: "flex", flex: "1", overflow: "hidden" }}>
+        <div style={{ flex: "1", display: "flex", "flex-direction": "column", overflow: "hidden" }}>
+          {/* Messages */}
+          <MessageList channelId={props.channelId} />
 
-      {/* Input */}
-      <MessageInput channelId={props.channelId} channelName={channel()?.name || ""} />
+          {/* Input */}
+          <MessageInput channelId={props.channelId} channelName={channel()?.name || ""} />
+        </div>
+        <ThreadPanel channelId={props.channelId} send={(op, data) => send(op, data)} />
+      </div>
     </div>
   );
 }

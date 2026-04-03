@@ -6,7 +6,9 @@ import { lookupUsername, onlineUsers, allUsers } from "../../stores/users";
 import { send } from "../../lib/ws";
 import { isMobile } from "../../stores/responsive";
 import { openLightbox } from "../../stores/lightbox";
+import { starMessage } from "../../lib/api";
 import ReactionBar from "./ReactionBar";
+import ThreadIndicator from "./ThreadIndicator";
 
 interface MessageProps {
   message: Message;
@@ -380,6 +382,14 @@ export default function MessageItem(props: MessageProps) {
         </div>
       </Show>
 
+      {/* Thread indicator */}
+      <Show when={props.message.thread_summary && props.message.thread_id === props.message.id}>
+        <ThreadIndicator
+          threadId={props.message.id}
+          summary={props.message.thread_summary!}
+        />
+      </Show>
+
       {/* Mobile inline actions */}
       <Show when={!props.message.deleted && isMobile() && showActions()}>
         <div
@@ -476,6 +486,23 @@ export default function MessageItem(props: MessageProps) {
             }}
           >
             [reply]
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              starMessage(props.message.id);
+            }}
+            title="Star"
+            style={{
+              color: "var(--accent)",
+              "background-color": "var(--accent-glow)",
+              border: "1px solid var(--accent)",
+              padding: "0px 4px",
+              "font-size": "11px",
+              cursor: "pointer",
+            }}
+          >
+            [*]
           </button>
           <button
             onClick={() =>
