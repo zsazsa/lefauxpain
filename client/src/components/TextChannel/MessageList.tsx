@@ -2,6 +2,8 @@ import { createEffect, createSignal, For, Index, onCleanup, onMount } from "soli
 import { getChannelMessages, setMessages, prependMessages, scrollToMessageId, setScrollToMessageId } from "../../stores/messages";
 import { getMessages, getMessagesAround } from "../../lib/api";
 import { mergeKnownUsers } from "../../stores/users";
+import { send } from "../../lib/ws";
+import { decrementUnread } from "../../stores/channels";
 import MessageItem from "./Message";
 
 function getDateKey(dateStr: string): string {
@@ -49,6 +51,7 @@ export default function MessageList(props: MessageListProps) {
   const [hasMore, setHasMore] = createSignal(true);
   const [initialLoad, setInitialLoad] = createSignal(true);
   const [highlightId, setHighlightId] = createSignal<string | null>(null);
+  const [nearBottom, setNearBottom] = createSignal(true);
 
   const messages = () => getChannelMessages(props.channelId);
 
@@ -155,6 +158,20 @@ export default function MessageList(props: MessageListProps) {
     }
   });
 
+  // Mark channel as read when near bottom and messages are loaded
+  createEffect(() => {
+    const msgs = messages();
+    const atBottom = nearBottom();
+    if (msgs.length > 0 && atBottom) {
+      const lastMsg = msgs[msgs.length - 1];
+      send("mark_read", {
+        channel_id: props.channelId,
+        message_id: lastMsg.id,
+      });
+      decrementUnread(props.channelId);
+    }
+  });
+
   // Re-scroll to bottom when container resizes (e.g. radio player appearing on mobile)
   onMount(() => {
     if (!containerRef) return;
@@ -180,7 +197,10 @@ export default function MessageList(props: MessageListProps) {
 
   // Infinite scroll up for history
   const handleScroll = () => {
-    if (!containerRef || loading() || !hasMore()) return;
+    if (!containerRef) return;
+    const { scrollTop, scrollHeight, clientHeight } = containerRef;
+    setNearBottom(scrollHeight - scrollTop - clientHeight < 200);
+    if (loading() || !hasMore()) return;
     if (containerRef.scrollTop < 100) {
       const msgs = messages();
       if (msgs.length > 0) {

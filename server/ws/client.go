@@ -239,6 +239,8 @@ func (c *Client) sendReady() error {
 	enabledFeatures := c.hub.applets.EnabledFeatures(c.hub)
 
 	// Build core ready data
+	unreadCounts, _ := c.hub.DB.GetUnreadCounts(c.UserID)
+
 	readyMap := map[string]any{
 		"user": &UserPayload{
 			ID:          c.User.ID,
@@ -254,6 +256,7 @@ func (c *Client) sendReady() error {
 		"notifications":    notifPayloads,
 		"screen_shares":    screenShares,
 		"server_time":      nowUnix(),
+		"unread_counts":    unreadCounts,
 		"enabled_features": enabledFeatures,
 	}
 	if deletedChannelPayloads != nil {

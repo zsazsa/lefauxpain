@@ -545,3 +545,77 @@ func (d *DB) GetAllChannelManagers() (map[string][]string, error) {
 func (d *DB) IsChannelManager(channelID, userID string) (bool, error) {
 	return d.IsChannelMember(channelID, userID)
 }
+
+// MarkChannelRead updates the last read message for a user in a channel.
+func (d *DB) MarkChannelRead(channelID, userID, messageID string) error {
+	_, err := d.Exec(
+		`INSERT INTO channel_read_state (channel_id, user_id, last_read_msg_id)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(channel_id, user_id) DO UPDATE SET last_read_msg_id = excluded.last_read_msg_id`,
+		channelID, userID, messageID,
+	)
+	if err != nil {
+		return fmt.Errorf("mark channel read: %w", err)
+	}
+	return nil
+}
+
+// UnreadCount holds the unread count for a channel.
+type UnreadCount struct {
+	ChannelID string `json:"channel_id"`
+	Count     int    `json:"count"`
+}
+
+// GetUnreadCounts returns unread message counts for all channels a user has access to.
+func (d *DB) GetUnreadCounts(userID string) (map[string]int, error) {
+	rows, err := d.Query(`
+		SELECT m.channel_id, COUNT(*) as unread
+		FROM messages m
+		LEFT JOIN channel_read_state rs ON rs.channel_id = m.channel_id AND rs.user_id = ?
+		WHERE m.deleted_at IS NULL
+		  AND m.channel_id IN (
+			SELECT id FROM channels WHERE deleted_at IS NULL
+		  )
+		  AND (m.thread_id IS NULL OR m.thread_id = m.id)
+		  AND (
+			rs.last_read_msg_id IS NULL
+			OR m.created_at > (SELECT created_at FROM messages WHERE id = rs.last_read_msg_id)
+		  )
+		GROUP BY m.channel_id
+		HAVING unread > 0
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get unread counts: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var channelID string
+		var count int
+		if err := rows.Scan(&channelID, &count); err != nil {
+			return nil, fmt.Errorf("scan unread count: %w", err)
+		}
+		counts[channelID] = count
+	}
+	return counts, nil
+}
+
+// GetLastReadMessageID returns the last read message ID for a user in a channel.
+func (d *DB) GetLastReadMessageID(channelID, userID string) (string, error) {
+	var msgID sql.NullString
+	err := d.QueryRow(
+		`SELECT last_read_msg_id FROM channel_read_state WHERE channel_id = ? AND user_id = ?`,
+		channelID, userID,
+	).Scan(&msgID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get last read: %w", err)
+	}
+	if msgID.Valid {
+		return msgID.String, nil
+	}
+	return "", nil
+}

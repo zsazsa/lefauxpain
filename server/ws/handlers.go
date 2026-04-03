@@ -1297,6 +1297,20 @@ func (h *Hub) handleSetFeature(c *Client, data json.RawMessage) {
 	h.BroadcastAll(broadcast)
 }
 
+func (h *Hub) handleMarkRead(c *Client, data json.RawMessage) {
+	var d struct {
+		ChannelID string `json:"channel_id"`
+		MessageID string `json:"message_id"`
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+	if d.ChannelID == "" || d.MessageID == "" {
+		return
+	}
+	h.DB.MarkChannelRead(d.ChannelID, c.UserID, d.MessageID)
+}
+
 // Radio, Media, and Strudel handlers have been moved to applet files:
 // - applet_radio.go
 // - applet_media.go

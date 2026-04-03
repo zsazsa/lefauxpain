@@ -9,6 +9,9 @@ import {
   setDeletedChannels,
   deletedChannels,
   channels,
+  selectedChannelId,
+  setUnreadCounts,
+  incrementUnread,
 } from "../stores/channels";
 import {
   addMessage,
@@ -188,6 +191,9 @@ export function initEventHandlers() {
         setNotificationList(msg.d.notifications || []);
         setScreenShares(msg.d.screen_shares || []);
         setDeletedChannels(msg.d.deleted_channels || []);
+        if (msg.d.unread_counts) {
+          setUnreadCounts(msg.d.unread_counts);
+        }
         // Enabled features (core)
         setEnabledFeatures(msg.d.enabled_features || []);
         // Dispatch to applet ready handlers
@@ -222,6 +228,9 @@ export function initEventHandlers() {
         } else {
           // Standalone message or thread root — add to main feed
           addMessage(newMsg);
+          if (msg.d.channel_id !== selectedChannelId()) {
+            incrementUnread(msg.d.channel_id);
+          }
         }
         break;
       }

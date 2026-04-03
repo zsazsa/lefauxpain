@@ -1,6 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import type { Channel } from "../../stores/channels";
-import { setChannelSettingsId } from "../../stores/channels";
+import { setChannelSettingsId, unreadCounts } from "../../stores/channels";
 
 interface ChannelItemProps {
   channel: Channel;
@@ -56,9 +56,34 @@ export default function ChannelItem(props: ChannelItemProps) {
         >
           {icon()}
         </span>
-        <span style={{ flex: "1", "min-width": "0", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
+        <span style={{
+          flex: "1",
+          "min-width": "0",
+          overflow: "hidden",
+          "text-overflow": "ellipsis",
+          "white-space": "nowrap",
+          "font-weight": unreadCounts()[props.channel.id] ? "600" : "normal",
+        }}>
           {props.channel.name}
         </span>
+        {(() => {
+          const count = unreadCounts()[props.channel.id];
+          return count ? (
+            <span style={{
+              "font-size": "10px",
+              "background-color": "var(--danger)",
+              color: "#fff",
+              padding: "0 5px",
+              "border-radius": "8px",
+              "min-width": "16px",
+              "text-align": "center",
+              "flex-shrink": "0",
+              "font-weight": "600",
+            }}>
+              {count > 99 ? "99+" : count}
+            </span>
+          ) : null;
+        })()}
         <Show when={props.canManage && hovered()}>
           <button
             onClick={(e) => {

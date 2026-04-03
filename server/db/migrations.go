@@ -317,6 +317,14 @@ var migrations = []string{
 
 	INSERT OR IGNORE INTO channel_members (channel_id, user_id, role)
 		SELECT channel_id, user_id, 'owner' FROM channel_managers;`,
+
+	// Version 24: Channel read state for unread tracking
+	`CREATE TABLE channel_read_state (
+		channel_id     TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+		user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		last_read_msg_id TEXT,
+		PRIMARY KEY (channel_id, user_id)
+	);`,
 }
 
 func (d *DB) migrate() error {

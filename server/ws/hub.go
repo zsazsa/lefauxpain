@@ -639,6 +639,8 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleWebRTCScreenAnswer(client, msg.Data)
 	case "webrtc_screen_ice":
 		h.handleWebRTCScreenICE(client, msg.Data)
+	case "mark_read":
+		h.handleMarkRead(client, msg.Data)
 	case "mark_notification_read":
 		h.handleMarkNotificationRead(client, msg.Data)
 	case "mark_all_notifications_read":

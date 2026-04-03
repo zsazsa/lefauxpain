@@ -17,6 +17,7 @@ const [selectedChannelId, _setSelectedChannelId] = createSignal<string | null>(
   localStorage.getItem("selectedChannelId")
 );
 const [deletedChannels, setDeletedChannels] = createSignal<Channel[]>([]);
+const [unreadCounts, setUnreadCounts] = createSignal<Record<string, number>>({});
 
 function setSelectedChannelId(id: string | null) {
   _setSelectedChannelId(id);
@@ -29,7 +30,7 @@ function setSelectedChannelId(id: string | null) {
 
 const [channelSettingsId, setChannelSettingsId] = createSignal<string | null>(null);
 
-export { channels, selectedChannelId, setSelectedChannelId, deletedChannels, setDeletedChannels, channelSettingsId, setChannelSettingsId };
+export { channels, selectedChannelId, setSelectedChannelId, deletedChannels, setDeletedChannels, channelSettingsId, setChannelSettingsId, unreadCounts, setUnreadCounts };
 
 export function setChannelList(chs: Channel[]) {
   setChannels(chs.sort((a, b) => a.position - b.position));
@@ -69,4 +70,19 @@ export function reorderChannelList(ids: string[]) {
 export function selectedChannel(): Channel | undefined {
   const id = selectedChannelId();
   return id ? channels().find((c) => c.id === id) : undefined;
+}
+
+export function decrementUnread(channelId: string) {
+  setUnreadCounts((prev) => {
+    const next = { ...prev };
+    delete next[channelId];
+    return next;
+  });
+}
+
+export function incrementUnread(channelId: string) {
+  setUnreadCounts((prev) => ({
+    ...prev,
+    [channelId]: (prev[channelId] || 0) + 1,
+  }));
 }
