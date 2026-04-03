@@ -36,6 +36,12 @@ export type Message = {
   author: { id: string; username: string; avatar_url?: string | null };
   content: string | null;
   reply_to: ReplyTo | null;
+  thread_id: string | null;
+  thread_summary?: {
+    reply_count: number;
+    last_reply_at: string;
+    last_reply_author: string;
+  } | null;
   attachments: Attachment[];
   reactions: ReactionGroup[];
   mentions: string[];
@@ -53,6 +59,48 @@ const [replyingTo, setReplyingTo] = createSignal<Message | null>(null);
 const [scrollToMessageId, setScrollToMessageId] = createSignal<string | null>(null);
 
 export { messagesByChannel, replyingTo, setReplyingTo, scrollToMessageId, setScrollToMessageId };
+
+const [threadPanelOpen, setThreadPanelOpen] = createSignal(false);
+const [activeThreadId, setActiveThreadId] = createSignal<string | null>(null);
+const [threadMessages, setThreadMessages] = createSignal<Message[]>([]);
+const [threadPanelTab, setThreadPanelTab] = createSignal<"thread" | "starred">("thread");
+
+export {
+  threadPanelOpen, setThreadPanelOpen,
+  activeThreadId, setActiveThreadId,
+  threadMessages, setThreadMessages,
+  threadPanelTab, setThreadPanelTab,
+};
+
+export function addThreadMessage(msg: Message) {
+  if (msg.thread_id === activeThreadId()) {
+    setThreadMessages((prev) => [...prev, msg]);
+  }
+}
+
+export function openThread(threadId: string) {
+  setActiveThreadId(threadId);
+  setThreadPanelTab("thread");
+  setThreadPanelOpen(true);
+}
+
+export function updateThreadSummary(channelId: string, threadId: string, authorUsername: string) {
+  const msgs = messagesByChannel()[channelId];
+  if (!msgs) return;
+  const idx = msgs.findIndex((m) => m.id === threadId);
+  if (idx === -1) return;
+  const msg = msgs[idx];
+  const current = msg.thread_summary;
+  const updated = {
+    ...msg,
+    thread_summary: {
+      reply_count: (current?.reply_count || 0) + 1,
+      last_reply_at: new Date().toISOString(),
+      last_reply_author: authorUsername,
+    },
+  };
+  setMessages(channelId, [...msgs.slice(0, idx), updated, ...msgs.slice(idx + 1)]);
+}
 
 export function setMessages(channelId: string, msgs: Message[]) {
   setMessagesByChannel((prev) => ({ ...prev, [channelId]: msgs }));

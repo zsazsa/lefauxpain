@@ -274,3 +274,21 @@ export function createWebhookKey(name: string): Promise<WebhookKeyCreated> {
 export function deleteWebhookKey(id: string) {
   return request(`/admin/webhook-keys/${id}`, { method: "DELETE" });
 }
+
+export function getThreadMessages(channelId: string, threadId: string, before?: string) {
+  const params = new URLSearchParams({ limit: "100" });
+  if (before) params.set("before", before);
+  return request(`/channels/${channelId}/threads/${threadId}/messages?${params}`);
+}
+
+export function starMessage(messageId: string) {
+  return request(`/stars/${messageId}`, { method: "POST" });
+}
+
+export function unstarMessage(messageId: string) {
+  return request(`/stars/${messageId}`, { method: "DELETE" });
+}
+
+export function getStarredMessages(): Promise<any[]> {
+  return request("/stars");
+}

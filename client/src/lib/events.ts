@@ -17,6 +17,8 @@ import {
   addReaction,
   removeReaction,
   setMessageUnfurls,
+  addThreadMessage,
+  updateThreadSummary,
 } from "../stores/messages";
 import {
   setOnlineUserList,
@@ -200,16 +202,29 @@ export function initEventHandlers() {
         }
         break;
 
-      case "message_create":
-        addMessage({
+      case "message_create": {
+        const newMsg = {
           ...msg.d,
           reactions: msg.d.reactions || [],
           mentions: msg.d.mentions || [],
           attachments: msg.d.attachments || [],
           edited_at: null,
-        });
+          thread_id: msg.d.thread_id || null,
+          thread_summary: null,
+        };
         mergeKnownUsers([msg.d.author]);
+
+        const threadId = msg.d.thread_id;
+        if (threadId && threadId !== msg.d.id) {
+          // Thread reply — don't add to main feed, route to thread panel
+          addThreadMessage(newMsg);
+          updateThreadSummary(msg.d.channel_id, threadId, msg.d.author.username);
+        } else {
+          // Standalone message or thread root — add to main feed
+          addMessage(newMsg);
+        }
         break;
+      }
 
       case "message_update":
         updateMessage(
