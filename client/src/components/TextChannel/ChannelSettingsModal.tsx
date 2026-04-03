@@ -10,7 +10,8 @@ import {
   approveAccessRequest,
   denyAccessRequest,
 } from "../../lib/api";
-import { channels } from "../../stores/channels";
+import { channels, setChannelSettingsId } from "../../stores/channels";
+import { send } from "../../lib/ws";
 import { allUsers } from "../../stores/users";
 
 interface ChannelSettingsModalProps {
@@ -28,6 +29,7 @@ export default function ChannelSettingsModal(props: ChannelSettingsModalProps) {
   const [addUsername, setAddUsername] = createSignal("");
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal("");
+  const [confirmDeleteValue, setConfirmDeleteValue] = createSignal("");
   const [activeSection, setActiveSection] = createSignal<"general" | "members" | "requests">("general");
 
   createEffect(() => {
@@ -300,6 +302,43 @@ export default function ChannelSettingsModal(props: ChannelSettingsModalProps) {
               >
                 {saving() ? "saving..." : "[save]"}
               </button>
+
+              {/* Danger Zone */}
+              <div style={{ "margin-top": "32px", "padding-top": "16px", "border-top": "1px solid var(--danger)" }}>
+                <div style={{ ...sectionHeaderStyle, color: "var(--danger)" }}>Danger Zone</div>
+                <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-bottom": "8px" }}>
+                  This will archive the channel. Type the channel name to confirm.
+                </div>
+                <div style={{ display: "flex", gap: "8px", "align-items": "center" }}>
+                  <input
+                    type="text"
+                    placeholder={channelName()}
+                    value={confirmDeleteValue()}
+                    onInput={(e) => setConfirmDeleteValue(e.currentTarget.value)}
+                    style={{ ...inputStyle, flex: "1", "border-color": "var(--danger)" }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (confirmDeleteValue() === channelName()) {
+                        send("delete_channel", { channel_id: props.channelId });
+                        setChannelSettingsId(null);
+                      }
+                    }}
+                    disabled={confirmDeleteValue() !== channelName()}
+                    style={{
+                      "font-size": "12px",
+                      padding: "6px 16px",
+                      border: "1px solid var(--danger)",
+                      "background-color": confirmDeleteValue() === channelName() ? "rgba(232,64,64,0.15)" : "transparent",
+                      color: confirmDeleteValue() === channelName() ? "var(--danger)" : "var(--text-muted)",
+                      cursor: confirmDeleteValue() === channelName() ? "pointer" : "not-allowed",
+                      opacity: confirmDeleteValue() === channelName() ? "1" : "0.5",
+                    }}
+                  >
+                    [delete channel]
+                  </button>
+                </div>
+              </div>
             </Show>
 
             {/* Members Section */}
