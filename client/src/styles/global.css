@@ -180,11 +180,16 @@ input {
   }
 }
 
-/* Message content wraps below timestamp/author for full width */
-.msg-line {
+/* Message content stays inline, wraps naturally */
+.msg-content {
+  min-width: 0;
+  word-break: break-word;
+}
+/* Thread panel — stack content below timestamp for full width */
+.thread-compact .msg-line {
   flex-wrap: wrap !important;
 }
-.msg-content {
+.thread-compact .msg-content {
   flex-basis: 100% !important;
   padding-left: 2px;
   margin-top: 2px;
