@@ -24,6 +24,7 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	authMW := &AuthMiddleware{DB: database}
 	channelHandler := &ChannelHandler{DB: database}
 	messageHandler := &MessageHandler{DB: database}
+	starsHandler := &StarsHandler{DB: database}
 	uploadHandler := &UploadHandler{DB: database, Store: store, MaxSize: cfg.MaxUploadSize}
 	uploadRL := NewIPRateLimiter(3, 30*time.Second)
 
@@ -54,9 +55,14 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	mux.HandleFunc("/api/v1/channels", authMW.Wrap(channelHandler.List))
 
 	// Message history (authenticated) — matches /api/v1/channels/{id}/messages
+	// Also handles /api/v1/channels/{id}/threads/{threadID}/messages
 	mux.HandleFunc("/api/v1/channels/", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/messages") {
-			messageHandler.GetHistory(w, r)
+			if strings.Contains(r.URL.Path, "/threads/") {
+				messageHandler.GetThreadHistory(w, r)
+			} else {
+				messageHandler.GetHistory(w, r)
+			}
 			return
 		}
 		http.NotFound(w, r)
@@ -107,6 +113,19 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 
 	// Webhook routes (API key auth, no bearer token needed)
 	mux.HandleFunc("/api/v1/webhooks/incoming", webhookRL.Wrap(webhookHandler.Incoming))
+
+	// Stars (authenticated)
+	mux.HandleFunc("/api/v1/stars", authMW.Wrap(starsHandler.List))
+	mux.HandleFunc("/api/v1/stars/", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			starsHandler.Star(w, r)
+		case http.MethodDelete:
+			starsHandler.Unstar(w, r)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+	}))
 
 	// Admin webhook key management (authenticated)
 	mux.HandleFunc("/api/v1/admin/webhook-keys", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {

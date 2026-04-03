@@ -19,19 +19,27 @@ type unfurlPayload struct {
 	Description *string `json:"description"`
 }
 
+type threadSummaryPayload struct {
+	ReplyCount      int    `json:"reply_count"`
+	LastReplyAt     string `json:"last_reply_at"`
+	LastReplyAuthor string `json:"last_reply_author"`
+}
+
 type messageResponse struct {
-	ID          string              `json:"id"`
-	ChannelID   string              `json:"channel_id"`
-	Author      authorPayload       `json:"author"`
-	Content     *string             `json:"content"`
-	ReplyTo     *replyPayload       `json:"reply_to"`
-	Attachments []attachPayload     `json:"attachments"`
-	Reactions   []db.ReactionGroup  `json:"reactions"`
-	Mentions    []string            `json:"mentions"`
-	Unfurls     []unfurlPayload     `json:"unfurls"`
-	CreatedAt   string              `json:"created_at"`
-	EditedAt    *string             `json:"edited_at"`
-	Deleted     bool                `json:"deleted"`
+	ID            string                 `json:"id"`
+	ChannelID     string                 `json:"channel_id"`
+	Author        authorPayload          `json:"author"`
+	Content       *string                `json:"content"`
+	ReplyTo       *replyPayload          `json:"reply_to"`
+	Attachments   []attachPayload        `json:"attachments"`
+	Reactions     []db.ReactionGroup     `json:"reactions"`
+	Mentions      []string               `json:"mentions"`
+	Unfurls       []unfurlPayload        `json:"unfurls"`
+	ThreadID      *string                `json:"thread_id"`
+	ThreadSummary *threadSummaryPayload  `json:"thread_summary,omitempty"`
+	CreatedAt     string                 `json:"created_at"`
+	EditedAt      *string                `json:"edited_at"`
+	Deleted       bool                   `json:"deleted"`
 }
 
 type authorPayload struct {
@@ -91,6 +99,16 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			msgIDs[i] = m.ID
 		}
 		unfurlsMap, _ := h.DB.GetUnfurlsByMessageIDs(msgIDs)
+
+		// Collect thread IDs for batch summary fetch
+		var threadIDs []string
+		for _, m := range messages {
+			if m.ThreadID != nil {
+				threadIDs = append(threadIDs, *m.ThreadID)
+			}
+		}
+		threadSummaries, _ := h.DB.GetThreadSummaries(threadIDs)
+
 		result := make([]messageResponse, len(messages))
 		for i, m := range messages {
 			deleted := m.DeletedAt != nil
@@ -151,14 +169,27 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			if m.AuthorID != nil {
 				authorID = *m.AuthorID
 			}
+
+			var tSummary *threadSummaryPayload
+			if m.ThreadID != nil {
+				if ts, ok := threadSummaries[*m.ThreadID]; ok {
+					tSummary = &threadSummaryPayload{
+						ReplyCount:      ts.ReplyCount,
+						LastReplyAt:     ts.LastReplyAt,
+						LastReplyAuthor: ts.LastReplyAuthor,
+					}
+				}
+			}
+
 			result[i] = messageResponse{
 				ID: m.ID, ChannelID: m.ChannelID,
-				Author:      authorPayload{ID: authorID, Username: m.AuthorUsername, AvatarURL: m.AuthorAvatarURL},
-				Content:     m.Content, ReplyTo: reply,
-				Attachments: attachPayloads, Reactions: reactions,
-				Mentions: mentions, Unfurls: msgUnfurls,
-				CreatedAt: m.CreatedAt, EditedAt: m.EditedAt,
-				Deleted: deleted,
+				Author:        authorPayload{ID: authorID, Username: m.AuthorUsername, AvatarURL: m.AuthorAvatarURL},
+				Content:       m.Content, ReplyTo: reply,
+				Attachments:   attachPayloads, Reactions: reactions,
+				Mentions:      mentions, Unfurls: msgUnfurls,
+				ThreadID:      m.ThreadID, ThreadSummary: tSummary,
+				CreatedAt:     m.CreatedAt, EditedAt: m.EditedAt,
+				Deleted:       deleted,
 			}
 		}
 		writeJSON(w, http.StatusOK, result)
@@ -182,6 +213,15 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		msgIDs[i] = m.ID
 	}
 	unfurlsMap, _ := h.DB.GetUnfurlsByMessageIDs(msgIDs)
+
+	// Collect thread IDs for batch summary fetch
+	var threadIDs []string
+	for _, m := range messages {
+		if m.ThreadID != nil {
+			threadIDs = append(threadIDs, *m.ThreadID)
+		}
+	}
+	threadSummaries, _ := h.DB.GetThreadSummaries(threadIDs)
 
 	result := make([]messageResponse, len(messages))
 	for i, m := range messages {
@@ -259,6 +299,18 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		if m.AuthorID != nil {
 			authorID = *m.AuthorID
 		}
+
+		var tSummary *threadSummaryPayload
+		if m.ThreadID != nil {
+			if ts, ok := threadSummaries[*m.ThreadID]; ok {
+				tSummary = &threadSummaryPayload{
+					ReplyCount:      ts.ReplyCount,
+					LastReplyAt:     ts.LastReplyAt,
+					LastReplyAuthor: ts.LastReplyAuthor,
+				}
+			}
+		}
+
 		result[i] = messageResponse{
 			ID:        m.ID,
 			ChannelID: m.ChannelID,
@@ -267,19 +319,97 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 				Username:  m.AuthorUsername,
 				AvatarURL: m.AuthorAvatarURL,
 			},
-			Content:     m.Content,
-			ReplyTo:     reply,
-			Attachments: attachPayloads,
-			Reactions:   reactions,
-			Mentions:    mentions,
-			Unfurls:     msgUnfurls,
-			CreatedAt:   m.CreatedAt,
-			EditedAt:    m.EditedAt,
-			Deleted:     deleted,
+			Content:       m.Content,
+			ReplyTo:       reply,
+			Attachments:   attachPayloads,
+			Reactions:     reactions,
+			Mentions:      mentions,
+			Unfurls:       msgUnfurls,
+			ThreadID:      m.ThreadID,
+			ThreadSummary: tSummary,
+			CreatedAt:     m.CreatedAt,
+			EditedAt:      m.EditedAt,
+			Deleted:       deleted,
 		}
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *MessageHandler) GetThreadHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 8 {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	threadID := parts[6]
+
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	before := r.URL.Query().Get("before")
+
+	msgs, err := h.DB.GetThreadMessages(threadID, limit, before)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Build response — same pattern as GetHistory but simpler
+	var response []messageResponse
+	for _, m := range msgs {
+		authorID := ""
+		if m.AuthorID != nil {
+			authorID = *m.AuthorID
+		}
+		author, _ := h.DB.GetUserByID(authorID)
+		authorP := authorPayload{ID: authorID}
+		if author != nil {
+			authorP.Username = author.Username
+			authorP.AvatarURL = author.AvatarURL
+		}
+
+		var reply *replyPayload
+		if m.ReplyToID != nil {
+			rc, _ := h.DB.GetReplyContext(*m.ReplyToID)
+			if rc != nil {
+				rcAuthorID := ""
+				if rc.AuthorID != nil {
+					rcAuthorID = *rc.AuthorID
+				}
+				reply = &replyPayload{
+					ID:      rc.ID,
+					Author:  authorPayload{ID: rcAuthorID, Username: rc.AuthorUsername},
+					Content: rc.Content,
+					Deleted: rc.DeletedAt != nil,
+				}
+			}
+		}
+
+		resp := messageResponse{
+			ID:        m.ID,
+			Author:    authorP,
+			Content:   m.Content,
+			ReplyTo:   reply,
+			ThreadID:  m.ThreadID,
+			CreatedAt: m.CreatedAt,
+			EditedAt:  m.EditedAt,
+		}
+		response = append(response, resp)
+	}
+
+	if response == nil {
+		response = []messageResponse{}
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func buildUnfurlPayloads(unfurls []db.URLUnfurl) []unfurlPayload {
