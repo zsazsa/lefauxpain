@@ -278,7 +278,7 @@ export function initEventHandlers() {
       }
 
       case "channel_update":
-        updateChannel(msg.d.id, msg.d.name, msg.d.manager_ids || []);
+        updateChannel({ ...msg.d, manager_ids: msg.d.manager_ids || [] });
         break;
 
       case "channel_reorder":
@@ -361,6 +361,31 @@ export function initEventHandlers() {
       case "feature_toggled":
         toggleFeature(msg.d.feature, msg.d.enabled);
         break;
+
+      case "channel_member_added": {
+        // Re-fetch channels to get updated membership info
+        // The simplest approach: the ready event already sends full channel list
+        // For now, add the channel to our list if we don't have it
+        const channelData = msg.d;
+        if (channelData && channelData.channel) {
+          addChannel(channelData.channel);
+        }
+        break;
+      }
+
+      case "channel_member_removed": {
+        const channelData = msg.d;
+        if (channelData && channelData.channel_id) {
+          // Update channel to show as non-member, or remove if invisible
+          const ch = channels().find(c => c.id === channelData.channel_id);
+          if (ch && ch.visibility === "invisible") {
+            removeChannel(channelData.channel_id);
+          } else if (ch) {
+            updateChannel({ ...ch, is_member: false, role: null });
+          }
+        }
+        break;
+      }
 
       default:
         // Dispatch to applet event handlers

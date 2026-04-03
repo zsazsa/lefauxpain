@@ -296,3 +296,39 @@ export function unstarMessage(messageId: string) {
 export function getStarredMessages(): Promise<any[]> {
   return request("/stars");
 }
+
+export function updateChannelSettings(channelId: string, data: { name?: string; description?: string; visibility?: string }) {
+  return request(`/channels/${channelId}/settings`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export function getChannelMembers(channelId: string): Promise<any[]> {
+  return request(`/channels/${channelId}/members`);
+}
+
+export function addChannelMember(channelId: string, userId: string, role: string = "member") {
+  return request(`/channels/${channelId}/members`, { method: "POST", body: JSON.stringify({ user_id: userId, role }) });
+}
+
+export function removeChannelMember(channelId: string, userId: string) {
+  return request(`/channels/${channelId}/members/${userId}`, { method: "DELETE" });
+}
+
+export function updateMemberRole(channelId: string, userId: string, role: string) {
+  return request(`/channels/${channelId}/members/${userId}`, { method: "PATCH", body: JSON.stringify({ role }) });
+}
+
+export function requestChannelAccess(channelId: string) {
+  return request(`/channels/${channelId}/request-access`, { method: "POST" });
+}
+
+export function getAccessRequests(channelId: string): Promise<any[]> {
+  return request(`/channels/${channelId}/access-requests`);
+}
+
+export function approveAccessRequest(channelId: string, requestId: string) {
+  return request(`/channels/${channelId}/access-requests/${requestId}/approve`, { method: "POST" });
+}
+
+export function denyAccessRequest(channelId: string, requestId: string) {
+  return request(`/channels/${channelId}/access-requests/${requestId}/deny`, { method: "POST" });
+}

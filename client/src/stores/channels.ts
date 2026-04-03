@@ -5,6 +5,10 @@ export type Channel = {
   name: string;
   type: "voice" | "text";
   position: number;
+  visibility: "public" | "visible" | "invisible";
+  description: string | null;
+  is_member: boolean;
+  role: string | null;
   manager_ids: string[];
 };
 
@@ -42,9 +46,9 @@ export function removeChannel(id: string) {
   }
 }
 
-export function updateChannel(id: string, name: string, managerIds: string[]) {
+export function updateChannel(ch: Channel) {
   setChannels((prev) =>
-    prev.map((c) => (c.id === id ? { ...c, name, manager_ids: managerIds } : c))
+    prev.map((c) => (c.id === ch.id ? { ...c, ...ch } : c))
   );
 }
 
