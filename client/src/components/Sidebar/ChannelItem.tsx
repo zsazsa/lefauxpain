@@ -10,7 +10,8 @@ interface ChannelItemProps {
 }
 
 export default function ChannelItem(props: ChannelItemProps) {
-  const icon = () => (props.channel.type === "voice" ? "\u23E3" : "#");
+  const isRestricted = () => props.channel.visibility !== "public" && !props.channel.is_member;
+  const icon = () => isRestricted() ? "\uD83D\uDD12" : (props.channel.type === "voice" ? "\u23E3" : "#");
   const [menuOpen, setMenuOpen] = createSignal(false);
   const [hovered, setHovered] = createSignal(false);
 
@@ -33,7 +34,8 @@ export default function ChannelItem(props: ChannelItemProps) {
           "background-color": props.selected
             ? "var(--accent-glow)"
             : "transparent",
-          color: props.selected ? "var(--text-primary)" : "var(--text-secondary)",
+          color: isRestricted() ? "var(--text-muted)" : props.selected ? "var(--text-primary)" : "var(--text-secondary)",
+          opacity: isRestricted() ? "0.7" : "1",
           "font-size": "13px",
         }}
         onMouseOver={(e) => {
@@ -50,7 +52,7 @@ export default function ChannelItem(props: ChannelItemProps) {
             "font-size": props.channel.type === "text" ? "16px" : "14px",
             "min-width": "16px",
             "text-align": "center",
-            color: props.channel.type === "voice" ? "var(--success)" : "var(--accent)",
+            color: isRestricted() ? "var(--text-muted)" : props.channel.type === "voice" ? "var(--success)" : "var(--accent)",
           }}
         >
           {icon()}

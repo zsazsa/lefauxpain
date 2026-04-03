@@ -33,6 +33,20 @@ interface SidebarProps {
 export default function Sidebar(props: SidebarProps) {
   const voiceChannels = () => channels().filter((c) => c.type === "voice");
   const textChannels = () => channels().filter((c) => c.type === "text");
+  const visibleVoiceChannels = () => {
+    const user = currentUser();
+    return voiceChannels().filter(ch => {
+      if (ch.visibility === "invisible" && !ch.is_member && !user?.is_admin) return false;
+      return true;
+    });
+  };
+  const visibleTextChannels = () => {
+    const user = currentUser();
+    return textChannels().filter(ch => {
+      if (ch.visibility === "invisible" && !ch.is_member && !user?.is_admin) return false;
+      return true;
+    });
+  };
   const canManage = (ch: { manager_ids: string[] }) => {
     const user = currentUser();
     if (!user) return false;
@@ -161,7 +175,7 @@ export default function Sidebar(props: SidebarProps) {
 
       {/* Channel list */}
       <div style={{ flex: "1", overflow: "auto", padding: "8px 0" }}>
-        <Show when={voiceChannels().length > 0}>
+        <Show when={visibleVoiceChannels().length > 0}>
           <div
             style={{
               padding: "8px 16px 4px",
@@ -175,7 +189,7 @@ export default function Sidebar(props: SidebarProps) {
           >
             {t("voiceChannels")}
           </div>
-          <For each={voiceChannels()}>
+          <For each={visibleVoiceChannels()}>
             {(ch) => (
               <>
                 <ChannelItem
@@ -245,7 +259,7 @@ export default function Sidebar(props: SidebarProps) {
           </For>
         </Show>
 
-        <Show when={textChannels().length > 0}>
+        <Show when={visibleTextChannels().length > 0}>
           <div
             style={{
               padding: "8px 16px 4px",
@@ -260,7 +274,7 @@ export default function Sidebar(props: SidebarProps) {
           >
             {t("textChannels")}
           </div>
-          <For each={textChannels()}>
+          <For each={visibleTextChannels()}>
             {(ch) => (
               <ChannelItem
                 channel={ch}
