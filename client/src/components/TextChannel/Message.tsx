@@ -1,6 +1,6 @@
 import { Show, For, createSignal } from "solid-js";
 import type { Message, Unfurl } from "../../stores/messages";
-import { setReplyingTo } from "../../stores/messages";
+import { setReplyingTo, openThread } from "../../stores/messages";
 import { currentUser } from "../../stores/auth";
 import { lookupUsername, onlineUsers, allUsers } from "../../stores/users";
 import { send } from "../../lib/ws";
@@ -401,7 +401,7 @@ export default function MessageItem(props: MessageProps) {
           }}
         >
           <button
-            onClick={(e) => handleActionClick(e, () => setReplyingTo(props.message))}
+            onClick={(e) => handleActionClick(e, () => openThread(props.message.id))}
             style={{
               padding: "3px 8px",
               "font-size": "11px",
@@ -477,8 +477,15 @@ export default function MessageItem(props: MessageProps) {
           }}
         >
           <button
-            onClick={() => setReplyingTo(props.message)}
-            title="Reply"
+            onClick={() => {
+              // If this message is already a thread root, open the existing thread
+              // Otherwise, open a new thread with this message as root
+              const threadId = props.message.thread_id === props.message.id
+                ? props.message.id
+                : props.message.id;
+              openThread(threadId);
+            }}
+            title="Reply in thread"
             style={{
               padding: "2px 6px",
               "font-size": "11px",
