@@ -204,7 +204,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                       "padding-bottom": "8px",
                       "margin-bottom": "8px",
                     }}>
-                      <MessageItem message={rootMsg()} highlighted={false} />
+                      <MessageItem message={rootMsg()} highlighted={false} inThread={true} />
                       <button
                         onClick={() => toggleStar(rootMsg().id)}
                         style={{
@@ -233,7 +233,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
             </Show>
             <div class="thread-compact">
               <For each={threadMessages().filter((m) => m.id !== activeThreadId())}>
-                {(msg) => <MessageItem message={msg} highlighted={false} />}
+                {(msg) => <MessageItem message={msg} highlighted={false} inThread={true} />}
               </For>
             </div>
             <div ref={messagesEndRef} />

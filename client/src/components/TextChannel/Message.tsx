@@ -13,6 +13,7 @@ import ThreadIndicator from "./ThreadIndicator";
 interface MessageProps {
   message: Message;
   highlighted?: boolean;
+  inThread?: boolean;
 }
 
 function formatTime(dateStr: string): string {
@@ -400,30 +401,32 @@ export default function MessageItem(props: MessageProps) {
             "padding-left": "7ch",
           }}
         >
-          <button
-            onClick={(e) => handleActionClick(e, () => setReplyingTo(props.message))}
-            style={{
-              padding: "3px 8px",
-              "font-size": "11px",
-              color: "var(--text-secondary)",
-              border: "1px solid var(--border-gold)",
-              "background-color": "var(--bg-secondary)",
-            }}
-          >
-            [reply]
-          </button>
-          <button
-            onClick={(e) => handleActionClick(e, () => openThread(props.message.id))}
-            style={{
-              padding: "3px 8px",
-              "font-size": "11px",
-              color: "var(--text-secondary)",
-              border: "1px solid var(--border-gold)",
-              "background-color": "var(--bg-secondary)",
-            }}
-          >
-            [thread]
-          </button>
+          <Show when={!props.inThread}>
+            <button
+              onClick={(e) => handleActionClick(e, () => setReplyingTo(props.message))}
+              style={{
+                padding: "3px 8px",
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--border-gold)",
+                "background-color": "var(--bg-secondary)",
+              }}
+            >
+              [reply]
+            </button>
+            <button
+              onClick={(e) => handleActionClick(e, () => openThread(props.message.id))}
+              style={{
+                padding: "3px 8px",
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--border-gold)",
+                "background-color": "var(--bg-secondary)",
+              }}
+            >
+              [thread]
+            </button>
+          </Show>
           <button
             onClick={(e) =>
               handleActionClick(e, () =>
@@ -488,28 +491,30 @@ export default function MessageItem(props: MessageProps) {
             "z-index": "5",
           }}
         >
-          <button
-            onClick={() => setReplyingTo(props.message)}
-            title="Reply"
-            style={{
-              padding: "2px 6px",
-              "font-size": "11px",
-              color: "var(--text-secondary)",
-            }}
-          >
-            [reply]
-          </button>
-          <button
-            onClick={() => openThread(props.message.id)}
-            title="Reply in thread"
-            style={{
-              padding: "2px 6px",
-              "font-size": "11px",
-              color: "var(--text-secondary)",
-            }}
-          >
-            [thread]
-          </button>
+          <Show when={!props.inThread}>
+            <button
+              onClick={() => setReplyingTo(props.message)}
+              title="Reply"
+              style={{
+                padding: "2px 6px",
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+              }}
+            >
+              [reply]
+            </button>
+            <button
+              onClick={() => openThread(props.message.id)}
+              title="Reply in thread"
+              style={{
+                padding: "2px 6px",
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+              }}
+            >
+              [thread]
+            </button>
+          </Show>
           <button
             onClick={(e) => {
               e.stopPropagation();
