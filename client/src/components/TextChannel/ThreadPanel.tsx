@@ -649,8 +649,14 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 </button>
                 <button
                   onClick={() => {
-                    setDocPath(currentFolder() === "/" ? "/" : currentFolder() + "/");
-                    setNewDocMode(true);
+                    const name = prompt("Document name (e.g. notes.md):");
+                    if (name && name.trim()) {
+                      const fileName = name.trim().endsWith(".md") ? name.trim() : name.trim() + ".md";
+                      const prefix = currentFolder() === "/" ? "/" : currentFolder() + "/";
+                      setDocPath(prefix + fileName);
+                      setDocContent("");
+                      setNewDocMode(true);
+                    }
                   }}
                   style={{
                     "font-size": "11px",
