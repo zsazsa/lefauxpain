@@ -694,22 +694,53 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                   <>
                     {/* Subfolders */}
                     <For each={[...folders].sort()}>
-                      {(folder) => (
-                        <div
-                          onClick={() => setCurrentFolder(prefix + folder)}
-                          style={{
-                            padding: "5px 0",
-                            "border-bottom": "1px solid rgba(201,168,76,0.05)",
-                            cursor: "pointer",
-                            display: "flex",
-                            "align-items": "center",
-                            gap: "6px",
-                          }}
-                        >
-                          <span style={{ color: "var(--accent)", "font-size": "12px" }}>{"\uD83D\uDCC1"}</span>
-                          <span style={{ "font-size": "12px", color: "var(--text-primary)" }}>{folder}/</span>
-                        </div>
-                      )}
+                      {(folder) => {
+                        const folderPrefix = prefix + folder + "/";
+                        const folderItems = items.filter((d: any) =>
+                          d.path.startsWith(folderPrefix) && d.path !== folderPrefix + ".folder"
+                        );
+                        const isEmpty = folderItems.length === 0;
+                        return (
+                          <div
+                            style={{
+                              padding: "5px 0",
+                              "border-bottom": "1px solid rgba(201,168,76,0.05)",
+                              display: "flex",
+                              "align-items": "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <div
+                              onClick={() => setCurrentFolder(prefix + folder)}
+                              style={{ flex: "1", display: "flex", "align-items": "center", gap: "6px", cursor: "pointer" }}
+                            >
+                              <span style={{ color: "var(--accent)", "font-size": "12px" }}>{"\uD83D\uDCC1"}</span>
+                              <span style={{ "font-size": "12px", color: "var(--text-primary)" }}>{folder}/</span>
+                            </div>
+                            <Show when={isEmpty}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteDoc(props.channelId, folderPrefix + ".folder").then(() => {
+                                    listDocs(props.channelId).then(setDocsList);
+                                  }).catch(() => {});
+                                }}
+                                style={{
+                                  "font-size": "10px",
+                                  color: "var(--danger)",
+                                  border: "1px solid var(--danger)",
+                                  background: "none",
+                                  padding: "1px 4px",
+                                  cursor: "pointer",
+                                  "flex-shrink": "0",
+                                }}
+                              >
+                                [x]
+                              </button>
+                            </Show>
+                          </div>
+                        );
+                      }}
                     </For>
 
                     {/* Files */}
