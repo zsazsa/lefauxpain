@@ -279,6 +279,18 @@ var migrations = []string{
 		name TEXT NOT NULL,
 		created_at DATETIME DEFAULT (datetime('now'))
 	);`,
+
+	// Version 22: Threaded conversations + starred messages
+	`ALTER TABLE messages ADD COLUMN thread_id TEXT REFERENCES messages(id) ON DELETE SET NULL;
+	CREATE INDEX idx_messages_thread ON messages(thread_id, created_at ASC);
+
+	CREATE TABLE starred_messages (
+		user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+		created_at DATETIME DEFAULT (datetime('now')),
+		PRIMARY KEY (user_id, message_id)
+	);
+	CREATE INDEX idx_starred_user ON starred_messages(user_id, created_at DESC);`,
 }
 
 func (d *DB) migrate() error {
