@@ -29,6 +29,35 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   const [loading, setLoading] = createSignal(false);
   const [alsoSendToChannel, setAlsoSendToChannel] = createSignal(false);
   const [starredIds, setStarredIds] = createSignal<Set<string>>(new Set());
+  const [panelWidth, setPanelWidth] = createSignal(400);
+  let resizing = false;
+
+  const handleResizeStart = (e: MouseEvent) => {
+    e.preventDefault();
+    resizing = true;
+    const startX = e.clientX;
+    const startWidth = panelWidth();
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizing) return;
+      const delta = startX - e.clientX;
+      const newWidth = Math.max(280, Math.min(800, startWidth + delta));
+      setPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      resizing = false;
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
   let messagesEndRef: HTMLDivElement | undefined;
 
   createEffect(() => {
@@ -116,14 +145,31 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   return (
     <Show when={threadPanelOpen()}>
       <div style={{
-        width: "400px",
-        "min-width": "400px",
+        width: `${panelWidth()}px`,
+        "min-width": `${panelWidth()}px`,
         height: "100%",
-        "border-left": "1px solid var(--border-gold)",
         "background-color": "var(--bg-secondary)",
         display: "flex",
         "flex-direction": "column",
+        position: "relative",
       }}>
+        {/* Resize handle */}
+        <div
+          onMouseDown={handleResizeStart}
+          style={{
+            position: "absolute",
+            left: "0",
+            top: "0",
+            bottom: "0",
+            width: "4px",
+            cursor: "col-resize",
+            "background-color": "transparent",
+            "border-left": "1px solid var(--border-gold)",
+            "z-index": "10",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "var(--accent)"; }}
+          onMouseLeave={(e) => { if (!resizing) e.currentTarget.style.backgroundColor = "transparent"; }}
+        />
         {/* Header */}
         <div style={{
           display: "flex",
