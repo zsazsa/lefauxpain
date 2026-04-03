@@ -63,7 +63,19 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   const [docSaving, setDocSaving] = createSignal(false);
   const [newDocMode, setNewDocMode] = createSignal(false);
   const [currentFolder, setCurrentFolder] = createSignal("/");
-  const [docEditMode, setDocEditMode] = createSignal(false);
+  const [docEditMode, setDocEditMode] = createSignal(localStorage.getItem("docEditMode") === "true");
+
+  // Restore active doc on mount if panel was showing a doc
+  const savedDocPath = localStorage.getItem("activeDocPath");
+  if (savedDocPath && threadPanelTab() === "docs") {
+    getDoc(props.channelId, savedDocPath).then((doc) => {
+      if (doc) {
+        setActiveDoc(doc);
+        setDocContent(doc.content);
+        setDocPath(doc.path);
+      }
+    }).catch(() => {});
+  }
   const [pastedText, setPastedText] = createSignal<string | null>(null);
   const PASTE_THRESHOLD = 500;
   let resizing = false;
@@ -195,6 +207,8 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
       setDocPath(doc.path);
       setNewDocMode(false);
       setDocEditMode(false);
+      localStorage.setItem("activeDocPath", path);
+      localStorage.setItem("docEditMode", "false");
     } catch (e) {}
   };
 
@@ -239,6 +253,8 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   const handleBackToList = () => {
     setActiveDoc(null);
     setNewDocMode(false);
+    localStorage.removeItem("activeDocPath");
+    localStorage.removeItem("docEditMode");
   };
 
   const toggleStar = async (messageId: string) => {
@@ -875,7 +891,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                     {docPath()}
                   </span>
                   <button
-                    onClick={() => setDocEditMode(!docEditMode())}
+                    onClick={() => { const next = !docEditMode(); setDocEditMode(next); localStorage.setItem("docEditMode", String(next)); }}
                     style={{
                       "font-size": "11px",
                       color: docEditMode() ? "var(--accent)" : "var(--text-muted)",

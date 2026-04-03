@@ -60,10 +60,26 @@ const [scrollToMessageId, setScrollToMessageId] = createSignal<string | null>(nu
 
 export { messagesByChannel, replyingTo, setReplyingTo, scrollToMessageId, setScrollToMessageId };
 
-const [threadPanelOpen, setThreadPanelOpen] = createSignal(false);
-const [activeThreadId, setActiveThreadId] = createSignal<string | null>(null);
+const [threadPanelOpen, _setThreadPanelOpen] = createSignal(localStorage.getItem("panelOpen") === "true");
+const [activeThreadId, _setActiveThreadId] = createSignal<string | null>(localStorage.getItem("activeThreadId"));
 const [threadMessages, setThreadMessages] = createSignal<Message[]>([]);
-const [threadPanelTab, setThreadPanelTab] = createSignal<"thread" | "threads" | "starred" | "docs">("thread");
+const [threadPanelTab, _setThreadPanelTab] = createSignal<"thread" | "threads" | "starred" | "docs">(
+  (localStorage.getItem("panelTab") as any) || "thread"
+);
+
+function setThreadPanelOpen(v: boolean) {
+  _setThreadPanelOpen(v);
+  localStorage.setItem("panelOpen", String(v));
+}
+function setActiveThreadId(v: string | null) {
+  _setActiveThreadId(v);
+  if (v) localStorage.setItem("activeThreadId", v);
+  else localStorage.removeItem("activeThreadId");
+}
+function setThreadPanelTab(v: "thread" | "threads" | "starred" | "docs") {
+  _setThreadPanelTab(v);
+  localStorage.setItem("panelTab", v);
+}
 
 export {
   threadPanelOpen, setThreadPanelOpen,
