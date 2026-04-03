@@ -19,6 +19,7 @@ type SendMessageData struct {
 	Content       *string  `json:"content"`
 	ReplyToID     *string  `json:"reply_to_id"`
 	AttachmentIDs []string `json:"attachment_ids"`
+	ThreadID      *string  `json:"thread_id"`
 }
 
 type EditMessageData struct {
@@ -62,6 +63,7 @@ type MessageCreatePayload struct {
 	ReplyTo     *ReplyToPayload         `json:"reply_to"`
 	Attachments []AttachmentPayload     `json:"attachments"`
 	Mentions    []string                `json:"mentions"`
+	ThreadID    *string                 `json:"thread_id"`
 	CreatedAt   string                  `json:"created_at"`
 }
 
@@ -171,6 +173,29 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 	if len(d.AttachmentIDs) > 0 {
 		if err := h.DB.LinkAttachmentsToMessage(msgID, d.AttachmentIDs); err != nil {
 			log.Printf("link attachments: %v", err)
+		}
+	}
+
+	// Thread logic: determine thread_id for this message
+	var threadID *string
+	if d.ThreadID != nil {
+		// Explicit thread_id from client (replying within thread panel)
+		threadID = d.ThreadID
+		h.DB.SetThreadID(msgID, *d.ThreadID)
+	} else if d.ReplyToID != nil {
+		// Replying from main feed — create or join a thread
+		parent, _ := h.DB.GetMessageByID(*d.ReplyToID)
+		if parent != nil {
+			if parent.ThreadID != nil {
+				// Parent is already in a thread — join it
+				threadID = parent.ThreadID
+			} else {
+				// Parent has no thread — make it a thread root
+				h.DB.SetThreadID(parent.ID, parent.ID)
+				tid := parent.ID
+				threadID = &tid
+			}
+			h.DB.SetThreadID(msgID, *threadID)
 		}
 	}
 
@@ -291,6 +316,7 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		ReplyTo:     replyTo,
 		Attachments: attachPayloads,
 		Mentions:    mentionIDs,
+		ThreadID:    threadID,
 		CreatedAt:   msg.CreatedAt,
 	})
 	h.BroadcastAll(broadcast)
@@ -300,6 +326,61 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		urls := unfurl.ExtractURLs(*d.Content)
 		if len(urls) > 0 {
 			go h.processUnfurls(msg.ID, msg.ChannelID, urls)
+		}
+	}
+
+	// Notify thread participants (except sender and already-mentioned users)
+	if threadID != nil {
+		participants, _ := h.DB.GetThreadParticipants(*threadID)
+		for _, participantID := range participants {
+			if participantID == c.UserID {
+				continue
+			}
+			alreadyNotified := false
+			for _, mentionedID := range mentionIDs {
+				if mentionedID == participantID {
+					alreadyNotified = true
+					break
+				}
+			}
+			if alreadyNotified {
+				continue
+			}
+
+			chName := ""
+			if ch != nil {
+				chName = ch.Name
+			}
+			var preview string
+			if d.Content != nil {
+				preview = *d.Content
+				if len(preview) > 80 {
+					preview = preview[:80] + "..."
+				}
+			}
+
+			notifID := uuid.New().String()
+			notifData := map[string]any{
+				"thread_id":       *threadID,
+				"channel_id":      d.ChannelID,
+				"channel_name":    chName,
+				"message_id":      msgID,
+				"author_username": c.User.Username,
+				"content_preview": preview,
+			}
+			if err := h.DB.CreateNotification(notifID, participantID, "thread_reply", notifData); err != nil {
+				log.Printf("create thread notification: %v", err)
+				continue
+			}
+			dataJSON, _ := json.Marshal(notifData)
+			notifMsg, _ := NewMessage("notification_create", NotificationPayload{
+				ID:        notifID,
+				Type:      "thread_reply",
+				Data:      dataJSON,
+				Read:      false,
+				CreatedAt: msg.CreatedAt,
+			})
+			h.SendTo(participantID, notifMsg)
 		}
 	}
 }
