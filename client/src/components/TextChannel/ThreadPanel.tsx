@@ -9,7 +9,15 @@ import {
   setScrollToMessageId,
 } from "../../stores/messages";
 import { getThreadMessages, getStarredMessages, starMessage, unstarMessage } from "../../lib/api";
+import { lookupUsername } from "../../stores/users";
 import MessageItem from "./Message";
+
+function stripMentions(content: string): string {
+  return content.replace(/<@([0-9a-fA-F-]{36})>/g, (_, id) => {
+    const name = lookupUsername(id);
+    return name ? `@${name}` : "@unknown";
+  });
+}
 
 function findThreadRoot(threadId: string): any | null {
   const allChannels = messagesByChannel();
@@ -360,7 +368,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                       </span>
                     </div>
                     <div style={{ "font-size": "11px", color: "var(--text-secondary)", "margin-top": "2px" }}>
-                      {msg.content ? msg.content.slice(0, 100) + (msg.content.length > 100 ? "..." : "") : "[attachment]"}
+                      {msg.content ? stripMentions(msg.content).slice(0, 100) + (msg.content.length > 100 ? "..." : "") : "[attachment]"}
                     </div>
                     <Show when={msg.thread_id && msg.thread_id === msg.id}>
                       <div style={{ "font-size": "10px", color: "var(--cyan)", "margin-top": "2px" }}>
