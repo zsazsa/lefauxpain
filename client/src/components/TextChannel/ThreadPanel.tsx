@@ -295,13 +295,8 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 }}>
                   <div
                     onClick={() => {
-                      if (msg.thread_id && msg.thread_id === msg.id) {
-                        setThreadPanelTab("thread");
-                        openThread(msg.id);
-                      } else {
-                        setThreadPanelOpen(false);
-                        setScrollToMessageId(msg.id);
-                      }
+                      // Always open in thread tab — the message becomes the thread root
+                      openThread(msg.id);
                     }}
                   >
                     <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center" }}>
