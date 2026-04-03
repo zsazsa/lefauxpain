@@ -325,6 +325,20 @@ var migrations = []string{
 		last_read_msg_id TEXT,
 		PRIMARY KEY (channel_id, user_id)
 	);`,
+
+	// Version 25: Channel documents
+	`CREATE TABLE documents (
+		id          TEXT PRIMARY KEY,
+		channel_id  TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+		path        TEXT NOT NULL,
+		content     TEXT NOT NULL DEFAULT '',
+		created_by  TEXT REFERENCES users(id) ON DELETE SET NULL,
+		updated_by  TEXT REFERENCES users(id) ON DELETE SET NULL,
+		created_at  DATETIME DEFAULT (datetime('now')),
+		updated_at  DATETIME DEFAULT (datetime('now')),
+		UNIQUE(channel_id, path)
+	);
+	CREATE INDEX idx_documents_channel ON documents(channel_id);`,
 }
 
 func (d *DB) migrate() error {

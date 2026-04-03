@@ -24,6 +24,7 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	authMW := &AuthMiddleware{DB: database}
 	channelHandler := &ChannelHandler{DB: database}
 	channelSettingsHandler := &ChannelSettingsHandler{DB: database, Hub: hub}
+	docsHandler := &DocumentsHandler{DB: database}
 	messageHandler := &MessageHandler{DB: database}
 	starsHandler := &StarsHandler{DB: database}
 	uploadHandler := &UploadHandler{DB: database, Store: store, MaxSize: cfg.MaxUploadSize}
@@ -80,6 +81,10 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 		}
 		if strings.Contains(r.URL.Path, "/request-access") {
 			channelSettingsHandler.RequestAccess(w, r)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/docs") {
+			docsHandler.HandleDocs(w, r)
 			return
 		}
 		if strings.Contains(r.URL.Path, "/members") {
