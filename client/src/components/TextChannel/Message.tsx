@@ -45,7 +45,7 @@ function usernameColor(userId: string): string {
 // Render content with mention highlighting and clickable links
 function renderMarkdownLine(text: string): any {
   // Process inline markdown: **bold**, *italic*, mentions, URLs
-  const tokenRe = /\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|<@([0-9a-fA-F-]{36})>|(https?:\/\/[^\s<>"'`]+)/g;
+  const tokenRe = /\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|<@([0-9a-fA-F-]{36})>|(https?:\/\/[^\s<>"'`]+)|(\/[\w\-\/]+\.md)/g;
   const result: any[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -85,6 +85,27 @@ function renderMarkdownLine(text: string): any {
         <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", "text-decoration": "underline" }}>
           {url}
         </a>
+      );
+    } else if (m[6]) {
+      // Document path link
+      const docPath = m[6];
+      result.push(
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            import("../../stores/messages").then((mod) => {
+              mod.setThreadPanelTab("docs");
+              mod.setThreadPanelOpen(true);
+            });
+          }}
+          style={{
+            color: "var(--cyan)",
+            cursor: "pointer",
+            "text-decoration": "underline",
+          }}
+        >
+          {docPath}
+        </span>
       );
     }
     lastIndex = tokenRe.lastIndex;

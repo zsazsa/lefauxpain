@@ -102,6 +102,12 @@ export default function TextChannel(props: TextChannelProps) {
             </button>
           </Show>
           <button
+            onClick={() => { setThreadPanelTab("docs"); setThreadPanelOpen(true); }}
+            style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", "font-size": "12px" }}
+          >
+            [docs]
+          </button>
+          <button
             onClick={() => { setThreadPanelTab("starred"); setThreadPanelOpen(true); }}
             style={{ color: "var(--accent)", background: "none", border: "none", cursor: "pointer", "font-size": "12px" }}
           >

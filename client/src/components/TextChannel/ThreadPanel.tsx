@@ -8,7 +8,7 @@ import {
   openThread,
   setScrollToMessageId,
 } from "../../stores/messages";
-import { getThreadMessages, getChannelThreads, getStarredMessages, starMessage, unstarMessage } from "../../lib/api";
+import { getThreadMessages, getChannelThreads, getStarredMessages, starMessage, unstarMessage, listDocs, getDoc, putDoc, deleteDoc } from "../../lib/api";
 import { channels, setSelectedChannelId } from "../../stores/channels";
 import { lookupUsername } from "../../stores/users";
 import MessageItem from "./Message";
@@ -40,6 +40,12 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   const [starredIds, setStarredIds] = createSignal<Set<string>>(new Set());
   const [channelThreads, setChannelThreads] = createSignal<any[]>([]);
   const [panelWidth, setPanelWidth] = createSignal(400);
+  const [docsList, setDocsList] = createSignal<any[]>([]);
+  const [activeDoc, setActiveDoc] = createSignal<any | null>(null);
+  const [docContent, setDocContent] = createSignal("");
+  const [docPath, setDocPath] = createSignal("");
+  const [docSaving, setDocSaving] = createSignal(false);
+  const [newDocMode, setNewDocMode] = createSignal(false);
   let resizing = false;
 
   const handleResizeStart = (e: MouseEvent) => {
@@ -105,6 +111,14 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
   });
 
   createEffect(() => {
+    if (threadPanelTab() === "docs" && threadPanelOpen()) {
+      listDocs(props.channelId)
+        .then((docs) => setDocsList(docs))
+        .catch(() => {});
+    }
+  });
+
+  createEffect(() => {
     const msgs = threadMessages();
     if (msgs.length > 0 && threadPanelTab() === "thread") {
       setTimeout(() => messagesEndRef?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -146,6 +160,59 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
     }
 
     setThreadInput("");
+  };
+
+  const handleOpenDoc = async (path: string) => {
+    try {
+      const doc = await getDoc(props.channelId, path);
+      setActiveDoc(doc);
+      setDocContent(doc.content);
+      setDocPath(doc.path);
+      setNewDocMode(false);
+    } catch (e) {}
+  };
+
+  const handleSaveDoc = async () => {
+    const path = docPath().trim();
+    if (!path) return;
+    setDocSaving(true);
+    try {
+      const finalPath = path.startsWith("/") ? path : "/" + path;
+      await putDoc(props.channelId, finalPath, docContent());
+      // Refresh list
+      const docs = await listDocs(props.channelId);
+      setDocsList(docs);
+      // Reload saved doc
+      const doc = await getDoc(props.channelId, finalPath);
+      setActiveDoc(doc);
+      setDocPath(doc.path);
+      setNewDocMode(false);
+    } catch (e) {}
+    setDocSaving(false);
+  };
+
+  const handleDeleteDoc = async () => {
+    if (!activeDoc()) return;
+    try {
+      await deleteDoc(props.channelId, activeDoc().path);
+      setActiveDoc(null);
+      setDocContent("");
+      setDocPath("");
+      const docs = await listDocs(props.channelId);
+      setDocsList(docs);
+    } catch (e) {}
+  };
+
+  const handleNewDoc = () => {
+    setActiveDoc(null);
+    setDocContent("");
+    setDocPath("/");
+    setNewDocMode(true);
+  };
+
+  const handleBackToList = () => {
+    setActiveDoc(null);
+    setNewDocMode(false);
   };
 
   const toggleStar = async (messageId: string) => {
@@ -254,6 +321,25 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
               }}
             >
               Starred
+            </button>
+            <button
+              onClick={() => setThreadPanelTab("docs")}
+              style={{
+                "font-family": "var(--font-display)",
+                "font-size": "11px",
+                "letter-spacing": "1px",
+                "text-transform": "uppercase",
+                color: threadPanelTab() === "docs" ? "var(--accent)" : "var(--text-muted)",
+                background: "none",
+                border: "none",
+                "border-bottom-width": "2px",
+                "border-bottom-style": "solid",
+                "border-bottom-color": threadPanelTab() === "docs" ? "var(--accent)" : "transparent",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >
+              Docs
             </button>
           </div>
           <button
@@ -485,6 +571,157 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 </div>
               )}
             </For>
+          </div>
+        </Show>
+
+        {/* Docs tab */}
+        <Show when={threadPanelTab() === "docs"}>
+          <div style={{ flex: "1", overflow: "auto", padding: "8px 12px", display: "flex", "flex-direction": "column" }}>
+            <Show when={!activeDoc() && !newDocMode()}>
+              {/* File browser */}
+              <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", "margin-bottom": "12px" }}>
+                <div style={{
+                  "font-family": "var(--font-display)",
+                  "font-size": "11px",
+                  "font-weight": "600",
+                  "text-transform": "uppercase",
+                  "letter-spacing": "2px",
+                  color: "var(--text-muted)",
+                }}>
+                  Documents
+                </div>
+                <button
+                  onClick={handleNewDoc}
+                  style={{
+                    "font-size": "11px",
+                    color: "var(--accent)",
+                    border: "1px solid var(--accent)",
+                    "background-color": "var(--accent-glow)",
+                    padding: "2px 8px",
+                    cursor: "pointer",
+                  }}
+                >
+                  [+ new]
+                </button>
+              </div>
+
+              <Show when={docsList().length === 0}>
+                <div style={{ "font-size": "11px", color: "var(--text-muted)", "font-style": "italic" }}>
+                  No documents yet.
+                </div>
+              </Show>
+
+              <For each={docsList()}>
+                {(doc) => {
+                  const fileName = doc.path.split("/").pop() || doc.path;
+                  const folder = doc.path.substring(0, doc.path.lastIndexOf("/")) || "/";
+                  return (
+                    <div
+                      onClick={() => handleOpenDoc(doc.path)}
+                      style={{
+                        padding: "6px 0",
+                        "border-bottom": "1px solid rgba(201,168,76,0.1)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ "font-size": "12px", color: "var(--text-primary)" }}>
+                        {fileName}
+                      </div>
+                      <div style={{ "font-size": "10px", color: "var(--text-muted)" }}>
+                        {folder} · {new Date(doc.updated_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  );
+                }}
+              </For>
+            </Show>
+
+            <Show when={activeDoc() || newDocMode()}>
+              {/* Document editor */}
+              <div style={{ display: "flex", "align-items": "center", gap: "8px", "margin-bottom": "8px" }}>
+                <button
+                  onClick={handleBackToList}
+                  style={{
+                    "font-size": "11px",
+                    color: "var(--text-muted)",
+                    border: "1px solid var(--text-muted)",
+                    background: "none",
+                    padding: "2px 6px",
+                    cursor: "pointer",
+                  }}
+                >
+                  [back]
+                </button>
+                <input
+                  type="text"
+                  value={docPath()}
+                  onInput={(e) => setDocPath(e.currentTarget.value)}
+                  placeholder="/folder/document.md"
+                  disabled={!!activeDoc()}
+                  style={{
+                    flex: "1",
+                    padding: "4px 8px",
+                    "background-color": activeDoc() ? "transparent" : "#1a1a2e",
+                    color: "var(--text-primary)",
+                    border: activeDoc() ? "none" : "1px solid rgba(201,168,76,0.4)",
+                    "font-size": "11px",
+                    "font-family": "var(--font-mono)",
+                  }}
+                />
+              </div>
+
+              <textarea
+                value={docContent()}
+                onInput={(e) => setDocContent(e.currentTarget.value)}
+                style={{
+                  flex: "1",
+                  width: "100%",
+                  padding: "8px",
+                  "background-color": "#1a1a2e",
+                  color: "var(--text-primary)",
+                  border: "1px solid rgba(201,168,76,0.4)",
+                  "font-size": "12px",
+                  "font-family": "var(--font-mono)",
+                  resize: "none",
+                  "min-height": "200px",
+                  "line-height": "1.5",
+                  "box-sizing": "border-box",
+                }}
+              />
+
+              <div style={{ display: "flex", gap: "8px", "margin-top": "8px" }}>
+                <button
+                  onClick={handleSaveDoc}
+                  disabled={docSaving()}
+                  style={{
+                    "font-size": "11px",
+                    color: "var(--accent)",
+                    border: "1px solid var(--accent)",
+                    "background-color": "var(--accent-glow)",
+                    padding: "4px 12px",
+                    cursor: docSaving() ? "wait" : "pointer",
+                    opacity: docSaving() ? "0.5" : "1",
+                  }}
+                >
+                  {docSaving() ? "[saving...]" : "[save]"}
+                </button>
+                <Show when={activeDoc()}>
+                  <button
+                    onClick={handleDeleteDoc}
+                    style={{
+                      "font-size": "11px",
+                      color: "var(--danger)",
+                      border: "1px solid var(--danger)",
+                      background: "none",
+                      padding: "4px 12px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    [delete]
+                  </button>
+                </Show>
+              </div>
+            </Show>
           </div>
         </Show>
       </div>

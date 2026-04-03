@@ -332,3 +332,26 @@ export function approveAccessRequest(channelId: string, requestId: string) {
 export function denyAccessRequest(channelId: string, requestId: string) {
   return request(`/channels/${channelId}/access-requests/${requestId}/deny`, { method: "POST" });
 }
+
+export function listDocs(channelId: string, prefix?: string): Promise<any[]> {
+  const params = new URLSearchParams();
+  if (prefix) params.set("prefix", prefix);
+  return request(`/channels/${channelId}/docs?${params}`);
+}
+
+export function getDoc(channelId: string, path: string): Promise<any> {
+  return request(`/channels/${channelId}/docs?path=${encodeURIComponent(path)}`);
+}
+
+export function putDoc(channelId: string, path: string, content: string) {
+  return request(`/channels/${channelId}/docs`, {
+    method: "PUT",
+    body: JSON.stringify({ path, content }),
+  });
+}
+
+export function deleteDoc(channelId: string, path: string) {
+  return request(`/channels/${channelId}/docs?path=${encodeURIComponent(path)}`, {
+    method: "DELETE",
+  });
+}
