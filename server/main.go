@@ -63,7 +63,14 @@ func main() {
 		if err != nil {
 			return
 		}
-		hub.SendTo(userID, msg)
+		// Voice WebRTC signals go only to the voice-owning connection;
+		// screen share signals go to all connections for the user.
+		switch op {
+		case "webrtc_offer", "webrtc_ice":
+			hub.SendToVoiceClient(userID, msg)
+		default:
+			hub.SendTo(userID, msg)
+		}
 	}
 
 	// When a screen share stops (explicit, connection failure, or leave voice), broadcast

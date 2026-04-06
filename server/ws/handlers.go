@@ -862,6 +862,24 @@ func (h *Hub) handleJoinVoice(c *Client, data json.RawMessage) {
 		return
 	}
 
+	// Track which connection owns voice BEFORE AddPeer, because AddPeer
+	// triggers SFU renegotiation which signals back via SendToVoiceClient.
+	h.mu.Lock()
+	oldVoiceClient := h.voiceClients[c.UserID]
+	h.voiceClients[c.UserID] = c
+	h.mu.Unlock()
+
+	// If another connection was in voice, stop its screen share and tell it to drop voice UI
+	if oldVoiceClient != nil && oldVoiceClient != c {
+		if sr := h.SFU.GetUserScreenRoom(c.UserID); sr != nil {
+			h.SFU.StopScreenShare(sr.ChannelID)
+		}
+		dropMsg, _ := NewMessage("voice_taken_over", map[string]string{
+			"message": "Voice moved to another device",
+		})
+		oldVoiceClient.Send(dropMsg)
+	}
+
 	// Leave current room if in one
 	if currentRoom := h.SFU.GetUserRoom(c.UserID); currentRoom != nil {
 		currentRoom.RemovePeer(c.UserID)
@@ -878,6 +896,16 @@ func (h *Hub) handleJoinVoice(c *Client, data json.RawMessage) {
 	_, err = room.AddPeer(c.UserID)
 	if err != nil {
 		log.Printf("sfu: add peer %s to room %s: %v", c.UserID, d.ChannelID, err)
+		// Rollback voice client tracking on failure
+		h.mu.Lock()
+		if h.voiceClients[c.UserID] == c {
+			if oldVoiceClient != nil {
+				h.voiceClients[c.UserID] = oldVoiceClient
+			} else {
+				delete(h.voiceClients, c.UserID)
+			}
+		}
+		h.mu.Unlock()
 		return
 	}
 
@@ -893,6 +921,13 @@ func (h *Hub) handleLeaveVoice(c *Client) {
 	if h.SFU == nil {
 		return
 	}
+
+	// Clear voice client tracking if this connection owns voice
+	h.mu.Lock()
+	if h.voiceClients[c.UserID] == c {
+		delete(h.voiceClients, c.UserID)
+	}
+	h.mu.Unlock()
 
 	// Auto-stop screen share if presenter leaves voice
 	// StopScreenShare triggers OnScreenShareStopped callback which broadcasts

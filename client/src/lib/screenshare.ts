@@ -227,6 +227,41 @@ export function handleScreenICE(candidate: RTCIceCandidateInit, role?: string) {
   }
 }
 
+/**
+ * Reset local screen share state without notifying the server.
+ * Used when voice is taken over by another device (server already cleaned up).
+ */
+export function resetScreenShareState() {
+  if (!isPresenting) return;
+  isPresenting = false;
+
+  if (isDesktop) {
+    setDesktopPresenting(false);
+    setDesktopPreviewUrl(null);
+    tauriInvoke("screen_stop").catch((err: any) => {
+      console.error("[screen] screen_stop failed:", err);
+    });
+    return;
+  }
+
+  // Browser cleanup
+  if (previewStream) {
+    previewStream.getTracks().forEach((t) => t.stop());
+    previewStream = null;
+  }
+  setLocalScreenStream(null);
+
+  if (screenStream) {
+    screenStream.getTracks().forEach((t) => t.stop());
+    screenStream = null;
+  }
+
+  if (screenPC) {
+    screenPC.close();
+    screenPC = null;
+  }
+}
+
 export function cleanupScreenShare() {
   if (isPresenting) {
     stopScreenShare();

@@ -398,6 +398,42 @@ export function toggleDeafen(deafened: boolean) {
   send("voice_self_deafen", { deafened });
 }
 
+/**
+ * Reset local voice state without sending leave_voice to server.
+ * Used when another device takes over voice (server already handled it).
+ */
+export function resetVoiceState() {
+  sessionStorage.removeItem("voice_channel");
+
+  if (isDesktop && desktopVoiceActive) {
+    setJoinedVoiceChannel(null);
+    tauriInvoke("voice_stop").catch((e: any) =>
+      console.error("[voice] voice_stop failed:", e)
+    );
+    desktopVoiceActive = false;
+    return;
+  }
+
+  // Browser path
+  stopSpeakingDetection();
+  setJoinedVoiceChannel(null);
+  stopStatsPolling();
+
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
+  pendingIceCandidates = [];
+  remoteDescriptionSet = false;
+
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
+
+  cleanupAudioPipeline();
+}
+
 export async function switchMicrophone(deviceId: string) {
   if (isDesktop) {
     // Desktop: tell Rust to switch input device

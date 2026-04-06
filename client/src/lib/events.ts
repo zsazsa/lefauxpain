@@ -47,8 +47,8 @@ import {
   setEnabledFeatures,
   toggleFeature,
 } from "../stores/strudel";
-import { handleWebRTCOffer, handleWebRTCICE, joinVoice } from "./webrtc";
-import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare } from "./screenshare";
+import { handleWebRTCOffer, handleWebRTCICE, joinVoice, resetVoiceState } from "./webrtc";
+import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare, resetScreenShareState } from "./screenshare";
 import { playJoinSound, playLeaveSound } from "./sounds";
 import { isDesktop } from "./devices";
 import { dispatchReady, dispatchEvent } from "./appletRegistry";
@@ -322,6 +322,13 @@ export function initEventHandlers() {
         updateVoiceState(msg.d);
         break;
       }
+
+      case "voice_taken_over":
+        // Another device took over voice — reset local voice and screen share
+        // state without sending messages to server (server already handled it)
+        resetScreenShareState();
+        resetVoiceState();
+        break;
 
       case "webrtc_offer":
         handleWebRTCOffer(msg.d.sdp);

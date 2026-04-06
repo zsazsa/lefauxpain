@@ -59,6 +59,7 @@ type Hub struct {
 	strudelMu       sync.RWMutex
 	strudelViewers  map[string]map[string]bool // patternID → set of userIDs
 	strudelViewMu   sync.RWMutex
+	voiceClients    map[string]*Client // userID → the connection that owns voice
 }
 
 func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
@@ -80,6 +81,7 @@ func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
 		radioListeners:  make(map[string]map[string]bool),
 		strudelPlayback: make(map[string]*StrudelPlaybackState),
 		strudelViewers:  make(map[string]map[string]bool),
+		voiceClients:    make(map[string]*Client),
 	}
 }
 
@@ -119,30 +121,32 @@ func (h *Hub) Run() {
 			if lastConn {
 				delete(h.clients, client.UserID)
 			}
+			// Check if this was the voice-owning connection
+			isVoiceClient := h.voiceClients[client.UserID] == client
+			if isVoiceClient {
+				delete(h.voiceClients, client.UserID)
+			}
 			h.mu.Unlock()
+
+			// If this connection owned voice, clean up voice/screen share
+			if isVoiceClient && h.SFU != nil {
+				// Stop screen share if presenter disconnects
+				if sr := h.SFU.GetUserScreenRoom(client.UserID); sr != nil {
+					h.SFU.StopScreenShare(sr.ChannelID)
+				}
+				// Leave voice
+				if room := h.SFU.GetUserRoom(client.UserID); room != nil {
+					room.RemovePeer(client.UserID)
+					vsMsg, _ := NewMessage("voice_state_update", VoiceStatePayload{
+						UserID:    client.UserID,
+						ChannelID: "",
+					})
+					h.BroadcastAll(vsMsg)
+				}
+			}
 
 			// Only do full cleanup when the last connection for a user disconnects
 			if lastConn {
-				// Stop screen share if presenter disconnects
-				// StopScreenShare triggers OnScreenShareStopped callback which broadcasts
-				if h.SFU != nil {
-					if sr := h.SFU.GetUserScreenRoom(client.UserID); sr != nil {
-						h.SFU.StopScreenShare(sr.ChannelID)
-					}
-				}
-
-				// Leave voice if in a voice channel
-				if h.SFU != nil {
-					if room := h.SFU.GetUserRoom(client.UserID); room != nil {
-						room.RemovePeer(client.UserID)
-						vsMsg, _ := NewMessage("voice_state_update", VoiceStatePayload{
-							UserID:    client.UserID,
-							ChannelID: "",
-						})
-						h.BroadcastAll(vsMsg)
-					}
-				}
-
 				// Applet cleanup (radio listeners, strudel viewers, etc.)
 				h.applets.OnDisconnect(h, client)
 
@@ -235,6 +239,15 @@ func (h *Hub) SendTo(userID string, msg []byte) {
 	defer h.mu.RUnlock()
 	for _, client := range h.clients[userID] {
 		client.Send(msg)
+	}
+}
+
+// SendToVoiceClient sends a message only to the connection that owns voice for a user.
+func (h *Hub) SendToVoiceClient(userID string, msg []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if vc, ok := h.voiceClients[userID]; ok {
+		vc.Send(msg)
 	}
 }
 
