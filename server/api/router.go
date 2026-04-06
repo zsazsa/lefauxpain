@@ -54,11 +54,12 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	mux.HandleFunc("/api/v1/auth/reset", resetRL.Wrap(authHandler.ResetPassword))
 
 	// Channel routes (authenticated)
+	messageRL := NewIPRateLimiter(30, time.Minute)
 	mux.HandleFunc("/api/v1/channels", authMW.Wrap(channelHandler.List))
 
 	// Message history (authenticated) — matches /api/v1/channels/{id}/messages
 	// Also handles /api/v1/channels/{id}/threads/{threadID}/messages
-	mux.HandleFunc("/api/v1/channels/", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/channels/", messageRL.Wrap(authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/messages") {
 			if strings.Contains(r.URL.Path, "/threads/") {
 				messageHandler.GetThreadHistory(w, r)
@@ -92,7 +93,7 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 			return
 		}
 		http.NotFound(w, r)
-	}))
+	})))
 
 	// Upload (authenticated + rate limited)
 	mux.HandleFunc("/api/v1/upload", uploadRL.Wrap(authMW.Wrap(uploadHandler.Upload)))
@@ -141,8 +142,9 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	mux.HandleFunc("/api/v1/webhooks/incoming", webhookRL.Wrap(webhookHandler.Incoming))
 
 	// Stars (authenticated)
-	mux.HandleFunc("/api/v1/stars", authMW.Wrap(starsHandler.List))
-	mux.HandleFunc("/api/v1/stars/", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+	starsRL := NewIPRateLimiter(30, time.Minute)
+	mux.HandleFunc("/api/v1/stars", starsRL.Wrap(authMW.Wrap(starsHandler.List)))
+	mux.HandleFunc("/api/v1/stars/", starsRL.Wrap(authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
 			starsHandler.Star(w, r)
@@ -151,7 +153,7 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 		default:
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
-	}))
+	})))
 
 	// Admin webhook key management (authenticated)
 	mux.HandleFunc("/api/v1/admin/webhook-keys", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
@@ -225,9 +227,9 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	thumbsDir := filepath.Join(cfg.DataDir, "thumbs")
 	avatarsDir := filepath.Join(cfg.DataDir, "avatars")
 
-	mux.Handle("/uploads/", http.StripPrefix("/uploads/", noDirectoryListing(http.FileServer(http.Dir(uploadsDir)))))
-	mux.Handle("/thumbs/", http.StripPrefix("/thumbs/", noDirectoryListing(http.FileServer(http.Dir(thumbsDir)))))
-	mux.Handle("/avatars/", http.StripPrefix("/avatars/", noDirectoryListing(http.FileServer(http.Dir(avatarsDir)))))
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", secureFileServer(uploadsDir)))
+	mux.Handle("/thumbs/", http.StripPrefix("/thumbs/", secureFileServer(thumbsDir)))
+	mux.Handle("/avatars/", http.StripPrefix("/avatars/", secureFileServer(avatarsDir)))
 
 	// SPA serving
 	if cfg.DevMode {
@@ -252,7 +254,41 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss:; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com")
 		next.ServeHTTP(w, r)
+	})
+}
+
+func secureFileServer(dir string) http.Handler {
+	fs := http.FileServer(http.Dir(dir))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Prevent directory listing
+		if strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		// Safe MIME types — everything else forces download
+		ext := strings.ToLower(filepath.Ext(r.URL.Path))
+		safeMIME := map[string]string{
+			".jpg":  "image/jpeg",
+			".jpeg": "image/jpeg",
+			".png":  "image/png",
+			".gif":  "image/gif",
+			".webp": "image/webp",
+			".mp3":  "audio/mpeg",
+			".ogg":  "audio/ogg",
+			".wav":  "audio/wav",
+			".mp4":  "video/mp4",
+			".webm": "video/webm",
+		}
+		if mime, ok := safeMIME[ext]; ok {
+			w.Header().Set("Content-Type", mime)
+		} else {
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Content-Disposition", "attachment")
+		}
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		fs.ServeHTTP(w, r)
 	})
 }
 

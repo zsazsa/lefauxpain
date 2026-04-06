@@ -90,6 +90,7 @@ func (h *ChannelSettingsHandler) UpdateSettings(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	log.Printf("AUDIT: user %s (%s) updated channel %s settings: visibility=%s", user.ID, user.Username, channelID, visibility)
 
 	// Broadcast channel_update to all clients
 	managerIDs, _ := h.DB.GetChannelManagers(channelID)
@@ -156,6 +157,7 @@ func (h *ChannelSettingsHandler) HandleMembers(w http.ResponseWriter, r *http.Re
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		log.Printf("AUDIT: user %s added member %s to channel %s", user.ID, body.UserID, channelID)
 		// Notify added user
 		msg, _ := ws.NewMessage("channel_member_added", map[string]string{
 			"channel_id": channelID,
@@ -181,6 +183,7 @@ func (h *ChannelSettingsHandler) HandleMembers(w http.ResponseWriter, r *http.Re
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		log.Printf("AUDIT: user %s removed member %s from channel %s", user.ID, targetUserID, channelID)
 		// Notify removed user
 		msg, _ := ws.NewMessage("channel_member_removed", map[string]string{
 			"channel_id": channelID,
@@ -341,6 +344,7 @@ func (h *ChannelSettingsHandler) HandleAccessRequests(w http.ResponseWriter, r *
 				writeError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
+			log.Printf("AUDIT: user %s approved access request %s for channel %s", user.ID, body.RequestID, channelID)
 			// Get the request to find user ID
 			// ApproveAccessRequest already adds the user as member, so we need to find who was added
 			// We need to get the request details before approval ideally, but since we already approved,

@@ -460,7 +460,7 @@ func (h *Hub) handleEditMessage(c *Client, data json.RawMessage) {
 	if err != nil || msg == nil || msg.DeletedAt != nil {
 		return
 	}
-	if msg.AuthorID == nil || *msg.AuthorID != c.UserID {
+	if (msg.AuthorID == nil || *msg.AuthorID != c.UserID) && !c.User.IsAdmin {
 		return
 	}
 

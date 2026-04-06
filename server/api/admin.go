@@ -98,6 +98,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	log.Printf("AUDIT: admin %s deleted user %s", user.ID, targetID)
 
 	// Kick the user's WS connection
 	h.Hub.DisconnectUser(targetID)
@@ -142,6 +143,7 @@ func (h *AdminHandler) SetAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	log.Printf("AUDIT: admin %s changed admin status of user %s to %v", user.ID, targetID, body.IsAdmin)
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "updated", "is_admin": body.IsAdmin})
 }
@@ -217,6 +219,7 @@ func (h *AdminHandler) ApproveUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	log.Printf("AUDIT: admin %s approved user %s", user.ID, targetID)
 
 	// Broadcast user_approved so all clients add the new member
 	approvedUser, _ := h.DB.GetUserByID(targetID)
