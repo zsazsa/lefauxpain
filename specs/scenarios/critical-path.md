@@ -418,15 +418,16 @@ cleaned up automatically.
 
 ---
 
-## Scenario 32: Duplicate WebSocket connection kicks the old one
+## Scenario 32: Multiple simultaneous WebSocket connections per user
 
-Only one WS connection per user is allowed. A new connection replaces the old.
+Multiple WS connections per user are allowed. All connections stay active.
 
 ### Steps
 1. User authenticates on WS connection A
 2. User authenticates on WS connection B (same token)
-3. Assert: connection A is forcibly closed by the server
-4. Assert: connection B receives `ready` and functions normally
+3. Connection B sends a message
+4. Assert: connection B receives `message_create`
+5. Assert: connection A also receives `message_create`
 
 ---
 

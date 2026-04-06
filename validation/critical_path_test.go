@@ -1507,6 +1507,7 @@ func TestScenario32_DuplicateWSKicksOld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("conn A: %v", err)
 	}
+	defer connA.Close()
 
 	// Alice connection B (same token)
 	connB, err := ConnectWS(aliceToken)
@@ -1515,21 +1516,21 @@ func TestScenario32_DuplicateWSKicksOld(t *testing.T) {
 	}
 	defer connB.Close()
 
-	// Connection A should be closed by server
-	err = connA.WaitClosed(wait)
-	if err != nil {
-		t.Fatalf("connection A should have been closed: %v", err)
-	}
-
-	// Connection B should still work
+	// Both connections should work — send from B
 	channelID := findTextChannel(connB.Ready)
 	connB.Send("send_message", map[string]any{
 		"channel_id": channelID,
-		"content":    "Still connected",
+		"content":    "From connection B",
 	})
 	_, err = connB.WaitFor("message_create", wait)
 	if err != nil {
 		t.Fatalf("connection B should work: %v", err)
+	}
+
+	// Connection A should also receive the message
+	_, err = connA.WaitFor("message_create", wait)
+	if err != nil {
+		t.Fatalf("connection A should also receive: %v", err)
 	}
 }
 

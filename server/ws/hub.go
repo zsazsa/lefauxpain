@@ -44,7 +44,7 @@ type Hub struct {
 	SFU            *sfu.SFU
 	DevMode        bool
 	applets        *AppletRegistry
-	clients        map[string]*Client // userID → client
+	clients        map[string][]*Client // userID → clients (multiple connections)
 	mu             sync.RWMutex
 	register       chan *Client
 	unregister     chan *Client
@@ -72,7 +72,7 @@ func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
 		SFU:             sfuInstance,
 		DevMode:         devMode,
 		applets:         applets,
-		clients:         make(map[string]*Client),
+		clients:         make(map[string][]*Client),
 		register:        make(chan *Client),
 		unregister:      make(chan *Client),
 		broadcast:       make(chan []byte, 256),
@@ -88,68 +88,79 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
-			// Close existing connection for same user (one conn per user)
-			if existing, ok := h.clients[client.UserID]; ok {
-				existing.Close()
-			}
-			h.clients[client.UserID] = client
+			wasOnline := len(h.clients[client.UserID]) > 0
+			h.clients[client.UserID] = append(h.clients[client.UserID], client)
 			h.mu.Unlock()
 
-			// Broadcast user_online to all other clients
-			msg, err := NewMessage("user_online", UserOnlineData{
-				User: UserPayload{
-					ID:       client.User.ID,
-					Username: client.User.Username,
-					IsAdmin:  client.User.IsAdmin,
-				},
-			})
-			if err == nil {
-				h.BroadcastExcept(msg, client.UserID)
+			// Broadcast user_online only on first connection for this user
+			if !wasOnline {
+				msg, err := NewMessage("user_online", UserOnlineData{
+					User: UserPayload{
+						ID:       client.User.ID,
+						Username: client.User.Username,
+						IsAdmin:  client.User.IsAdmin,
+					},
+				})
+				if err == nil {
+					h.BroadcastExcept(msg, client.UserID)
+				}
 			}
 
 		case client := <-h.unregister:
 			h.mu.Lock()
-			// Only remove if this is still the current client for this user
-			if current, ok := h.clients[client.UserID]; ok && current == client {
+			clients := h.clients[client.UserID]
+			for i, c := range clients {
+				if c == client {
+					h.clients[client.UserID] = append(clients[:i], clients[i+1:]...)
+					break
+				}
+			}
+			lastConn := len(h.clients[client.UserID]) == 0
+			if lastConn {
 				delete(h.clients, client.UserID)
 			}
 			h.mu.Unlock()
 
-			// Stop screen share if presenter disconnects
-			// StopScreenShare triggers OnScreenShareStopped callback which broadcasts
-			if h.SFU != nil {
-				if sr := h.SFU.GetUserScreenRoom(client.UserID); sr != nil {
-					h.SFU.StopScreenShare(sr.ChannelID)
+			// Only do full cleanup when the last connection for a user disconnects
+			if lastConn {
+				// Stop screen share if presenter disconnects
+				// StopScreenShare triggers OnScreenShareStopped callback which broadcasts
+				if h.SFU != nil {
+					if sr := h.SFU.GetUserScreenRoom(client.UserID); sr != nil {
+						h.SFU.StopScreenShare(sr.ChannelID)
+					}
 				}
-			}
 
-			// Leave voice if in a voice channel
-			if h.SFU != nil {
-				if room := h.SFU.GetUserRoom(client.UserID); room != nil {
-					room.RemovePeer(client.UserID)
-					vsMsg, _ := NewMessage("voice_state_update", VoiceStatePayload{
-						UserID:    client.UserID,
-						ChannelID: "",
-					})
-					h.BroadcastAll(vsMsg)
+				// Leave voice if in a voice channel
+				if h.SFU != nil {
+					if room := h.SFU.GetUserRoom(client.UserID); room != nil {
+						room.RemovePeer(client.UserID)
+						vsMsg, _ := NewMessage("voice_state_update", VoiceStatePayload{
+							UserID:    client.UserID,
+							ChannelID: "",
+						})
+						h.BroadcastAll(vsMsg)
+					}
 				}
-			}
 
-			// Applet cleanup (radio listeners, strudel viewers, etc.)
-			h.applets.OnDisconnect(h, client)
+				// Applet cleanup (radio listeners, strudel viewers, etc.)
+				h.applets.OnDisconnect(h, client)
 
-			// Broadcast user_offline
-			msg, err := NewMessage("user_offline", UserOfflineData{
-				UserID: client.UserID,
-			})
-			if err == nil {
-				h.BroadcastAll(msg)
+				// Broadcast user_offline
+				msg, err := NewMessage("user_offline", UserOfflineData{
+					UserID: client.UserID,
+				})
+				if err == nil {
+					h.BroadcastAll(msg)
+				}
 			}
 
 		case msg := <-h.broadcast:
 			h.mu.RLock()
-			for _, client := range h.clients {
-				client.Send(msg)
+			for _, clients := range h.clients {
+				for _, client := range clients {
+					client.Send(msg)
+				}
 			}
 			h.mu.RUnlock()
 		}
@@ -159,17 +170,21 @@ func (h *Hub) Run() {
 func (h *Hub) BroadcastAll(msg []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	for _, client := range h.clients {
-		client.Send(msg)
+	for _, clients := range h.clients {
+		for _, client := range clients {
+			client.Send(msg)
+		}
 	}
 }
 
 func (h *Hub) BroadcastExcept(msg []byte, excludeUserID string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	for userID, client := range h.clients {
+	for userID, clients := range h.clients {
 		if userID != excludeUserID {
-			client.Send(msg)
+			for _, client := range clients {
+				client.Send(msg)
+			}
 		}
 	}
 }
@@ -178,12 +193,15 @@ func (h *Hub) OnlineUsers() []UserPayload {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	users := make([]UserPayload, 0, len(h.clients))
-	for _, client := range h.clients {
-		users = append(users, UserPayload{
-			ID:       client.User.ID,
-			Username: client.User.Username,
-			IsAdmin:  client.User.IsAdmin,
-		})
+	for _, clients := range h.clients {
+		if len(clients) > 0 {
+			c := clients[0]
+			users = append(users, UserPayload{
+				ID:       c.User.ID,
+				Username: c.User.Username,
+				IsAdmin:  c.User.IsAdmin,
+			})
+		}
 	}
 	return users
 }
@@ -197,9 +215,17 @@ func (h *Hub) BroadcastToMembers(msg []byte, channelID string) {
 
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	for userID, client := range h.clients {
-		if memberSet[userID] || (client.User != nil && client.User.IsAdmin) {
-			client.Send(msg)
+	for userID, clients := range h.clients {
+		if memberSet[userID] {
+			for _, client := range clients {
+				client.Send(msg)
+			}
+		} else {
+			for _, client := range clients {
+				if client.User != nil && client.User.IsAdmin {
+					client.Send(msg)
+				}
+			}
 		}
 	}
 }
@@ -207,7 +233,7 @@ func (h *Hub) BroadcastToMembers(msg []byte, channelID string) {
 func (h *Hub) SendTo(userID string, msg []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	if client, ok := h.clients[userID]; ok {
+	for _, client := range h.clients[userID] {
 		client.Send(msg)
 	}
 }
@@ -370,7 +396,7 @@ func (h *Hub) BroadcastToRadioListeners(stationID string, msg []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, uid := range listeners {
-		if client, ok := h.clients[uid]; ok {
+		for _, client := range h.clients[uid] {
 			client.Send(msg)
 		}
 	}
@@ -495,7 +521,7 @@ func (h *Hub) BroadcastToStrudelViewers(patternID string, msg []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, uid := range viewers {
-		if client, ok := h.clients[uid]; ok {
+		for _, client := range h.clients[uid] {
 			client.Send(msg)
 		}
 	}
@@ -554,10 +580,11 @@ func nowUnix() float64 {
 
 func (h *Hub) DisconnectUser(userID string) {
 	h.mu.RLock()
-	client, ok := h.clients[userID]
+	clients := make([]*Client, len(h.clients[userID]))
+	copy(clients, h.clients[userID])
 	h.mu.RUnlock()
-	if ok {
-		client.Close()
+	for _, c := range clients {
+		c.Close()
 	}
 }
 

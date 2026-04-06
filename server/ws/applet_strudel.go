@@ -432,7 +432,7 @@ func (h *Hub) handleStrudelCodeEdit(c *Client, data json.RawMessage) {
 	h.mu.RLock()
 	for _, uid := range viewers {
 		if uid != c.UserID {
-			if client, ok := h.clients[uid]; ok {
+			for _, client := range h.clients[uid] {
 				client.Send(msg)
 			}
 		}
