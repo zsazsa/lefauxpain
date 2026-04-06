@@ -66,6 +66,7 @@ func (h *DocumentsHandler) HandleDocs(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case http.MethodPut:
+		r.Body = http.MaxBytesReader(w, r.Body, 1024*1024) // 1MB for docs
 		var req struct {
 			Path    string `json:"path"`
 			Content string `json:"content"`

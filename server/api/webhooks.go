@@ -28,6 +28,8 @@ func (h *WebhookHandler) Incoming(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024) // 1MB
+
 	// Validate API key
 	apiKey := r.Header.Get("X-Webhook-Key")
 	if apiKey == "" {
@@ -75,7 +77,7 @@ func (h *WebhookHandler) Incoming(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ch == nil {
-		writeError(w, http.StatusNotFound, "channel not found: "+channelName)
+		writeError(w, http.StatusNotFound, "channel not found")
 		return
 	}
 	if ch.Type != "text" {

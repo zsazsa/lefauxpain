@@ -164,8 +164,8 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 
 	// Membership enforcement for non-public channels
 	if ch.Visibility != "public" {
-		isMember, _ := h.DB.IsChannelMember(d.ChannelID, c.UserID)
-		if !isMember && !c.User.IsAdmin {
+		isMember, err := h.DB.IsChannelMember(d.ChannelID, c.UserID)
+		if err != nil || (!isMember && !c.User.IsAdmin) {
 			return
 		}
 	}

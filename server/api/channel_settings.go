@@ -23,6 +23,8 @@ func (h *ChannelSettingsHandler) UpdateSettings(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB
+
 	user := UserFromContext(r.Context())
 	if user == nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -108,6 +110,8 @@ func (h *ChannelSettingsHandler) UpdateSettings(w http.ResponseWriter, r *http.R
 
 // HandleMembers dispatches by method for /api/v1/channels/{id}/members and /api/v1/channels/{id}/members/{userId}
 func (h *ChannelSettingsHandler) HandleMembers(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB
+
 	user := UserFromContext(r.Context())
 	if user == nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -221,6 +225,8 @@ func (h *ChannelSettingsHandler) RequestAccess(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB
+
 	user := UserFromContext(r.Context())
 	if user == nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -290,6 +296,8 @@ func (h *ChannelSettingsHandler) RequestAccess(w http.ResponseWriter, r *http.Re
 
 // HandleAccessRequests dispatches for /api/v1/channels/{id}/access-requests
 func (h *ChannelSettingsHandler) HandleAccessRequests(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64KB
+
 	user := UserFromContext(r.Context())
 	if user == nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")

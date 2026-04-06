@@ -84,7 +84,7 @@ func (d *DB) UserCount() (int, error) {
 
 func (d *DB) CreateToken(token, userID string) error {
 	_, err := d.Exec(
-		`INSERT INTO tokens (token, user_id) VALUES (?, ?)`,
+		`INSERT INTO tokens (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+30 days'))`,
 		token, userID,
 	)
 	if err != nil {
