@@ -9,7 +9,7 @@ Le Faux Pain is a self-hostable Discord alternative for small groups. Users get 
 - **Language:** Go 1.24 (backend), TypeScript (frontend), Rust (desktop native voice/screen)
 - **Framework:** SolidJS (frontend), Tauri 2 (desktop shell)
 - **Database:** SQLite (pure-Go via `modernc.org/sqlite`, WAL mode, single-writer `MaxOpenConns(1)`)
-- **Hosting:** Single Linode VPS (172.233.131.169), nginx reverse proxy, Let's Encrypt SSL
+- **Hosting:** Single VPS, nginx reverse proxy, Let's Encrypt SSL
 - **Key integrations:** Pion WebRTC v4 (SFU), nhooyr.io/websocket, webrtc-rs (desktop), PipeWire portal (screen capture), NVENC/VAAPI/openh264 (screen encoding)
 
 ## Surfaces
@@ -217,15 +217,15 @@ cd desktop && npm run tauri build                # Release build
 
 ```bash
 # Frontend
-scp -r client/dist/* kalman@172.233.131.169:/opt/voicechat/static/
+scp -r client/dist/* user@your-server:/opt/voicechat/static/
 
 # Backend
-ssh kalman@172.233.131.169 "sudo systemctl stop voicechat"
-scp server/voicechat kalman@172.233.131.169:/opt/voicechat/bin/voicechat
-ssh kalman@172.233.131.169 "sudo systemctl start voicechat"
+ssh user@your-server "sudo systemctl stop voicechat"
+scp server/voicechat user@your-server:/opt/voicechat/bin/voicechat
+ssh user@your-server "sudo systemctl start voicechat"
 ```
 
-nginx serves static files from `/opt/voicechat/static/`, proxies `/api/` and `/ws` to Go on :8080, serves uploads/thumbs/avatars directly from `/opt/voicechat/data/`. SSL via Let's Encrypt.
+nginx serves static files from `/opt/voicechat/static/`, proxies `/api/` and `/ws` to Go on :8080, serves uploads/thumbs/avatars directly from `/opt/voicechat/data/`. SSL via Let's Encrypt. See `docs/deploy.md` for a full nginx + systemd + Let's Encrypt example.
 
 ## Webhook API
 
