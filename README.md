@@ -93,7 +93,7 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 - Native app for Windows, macOS, and Linux
 - Server selector — connect to any Le Faux Pain instance
 - Native Rust voice engine with audio device enumeration
-- Screen sharing with hardware-accelerated encoding (Linux only, via PipeWire)
+- Screen sharing on all platforms via WebView; Linux adds native PipeWire capture with hardware-accelerated H.264 encoding (NVENC/VAAPI/openh264)
 - Auto-update via Tauri updater plugin
 - Custom titlebar and system tray integration
 
