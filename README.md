@@ -10,13 +10,17 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 
 ### Text Chat
 - Channels with real-time messaging via WebSocket
-- Replies, emoji reactions, @mentions (with notifications)
+- Threaded conversations — replies open in a side panel without flooding the main feed
+- Emoji reactions with picker (20 emojis) and @mentions with autocomplete
+- Starred/bookmarked messages — save messages for quick reference
 - Browser notifications for @mentions when the tab is in the background (opt-in via Settings)
+- URL link previews — automatic Open Graph metadata for shared links
 - File/image uploads with thumbnails and attachment previews
 - Image lightbox viewer
 - Typing indicators
 - Message editing and soft delete
 - Cursor-based pagination for message history
+- Per-channel documents — create and edit markdown docs attached to channels
 
 ### Voice Chat
 - Built-in WebRTC SFU (Pion) — no external TURN/media servers
@@ -27,7 +31,7 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 
 ### Screen Sharing
 - Browser-based screen sharing via WebRTC
-- Desktop (Tauri) screen sharing via PipeWire capture
+- Desktop (Tauri, Linux only) screen sharing via PipeWire capture
 - H.264 encoding with hardware acceleration: NVENC (NVIDIA), VAAPI (Intel/AMD), openh264 (software fallback)
 - MJPEG local preview
 - Live viewer support — watch any user's screen share from the sidebar
@@ -63,21 +67,33 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 - Users toggle sidebar visibility per-applet (Settings > Display)
 - See [docs/applet.md](docs/applet.md) for architecture details and how to build your own applet
 
+### Channels & Permissions
+- Public and private channels with visibility controls
+- Channel membership with access requests and approval
+- Channel managers — per-channel permissions for rename/delete
+- Archived (soft-deleted) channels with restore option
+
 ### Admin & Users
 - Admin approval system ("Knock Knock") — new users can send a message when registering
+- Optional email verification for registration (Postmark or SMTP)
 - Admin panel: approve/reject users, promote/demote admins, set passwords, delete accounts
-- Archived (soft-deleted) channels with restore option
-- Channel managers — per-channel permissions for rename/delete
+- Webhook API — external systems can post messages to channels via API key auth
 
 ### Theme System
 - Multiple color themes (gold, cyan, green) with French and English language options
 - French Royal Cyberpunk terminal aesthetic
 
+### Terminal Mode
+- Alternative keyboard-driven interface — slash commands instead of mouse navigation
+- Command palette with fuzzy matching (50+ commands)
+- Covers all features: navigation, chat, voice, radio, settings, admin
+- Toggle between standard and terminal mode (persisted per user)
+
 ### Desktop Client (Tauri)
 - Native app for Windows, macOS, and Linux
 - Server selector — connect to any Le Faux Pain instance
-- Native Rust voice engine (bypasses webkit2gtk WebRTC limitations)
-- Audio device enumeration via PipeWire or platform APIs
+- Native Rust voice engine with audio device enumeration
+- Screen sharing with hardware-accelerated encoding (Linux only, via PipeWire)
 - Auto-update via Tauri updater plugin
 - Custom titlebar and system tray integration
 
@@ -86,11 +102,13 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 - Touch-friendly controls
 
 ### Security
-- MIME type detection on uploads (no extension trust)
-- Per-IP rate limiting on auth and upload endpoints
+- MIME type detection on uploads (content sniffing, not extension trust)
+- Per-IP rate limiting on auth, upload, and webhook endpoints
 - WebSocket per-user rate limiting (30 msg/sec)
-- Server read/write timeouts
-- Token-based authentication
+- Server read/write timeouts and request body limits
+- Token-based authentication with optional email verification
+- Webhook API keys encrypted at rest (AES-256-GCM)
+- Content Security Policy headers
 - Strudel sandbox: iframe with opaque origin (`sandbox="allow-scripts"`) + CSP restricting `connect-src` and `script-src`
 - Server-side limits: 128KB max code size, 20 patterns per user, authorization on all pattern ops
 
@@ -228,7 +246,7 @@ The frontend runs on `:5173` with HMR. The Go server on `:8080` proxies frontend
 - **Frontend** (`client/`): SolidJS + TypeScript + Vite
 - **Desktop** (`desktop/`): Tauri v2 with native Rust voice engine (webrtc-rs, cpal, Opus)
 
-Single WebSocket connection per user. All real-time events (messages, voice state, presence, media/radio playback) go through the WebSocket. File uploads go through REST, then get linked via WebSocket. In-memory state (media playback, radio playback, voice states) is held in the Hub; persistent data lives in SQLite.
+Multiple simultaneous WebSocket connections per user (multi-tab/multi-device). All real-time events (messages, voice state, presence, media/radio playback) go through the WebSocket. File uploads go through REST, then get linked via WebSocket. In-memory state (media playback, radio playback, voice states) is held in the Hub; persistent data lives in SQLite.
 
 ## License
 
