@@ -40,17 +40,19 @@ export default function EmojiPicker(props: EmojiPickerProps) {
         position: "absolute",
         bottom: "100%",
         right: "0",
-        "margin-bottom": "4px",
+        "padding-bottom": "4px",
+        "z-index": "20",
+      }}
+    >
+      <div style={{
         "background-color": "var(--bg-secondary)",
         border: "1px solid var(--border-gold)",
         padding: "6px",
         display: "grid",
         "grid-template-columns": "repeat(5, 1fr)",
         gap: "2px",
-        "z-index": "20",
         "box-shadow": "0 2px 8px rgba(0,0,0,0.4)",
-      }}
-    >
+      }}>
       {EMOJI_LIST.map((emoji) => (
         <button
           onClick={(e) => {
@@ -76,6 +78,7 @@ export default function EmojiPicker(props: EmojiPickerProps) {
           {emoji}
         </button>
       ))}
+      </div>
     </div>
   );
 }
