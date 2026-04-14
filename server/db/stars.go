@@ -32,6 +32,49 @@ func (d *DB) UnstarMessage(userID, messageID string) error {
 	return nil
 }
 
+// GetStarredMessageIDs returns the set of message IDs starred by a user from the given list.
+func (d *DB) GetStarredMessageIDs(userID string, messageIDs []string) (map[string]bool, error) {
+	result := make(map[string]bool)
+	if len(messageIDs) == 0 {
+		return result, nil
+	}
+	placeholders := make([]string, len(messageIDs))
+	args := make([]interface{}, 0, len(messageIDs)+1)
+	args = append(args, userID)
+	for i, id := range messageIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	query := fmt.Sprintf(
+		`SELECT message_id FROM starred_messages WHERE user_id = ? AND message_id IN (%s)`,
+		joinStrings(placeholders, ","),
+	)
+	rows, err := d.Query(query, args...)
+	if err != nil {
+		return result, fmt.Errorf("get starred message ids: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		result[id] = true
+	}
+	return result, nil
+}
+
+func joinStrings(s []string, sep string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	r := s[0]
+	for _, v := range s[1:] {
+		r += sep + v
+	}
+	return r
+}
+
 // StarredMessage is a message with its star timestamp.
 type StarredMessage struct {
 	Message

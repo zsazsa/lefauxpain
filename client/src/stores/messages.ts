@@ -49,6 +49,7 @@ export type Message = {
   created_at: string;
   edited_at: string | null;
   deleted?: boolean;
+  is_starred?: boolean;
 };
 
 // Messages per channel
@@ -150,7 +151,7 @@ export function updateMessage(
   }));
 }
 
-export function deleteMessage(id: string, channelId: string) {
+export function deleteMessage(id: string, channelId: string, threadId?: string | null) {
   setMessagesByChannel((prev) => ({
     ...prev,
     [channelId]: (prev[channelId] || []).map((m) =>
@@ -171,6 +172,39 @@ export function deleteMessage(id: string, channelId: string) {
     }
     return updated;
   });
+
+  // Update thread messages if this message is in the active thread
+  setThreadMessages((prev) =>
+    prev.map((m) =>
+      m.id === id
+        ? { ...m, deleted: true, content: null, attachments: [], reactions: [], unfurls: [] }
+        : m
+    )
+  );
+
+  // Decrement thread summary and clean up empty threads
+  if (threadId && threadId !== id) {
+    setMessagesByChannel((prev) => {
+      const msgs = prev[channelId];
+      if (!msgs) return prev;
+      const idx = msgs.findIndex((m) => m.id === threadId);
+      if (idx === -1) return prev;
+      const msg = msgs[idx];
+      const current = msg.thread_summary;
+      if (!current) return prev;
+      const newCount = Math.max(0, current.reply_count - 1);
+      if (newCount === 0) {
+        // No more replies — remove thread metadata
+        const updated = { ...msg, thread_id: null, thread_summary: undefined };
+        return { ...prev, [channelId]: [...msgs.slice(0, idx), updated, ...msgs.slice(idx + 1)] };
+      }
+      const updated = {
+        ...msg,
+        thread_summary: { ...current, reply_count: newCount },
+      };
+      return { ...prev, [channelId]: [...msgs.slice(0, idx), updated, ...msgs.slice(idx + 1)] };
+    });
+  }
 }
 
 export function addReaction(

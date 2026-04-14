@@ -92,8 +92,9 @@ type MessageUpdatePayload struct {
 }
 
 type MessageDeletePayload struct {
-	ID        string `json:"id"`
-	ChannelID string `json:"channel_id"`
+	ID        string  `json:"id"`
+	ChannelID string  `json:"channel_id"`
+	ThreadID  *string `json:"thread_id"`
 }
 
 type ReactionAddPayload struct {
@@ -508,6 +509,7 @@ func (h *Hub) handleDeleteMessage(c *Client, data json.RawMessage) {
 	broadcast, _ := NewMessage("message_delete", MessageDeletePayload{
 		ID:        d.MessageID,
 		ChannelID: channelID,
+		ThreadID:  msg.ThreadID,
 	})
 	h.BroadcastAll(broadcast)
 }

@@ -10,7 +10,8 @@ import {
 } from "../../stores/messages";
 import { getThreadMessages, getChannelThreads, getStarredMessages, starMessage, unstarMessage, listDocs, getDoc, putDoc, deleteDoc } from "../../lib/api";
 import { channels, setSelectedChannelId } from "../../stores/channels";
-import { lookupUsername } from "../../stores/users";
+import { lookupUsername, onlineUsers, allUsers } from "../../stores/users";
+import { currentUser } from "../../stores/auth";
 import MessageItem from "./Message";
 
 function renderInline(text: string): any {
@@ -77,8 +78,60 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
     }).catch(() => {});
   }
   const [pastedText, setPastedText] = createSignal<string | null>(null);
+  const [mentionQuery, setMentionQuery] = createSignal<string | null>(null);
+  const [mentionIndex, setMentionIndex] = createSignal(0);
+  const pendingMentions = new Map<string, string>();
+  let threadTextareaRef: HTMLTextAreaElement | undefined;
   const PASTE_THRESHOLD = 500;
   let resizing = false;
+
+  const mentionableUsers = () => {
+    const map = new Map<string, { id: string; username: string }>();
+    for (const u of onlineUsers()) map.set(u.id, u);
+    for (const u of allUsers()) if (!map.has(u.id)) map.set(u.id, u);
+    return Array.from(map.values());
+  };
+
+  const filteredMentionUsers = () => {
+    const q = mentionQuery();
+    if (q === null) return [];
+    const me = currentUser();
+    const users = mentionableUsers().filter((u) => u.id !== me?.id);
+    if (q === "") return users.slice(0, 10);
+    const lower = q.toLowerCase();
+    return users.filter((u) => u.username.toLowerCase().includes(lower)).slice(0, 10);
+  };
+
+  function updateThreadMentionQuery(value: string, cursorPos: number) {
+    const before = value.slice(0, cursorPos);
+    const match = before.match(/@(\w*)$/);
+    if (match) {
+      setMentionQuery(match[1]);
+      setMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+    }
+  }
+
+  function selectThreadMention(userId: string, username: string) {
+    const value = threadInput();
+    const cursorPos = threadTextareaRef?.selectionStart || value.length;
+    const before = value.slice(0, cursorPos);
+    const after = value.slice(cursorPos);
+    const atIndex = before.lastIndexOf("@");
+    if (atIndex === -1) return;
+    pendingMentions.set(username, userId);
+    const newText = before.slice(0, atIndex) + `@${username} ` + after;
+    setThreadInput(newText);
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      if (threadTextareaRef) {
+        threadTextareaRef.focus();
+        const pos = atIndex + username.length + 2;
+        threadTextareaRef.setSelectionRange(pos, pos);
+      }
+    });
+  }
 
   const handleResizeStart = (e: MouseEvent) => {
     e.preventDefault();
@@ -173,7 +226,12 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
     if (!threadId) return;
 
     // Combine typed text with pasted attachment
-    const fullContent = pasted ? (typed ? typed + "\n\n" + pasted : pasted) : typed;
+    let fullContent = pasted ? (typed ? typed + "\n\n" + pasted : pasted) : typed;
+
+    // Convert @username mentions to <@userId> format
+    for (const [username, userId] of pendingMentions) {
+      fullContent = fullContent.replaceAll(`@${username}`, `<@${userId}>`);
+    }
 
     // Send to thread
     props.send("send_message", {
@@ -197,6 +255,8 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
 
     setThreadInput("");
     setPastedText(null);
+    setMentionQuery(null);
+    pendingMentions.clear();
   };
 
   const handleOpenDoc = async (path: string) => {
@@ -454,6 +514,7 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
           <div style={{
             padding: "8px 12px",
             "border-top": "1px solid var(--border-gold)",
+            position: "relative",
           }}>
             <label style={{
               display: "flex",
@@ -493,10 +554,56 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 </button>
               </div>
             </Show>
+            {/* Mention autocomplete dropdown */}
+            <Show when={mentionQuery() !== null && filteredMentionUsers().length > 0}>
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "100%",
+                  left: "12px",
+                  right: "12px",
+                  "background-color": "var(--bg-secondary)",
+                  border: "1px solid var(--border-gold)",
+                  padding: "2px 0",
+                  "max-height": "200px",
+                  overflow: "auto",
+                  "z-index": "10",
+                }}
+              >
+                <For each={filteredMentionUsers()}>
+                  {(user, i) => (
+                    <div
+                      onClick={() => selectThreadMention(user.id, user.username)}
+                      style={{
+                        padding: "4px 12px",
+                        cursor: "pointer",
+                        display: "flex",
+                        "align-items": "center",
+                        gap: "8px",
+                        "background-color": i() === mentionIndex()
+                          ? "var(--accent-glow)"
+                          : "transparent",
+                        "font-size": "13px",
+                        color: "var(--text-primary)",
+                      }}
+                      onMouseOver={() => setMentionIndex(i())}
+                    >
+                      <span style={{ color: "var(--cyan)" }}>@</span>
+                      <span>{user.username}</span>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
             <textarea
+              ref={threadTextareaRef}
               placeholder="Reply in thread..."
               value={threadInput()}
-              onInput={(e) => setThreadInput(e.currentTarget.value)}
+              onInput={(e) => {
+                const value = e.currentTarget.value;
+                setThreadInput(value);
+                updateThreadMentionQuery(value, e.currentTarget.selectionStart || value.length);
+              }}
               onPaste={(e) => {
                 const text = e.clipboardData?.getData("text/plain") || "";
                 if (text.length > PASTE_THRESHOLD) {
@@ -505,6 +612,30 @@ export default function ThreadPanel(props: { channelId: string; channelName: str
                 }
               }}
               onKeyDown={(e) => {
+                // Handle mention autocomplete navigation
+                if (mentionQuery() !== null && filteredMentionUsers().length > 0) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setMentionIndex((i) => Math.min(i + 1, filteredMentionUsers().length - 1));
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setMentionIndex((i) => Math.max(i - 1, 0));
+                    return;
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    const user = filteredMentionUsers()[mentionIndex()];
+                    if (user) selectThreadMention(user.id, user.username);
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setMentionQuery(null);
+                    return;
+                  }
+                }
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleThreadSend();

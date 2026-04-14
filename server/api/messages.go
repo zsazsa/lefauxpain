@@ -40,6 +40,7 @@ type messageResponse struct {
 	CreatedAt     string                 `json:"created_at"`
 	EditedAt      *string                `json:"edited_at"`
 	Deleted       bool                   `json:"deleted"`
+	IsStarred     bool                   `json:"is_starred"`
 }
 
 type authorPayload struct {
@@ -108,6 +109,12 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			msgIDs[i] = m.ID
 		}
 		unfurlsMap, _ := h.DB.GetUnfurlsByMessageIDs(msgIDs)
+
+		// Batch fetch starred state
+		var starredSet map[string]bool
+		if user != nil {
+			starredSet, _ = h.DB.GetStarredMessageIDs(user.ID, msgIDs)
+		}
 
 		// Collect thread IDs for batch summary fetch
 		var threadIDs []string
@@ -199,6 +206,7 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 				ThreadID:      m.ThreadID, ThreadSummary: tSummary,
 				CreatedAt:     m.CreatedAt, EditedAt: m.EditedAt,
 				Deleted:       deleted,
+				IsStarred:     starredSet[m.ID],
 			}
 		}
 		writeJSON(w, http.StatusOK, result)
@@ -222,6 +230,12 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		msgIDs[i] = m.ID
 	}
 	unfurlsMap, _ := h.DB.GetUnfurlsByMessageIDs(msgIDs)
+
+	// Batch fetch starred state
+	var starredSet map[string]bool
+	if user != nil {
+		starredSet, _ = h.DB.GetStarredMessageIDs(user.ID, msgIDs)
+	}
 
 	// Collect thread IDs for batch summary fetch
 	var threadIDs []string
@@ -339,6 +353,7 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:     m.CreatedAt,
 			EditedAt:      m.EditedAt,
 			Deleted:       deleted,
+			IsStarred:     starredSet[m.ID],
 		}
 	}
 
@@ -382,9 +397,52 @@ func (h *MessageHandler) GetThreadHistory(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Batch fetch starred state
+	threadMsgIDs := make([]string, len(msgs))
+	for i, m := range msgs {
+		threadMsgIDs[i] = m.ID
+	}
+	var threadStarredSet map[string]bool
+	if user != nil {
+		threadStarredSet, _ = h.DB.GetStarredMessageIDs(user.ID, threadMsgIDs)
+	}
+
 	// Build response — same pattern as GetHistory but simpler
 	var response []messageResponse
 	for _, m := range msgs {
+		deleted := m.DeletedAt != nil
+
+		var attachPayloads []attachPayload
+		var reactions []db.ReactionGroup
+		var mentions []string
+		if !deleted {
+			attachments, _ := h.DB.GetAttachmentsByMessage(m.ID)
+			attachPayloads = make([]attachPayload, len(attachments))
+			for j, a := range attachments {
+				ap := attachPayload{
+					ID: a.ID, Filename: a.Filename,
+					URL: "/" + strings.ReplaceAll(a.Path, "\\", "/"),
+					MimeType: a.MimeType, Width: a.Width, Height: a.Height,
+				}
+				if a.ThumbPath != nil {
+					t := "/" + strings.ReplaceAll(*a.ThumbPath, "\\", "/")
+					ap.ThumbURL = &t
+				}
+				attachPayloads[j] = ap
+			}
+			reactions, _ = h.DB.GetReactionsByMessage(m.ID)
+			mentions, _ = h.DB.GetMentionsByMessage(m.ID)
+		}
+		if attachPayloads == nil {
+			attachPayloads = []attachPayload{}
+		}
+		if reactions == nil {
+			reactions = []db.ReactionGroup{}
+		}
+		if mentions == nil {
+			mentions = []string{}
+		}
+
 		authorID := ""
 		if m.AuthorID != nil {
 			authorID = *m.AuthorID
@@ -419,12 +477,14 @@ func (h *MessageHandler) GetThreadHistory(w http.ResponseWriter, r *http.Request
 			Author:      authorP,
 			Content:     m.Content,
 			ReplyTo:     reply,
-			Attachments: []attachPayload{},
-			Reactions:   []db.ReactionGroup{},
-			Mentions:    []string{},
+			Attachments: attachPayloads,
+			Reactions:   reactions,
+			Mentions:    mentions,
 			ThreadID:    m.ThreadID,
 			CreatedAt:   m.CreatedAt,
 			EditedAt:    m.EditedAt,
+			Deleted:     deleted,
+			IsStarred:   threadStarredSet[m.ID],
 		}
 		response = append(response, resp)
 	}

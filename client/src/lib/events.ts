@@ -245,7 +245,7 @@ export function initEventHandlers() {
         break;
 
       case "message_delete":
-        deleteMessage(msg.d.id, msg.d.channel_id);
+        deleteMessage(msg.d.id, msg.d.channel_id, msg.d.thread_id || null);
         break;
 
       case "message_unfurls":

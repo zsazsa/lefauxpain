@@ -6,9 +6,10 @@ import { lookupUsername, onlineUsers, allUsers } from "../../stores/users";
 import { send } from "../../lib/ws";
 import { isMobile } from "../../stores/responsive";
 import { openLightbox } from "../../stores/lightbox";
-import { starMessage } from "../../lib/api";
+import { starMessage, unstarMessage } from "../../lib/api";
 import ReactionBar from "./ReactionBar";
 import ThreadIndicator from "./ThreadIndicator";
+import EmojiPicker from "./EmojiPicker";
 
 interface MessageProps {
   message: Message;
@@ -215,7 +216,24 @@ export default function MessageItem(props: MessageProps) {
   const [hovered, setHovered] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
   const [editText, setEditText] = createSignal("");
+  const [showEmojiPicker, setShowEmojiPicker] = createSignal(false);
+  const [starred, setStarred] = createSignal(props.message.is_starred ?? false);
   let editRef: HTMLInputElement | undefined;
+
+  const toggleStar = async (e: MouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (starred()) {
+        await unstarMessage(props.message.id);
+        setStarred(false);
+      } else {
+        await starMessage(props.message.id);
+        setStarred(true);
+      }
+    } catch {
+      // silently fail
+    }
+  };
 
   const handleDelete = () => {
     send("delete_message", { message_id: props.message.id });
@@ -487,24 +505,40 @@ export default function MessageItem(props: MessageProps) {
             </button>
           </Show>
           <button
-            onClick={(e) =>
-              handleActionClick(e, () =>
-                send("add_reaction", {
-                  message_id: props.message.id,
-                  emoji: "\u{1F44D}",
-                })
-              )
-            }
+            onClick={toggleStar}
             style={{
               padding: "3px 8px",
               "font-size": "11px",
-              color: "var(--text-secondary)",
-              border: "1px solid var(--border-gold)",
+              color: starred() ? "var(--danger)" : "var(--text-secondary)",
+              border: `1px solid ${starred() ? "var(--danger)" : "var(--border-gold)"}`,
               "background-color": "var(--bg-secondary)",
             }}
           >
-            [react]
+            {starred() ? "[unstar]" : "[star]"}
           </button>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowEmojiPicker((v) => !v);
+              }}
+              style={{
+                padding: "3px 8px",
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--border-gold)",
+                "background-color": "var(--bg-secondary)",
+              }}
+            >
+              [react]
+            </button>
+            <Show when={showEmojiPicker()}>
+              <EmojiPicker
+                messageId={props.message.id}
+                onClose={() => setShowEmojiPicker(false)}
+              />
+            </Show>
+          </div>
           <Show when={isOwn() && props.message.content}>
             <button
               onClick={(e) => handleActionClick(e, startEdit)}
@@ -575,38 +609,41 @@ export default function MessageItem(props: MessageProps) {
             </button>
           </Show>
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              starMessage(props.message.id);
-            }}
-            title="Star"
+            onClick={toggleStar}
+            title={starred() ? "Unstar — remove from saved messages" : "Star — save this message"}
             style={{
-              color: "var(--accent)",
-              "background-color": "var(--accent-glow)",
-              border: "1px solid var(--accent)",
+              color: starred() ? "var(--danger)" : "var(--accent)",
+              "background-color": starred() ? "rgba(220,60,60,0.1)" : "var(--accent-glow)",
+              border: `1px solid ${starred() ? "var(--danger)" : "var(--accent)"}`,
               padding: "0px 4px",
               "font-size": "11px",
               cursor: "pointer",
             }}
           >
-            [*]
+            {starred() ? "[unstar]" : "[*]"}
           </button>
-          <button
-            onClick={() =>
-              send("add_reaction", {
-                message_id: props.message.id,
-                emoji: "\u{1F44D}",
-              })
-            }
-            title="React"
-            style={{
-              padding: "2px 6px",
-              "font-size": "11px",
-              color: "var(--text-secondary)",
-            }}
-          >
-            [+]
-          </button>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowEmojiPicker((v) => !v);
+              }}
+              title="Add reaction"
+              style={{
+                padding: "2px 6px",
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+              }}
+            >
+              [+]
+            </button>
+            <Show when={showEmojiPicker()}>
+              <EmojiPicker
+                messageId={props.message.id}
+                onClose={() => setShowEmojiPicker(false)}
+              />
+            </Show>
+          </div>
           <Show when={isOwn() && props.message.content}>
             <button
               onClick={startEdit}
