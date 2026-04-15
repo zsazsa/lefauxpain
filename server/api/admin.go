@@ -232,6 +232,13 @@ func (h *AdminHandler) ApproveUser(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 		h.Hub.BroadcastAll(msg)
+
+		// Send approval notification email
+		if approvedUser.Email != nil && *approvedUser.Email != "" {
+			if err := h.EmailService.SendApprovalEmail(*approvedUser.Email, "Le Faux Pain"); err != nil {
+				log.Printf("send approval email to %s: %v", *approvedUser.Email, err)
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "approved"})

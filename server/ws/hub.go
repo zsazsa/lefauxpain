@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kalman/voicechat/db"
+	"github.com/kalman/voicechat/email"
 	"github.com/kalman/voicechat/sfu"
 	"nhooyr.io/websocket"
 )
@@ -42,6 +43,7 @@ type StrudelPlaybackState struct {
 type Hub struct {
 	DB             *db.DB
 	SFU            *sfu.SFU
+	EmailService   *email.EmailService
 	DevMode        bool
 	applets        *AppletRegistry
 	clients        map[string][]*Client // userID → clients (multiple connections)
@@ -62,7 +64,7 @@ type Hub struct {
 	voiceClients    map[string]*Client // userID → the connection that owns voice
 }
 
-func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
+func NewHub(database *db.DB, sfuInstance *sfu.SFU, emailSvc *email.EmailService, devMode bool) *Hub {
 	applets := NewAppletRegistry()
 	applets.Register(RadioApplet())
 	applets.Register(MediaApplet())
@@ -71,6 +73,7 @@ func NewHub(database *db.DB, sfuInstance *sfu.SFU, devMode bool) *Hub {
 	return &Hub{
 		DB:              database,
 		SFU:             sfuInstance,
+		EmailService:    emailSvc,
 		DevMode:         devMode,
 		applets:         applets,
 		clients:         make(map[string][]*Client),
@@ -232,6 +235,12 @@ func (h *Hub) BroadcastToMembers(msg []byte, channelID string) {
 			}
 		}
 	}
+}
+
+func (h *Hub) IsUserOnline(userID string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients[userID]) > 0
 }
 
 func (h *Hub) SendTo(userID string, msg []byte) {

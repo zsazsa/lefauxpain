@@ -69,3 +69,46 @@ This is a test email from your %s server.
 
 If you received this, your email configuration is working correctly.`, appName, appName)
 }
+
+func ApprovalEmailHTML(appName string) string {
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+  <h2>%s</h2>
+  <p>Your account has been approved! You can now log in.</p>
+  <p style="color: #888; font-size: 12px;">If you didn't create an account, you can ignore this email.</p>
+</body>
+</html>`, appName)
+}
+
+func ApprovalEmailText(appName string) string {
+	return fmt.Sprintf(`%s
+
+Your account has been approved! You can now log in.
+
+If you didn't create an account, you can ignore this email.`, appName)
+}
+
+func MentionEmailHTML(appName, authorUsername, channelName, contentPreview string) string {
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+  <h2>%s</h2>
+  <p><strong>%s</strong> mentioned you in <strong>#%s</strong>:</p>
+  <p style="padding: 12px; background: #f4f4f4; border-radius: 8px; color: #333;">%s</p>
+  <p style="color: #888; font-size: 12px;">Log in to see the full conversation.</p>
+</body>
+</html>`, appName, authorUsername, channelName, contentPreview)
+}
+
+func MentionEmailText(appName, authorUsername, channelName, contentPreview string) string {
+	return fmt.Sprintf(`%s
+
+%s mentioned you in #%s:
+
+%s
+
+Log in to see the full conversation.`, appName, authorUsername, channelName, contentPreview)
+}

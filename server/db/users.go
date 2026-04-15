@@ -249,6 +249,26 @@ func (d *DB) SetEmailVerified(userID string) error {
 	return nil
 }
 
+func (d *DB) CanSendMentionEmail(userID string) (bool, error) {
+	var canSend bool
+	err := d.QueryRow(
+		`SELECT (last_mention_email_at IS NULL OR last_mention_email_at < datetime('now', '-3 days')) FROM users WHERE id = ?`,
+		userID,
+	).Scan(&canSend)
+	if err != nil {
+		return false, fmt.Errorf("check mention email cooldown: %w", err)
+	}
+	return canSend, nil
+}
+
+func (d *DB) SetMentionEmailSent(userID string) error {
+	_, err := d.Exec(`UPDATE users SET last_mention_email_at = datetime('now') WHERE id = ?`, userID)
+	if err != nil {
+		return fmt.Errorf("set mention email sent: %w", err)
+	}
+	return nil
+}
+
 func (d *DB) AdvancePendingVerificationUsers() (int, error) {
 	result, err := d.Exec(`UPDATE users SET email_verified_at = datetime('now') WHERE email IS NOT NULL AND email_verified_at IS NULL AND approved = FALSE`)
 	if err != nil {

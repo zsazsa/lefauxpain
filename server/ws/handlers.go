@@ -269,6 +269,25 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 					CreatedAt: msg.CreatedAt,
 				})
 				h.SendTo(mentionedID, notifMsg)
+
+				// Send mention email if user is offline
+				if !h.IsUserOnline(mentionedID) && h.EmailService != nil {
+					mentionedUser, _ := h.DB.GetUserByID(mentionedID)
+					if mentionedUser != nil && mentionedUser.Email != nil && *mentionedUser.Email != "" {
+						canSend, _ := h.DB.CanSendMentionEmail(mentionedID)
+						if canSend {
+							go func(userID, toEmail, author, channel, prev string) {
+								if err := h.EmailService.SendMentionEmail(toEmail, "Le Faux Pain", author, channel, prev); err != nil {
+									log.Printf("send mention email to %s: %v", toEmail, err)
+									return
+								}
+								if err := h.DB.SetMentionEmailSent(userID); err != nil {
+									log.Printf("set mention email sent for %s: %v", userID, err)
+								}
+							}(mentionedID, *mentionedUser.Email, c.User.Username, chName, preview)
+						}
+					}
+				}
 			}
 		}
 	}

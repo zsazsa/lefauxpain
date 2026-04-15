@@ -93,6 +93,16 @@ func (p *SMTPProvider) SendPasswordResetEmail(to, code, appName string) error {
 	return p.sendEmail(to, subject, PasswordResetEmailHTML(code, appName), PasswordResetEmailText(code, appName))
 }
 
+func (p *SMTPProvider) SendApprovalEmail(to, appName string) error {
+	subject := fmt.Sprintf("%s — Your account has been approved", appName)
+	return p.sendEmail(to, subject, ApprovalEmailHTML(appName), ApprovalEmailText(appName))
+}
+
+func (p *SMTPProvider) SendMentionEmail(to, appName, authorUsername, channelName, contentPreview string) error {
+	subject := fmt.Sprintf("%s — %s mentioned you in #%s", appName, authorUsername, channelName)
+	return p.sendEmail(to, subject, MentionEmailHTML(appName, authorUsername, channelName, contentPreview), MentionEmailText(appName, authorUsername, channelName, contentPreview))
+}
+
 func (p *SMTPProvider) SendTestEmail(to, appName string) error {
 	subject := fmt.Sprintf("%s — Test email", appName)
 	return p.sendEmail(to, subject, TestEmailHTML(appName), TestEmailText(appName))

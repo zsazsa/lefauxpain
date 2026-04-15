@@ -10,6 +10,14 @@ func (p *TestProvider) SendPasswordResetEmail(to, code, appName string) error {
 	return nil
 }
 
+func (p *TestProvider) SendApprovalEmail(to, appName string) error {
+	return nil
+}
+
+func (p *TestProvider) SendMentionEmail(to, appName, authorUsername, channelName, contentPreview string) error {
+	return nil
+}
+
 func (p *TestProvider) SendTestEmail(to, appName string) error {
 	return nil
 }

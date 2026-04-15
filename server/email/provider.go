@@ -19,6 +19,8 @@ type Provider interface {
 	SendVerificationEmail(to, code, appName string) error
 	SendPasswordResetEmail(to, code, appName string) error
 	SendTestEmail(to, appName string) error
+	SendApprovalEmail(to, appName string) error
+	SendMentionEmail(to, appName, authorUsername, channelName, contentPreview string) error
 }
 
 type ProviderConfig struct {
@@ -207,6 +209,22 @@ func (s *EmailService) SendTestEmail(to, appName string) error {
 		return err
 	}
 	return provider.SendTestEmail(to, appName)
+}
+
+func (s *EmailService) SendApprovalEmail(to, appName string) error {
+	provider, err := s.GetProvider()
+	if err != nil {
+		return err
+	}
+	return provider.SendApprovalEmail(to, appName)
+}
+
+func (s *EmailService) SendMentionEmail(to, appName, authorUsername, channelName, contentPreview string) error {
+	provider, err := s.GetProvider()
+	if err != nil {
+		return err
+	}
+	return provider.SendMentionEmail(to, appName, authorUsername, channelName, contentPreview)
 }
 
 func generateCode() (string, error) {

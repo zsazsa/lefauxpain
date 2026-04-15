@@ -55,7 +55,7 @@ func main() {
 
 	sfuInstance := sfu.New(cfg.STUNServer, cfg.PublicIP)
 
-	hub := ws.NewHub(database, sfuInstance, cfg.DevMode)
+	hub := ws.NewHub(database, sfuInstance, emailSvc, cfg.DevMode)
 
 	// Wire SFU signaling back through the hub
 	sfuInstance.Signal = func(userID string, op string, data any) {

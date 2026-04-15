@@ -357,6 +357,9 @@ var migrations = []string{
 	ALTER TABLE messages_new RENAME TO messages;
 	CREATE INDEX idx_messages_channel_time ON messages(channel_id, created_at DESC);
 	CREATE INDEX idx_messages_thread ON messages(thread_id, created_at ASC);`,
+
+	// Version 27: Track last mention email sent time for rate limiting
+	`ALTER TABLE users ADD COLUMN last_mention_email_at DATETIME;`,
 }
 
 func (d *DB) migrate() error {
