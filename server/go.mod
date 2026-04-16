@@ -8,7 +8,7 @@ require (
 	github.com/pion/rtcp v1.2.16
 	github.com/pion/webrtc/v4 v4.2.6
 	golang.org/x/crypto v0.49.0
-	golang.org/x/image v0.36.0
+	golang.org/x/image v0.39.0
 	golang.org/x/net v0.51.0
 	modernc.org/sqlite v1.45.0
 	nhooyr.io/websocket v1.8.17
