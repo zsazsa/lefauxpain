@@ -31,6 +31,12 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user := UserFromContext(r.Context())
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, h.MaxSize)
 	if err := r.ParseMultipartForm(h.MaxSize); err != nil {
 		writeError(w, http.StatusBadRequest, "file too large")
@@ -62,11 +68,12 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	attID := uuid.New().String()
 	att := &db.Attachment{
-		ID:        attID,
-		Filename:  header.Filename,
-		Path:      stored.Path,
-		SizeBytes: header.Size,
-		MimeType:  mimeType,
+		ID:         attID,
+		Filename:   header.Filename,
+		Path:       stored.Path,
+		SizeBytes:  header.Size,
+		MimeType:   mimeType,
+		UploadedBy: &user.ID,
 	}
 	if stored.Width > 0 {
 		w2 := stored.Width

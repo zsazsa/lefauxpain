@@ -139,7 +139,10 @@ func (c *Client) sendReady() error {
 	}
 
 	// Get all channel managers in one query
-	allManagers, _ := c.hub.DB.GetAllChannelManagers()
+	allManagers, err := c.hub.DB.GetAllChannelManagers()
+	if err != nil {
+		log.Printf("sendReady: get channel managers: %v", err)
+	}
 
 	channelPayloads := make([]ChannelPayload, len(channelsWithMembership))
 	for i, cwm := range channelsWithMembership {
@@ -163,7 +166,10 @@ func (c *Client) sendReady() error {
 	// Get deleted channels for admin users
 	var deletedChannelPayloads []ChannelPayload
 	if c.User.IsAdmin {
-		deletedChannels, _ := c.hub.DB.GetDeletedChannels()
+		deletedChannels, delErr := c.hub.DB.GetDeletedChannels()
+		if delErr != nil {
+			log.Printf("sendReady: get deleted channels: %v", delErr)
+		}
 		for _, ch := range deletedChannels {
 			deletedChannelPayloads = append(deletedChannelPayloads, ChannelPayload{
 				ID:         ch.ID,
@@ -179,7 +185,10 @@ func (c *Client) sendReady() error {
 	onlineUsers := c.hub.OnlineUsers()
 
 	// Get all registered users (approved only)
-	dbAllUsers, _ := c.hub.DB.GetAllUsers()
+	dbAllUsers, usersErr := c.hub.DB.GetAllUsers()
+	if usersErr != nil {
+		log.Printf("sendReady: get all users: %v", usersErr)
+	}
 	var allUsers []UserPayload
 	for _, u := range dbAllUsers {
 		if !u.Approved {
@@ -214,7 +223,10 @@ func (c *Client) sendReady() error {
 	}
 
 	// Get unread notifications
-	dbNotifs, _ := c.hub.DB.GetUnreadNotifications(c.UserID, 50)
+	dbNotifs, notifsErr := c.hub.DB.GetUnreadNotifications(c.UserID, 50)
+	if notifsErr != nil {
+		log.Printf("sendReady: get notifications: %v", notifsErr)
+	}
 	notifPayloads := make([]NotificationPayload, len(dbNotifs))
 	for i, n := range dbNotifs {
 		notifPayloads[i] = NotificationPayload{
@@ -239,7 +251,10 @@ func (c *Client) sendReady() error {
 	enabledFeatures := c.hub.applets.EnabledFeatures(c.hub)
 
 	// Build core ready data
-	unreadCounts, _ := c.hub.DB.GetUnreadCounts(c.UserID)
+	unreadCounts, unreadErr := c.hub.DB.GetUnreadCounts(c.UserID)
+	if unreadErr != nil {
+		log.Printf("sendReady: get unread counts: %v", unreadErr)
+	}
 
 	readyMap := map[string]any{
 		"user": &UserPayload{
@@ -307,6 +322,7 @@ func (c *Client) Send(msg []byte) {
 	case c.send <- msg:
 	default:
 		// Buffer full — disconnect slow client
+		log.Printf("ws: buffer full, disconnecting slow client %s (%s)", c.UserID, c.User.Username)
 		c.Close()
 	}
 }

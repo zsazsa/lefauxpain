@@ -45,6 +45,17 @@ func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (m *AuthMiddleware) WrapAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return m.Wrap(func(w http.ResponseWriter, r *http.Request) {
+		user := UserFromContext(r.Context())
+		if user == nil || !user.IsAdmin {
+			writeError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+		next(w, r)
+	})
+}
+
 func UserFromContext(ctx context.Context) *db.User {
 	u, _ := ctx.Value(userContextKey).(*db.User)
 	return u

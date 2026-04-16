@@ -132,12 +132,6 @@ func (h *WebhookHandler) AdminListKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
-		return
-	}
-
 	keys, err := h.DB.ListWebhookKeys()
 	if err != nil {
 		log.Printf("list webhook keys: %v", err)
@@ -154,12 +148,6 @@ func (h *WebhookHandler) AdminListKeys(w http.ResponseWriter, r *http.Request) {
 func (h *WebhookHandler) AdminCreateKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
 		return
 	}
 
@@ -189,12 +177,6 @@ func (h *WebhookHandler) AdminCreateKey(w http.ResponseWriter, r *http.Request) 
 func (h *WebhookHandler) AdminDeleteKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
 		return
 	}
 

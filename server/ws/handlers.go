@@ -178,16 +178,29 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		return
 	}
 
-	// Link attachments
+	// Link attachments (only orphans uploaded by this user)
 	if len(d.AttachmentIDs) > 0 {
-		if err := h.DB.LinkAttachmentsToMessage(msgID, d.AttachmentIDs); err != nil {
+		if err := h.DB.LinkAttachmentsToMessage(msgID, d.AttachmentIDs, c.UserID); err != nil {
 			log.Printf("link attachments: %v", err)
+		}
+	}
+
+	// Validate reply_to is in the same channel
+	if d.ReplyToID != nil {
+		replyParent, _ := h.DB.GetMessageByID(*d.ReplyToID)
+		if replyParent == nil || replyParent.ChannelID != d.ChannelID {
+			return
 		}
 	}
 
 	// Thread logic: determine thread_id for this message
 	var threadID *string
 	if d.ThreadID != nil {
+		// Validate thread root is in the same channel
+		threadRoot, _ := h.DB.GetMessageByID(*d.ThreadID)
+		if threadRoot == nil || threadRoot.ChannelID != d.ChannelID {
+			return
+		}
 		// Explicit thread_id from client (replying within thread panel)
 		threadID = d.ThreadID
 		h.DB.SetThreadID(msgID, *d.ThreadID)

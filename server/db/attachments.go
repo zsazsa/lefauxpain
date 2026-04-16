@@ -3,23 +3,24 @@ package db
 import "fmt"
 
 type Attachment struct {
-	ID        string  `json:"id"`
-	MessageID *string `json:"message_id"`
-	Filename  string  `json:"filename"`
-	Path      string  `json:"path"`
-	ThumbPath *string `json:"thumb_path"`
-	SizeBytes int64   `json:"size_bytes"`
-	MimeType  string  `json:"mime_type"`
-	Width     *int    `json:"width"`
-	Height    *int    `json:"height"`
-	CreatedAt string  `json:"created_at"`
+	ID         string  `json:"id"`
+	MessageID  *string `json:"message_id"`
+	Filename   string  `json:"filename"`
+	Path       string  `json:"path"`
+	ThumbPath  *string `json:"thumb_path"`
+	SizeBytes  int64   `json:"size_bytes"`
+	MimeType   string  `json:"mime_type"`
+	Width      *int    `json:"width"`
+	Height     *int    `json:"height"`
+	UploadedBy *string `json:"uploaded_by"`
+	CreatedAt  string  `json:"created_at"`
 }
 
 func (d *DB) CreateAttachment(a *Attachment) error {
 	_, err := d.Exec(
-		`INSERT INTO attachments (id, message_id, filename, path, thumb_path, size_bytes, mime_type, width, height)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.ID, a.MessageID, a.Filename, a.Path, a.ThumbPath, a.SizeBytes, a.MimeType, a.Width, a.Height,
+		`INSERT INTO attachments (id, message_id, filename, path, thumb_path, size_bytes, mime_type, width, height, uploaded_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, a.MessageID, a.Filename, a.Path, a.ThumbPath, a.SizeBytes, a.MimeType, a.Width, a.Height, a.UploadedBy,
 	)
 	if err != nil {
 		return fmt.Errorf("create attachment: %w", err)
@@ -27,11 +28,11 @@ func (d *DB) CreateAttachment(a *Attachment) error {
 	return nil
 }
 
-func (d *DB) LinkAttachmentsToMessage(messageID string, attachmentIDs []string) error {
+func (d *DB) LinkAttachmentsToMessage(messageID string, attachmentIDs []string, uploaderID string) error {
 	for _, aid := range attachmentIDs {
 		_, err := d.Exec(
-			`UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL`,
-			messageID, aid,
+			`UPDATE attachments SET message_id = ? WHERE id = ? AND message_id IS NULL AND (uploaded_by = ? OR uploaded_by IS NULL)`,
+			messageID, aid, uploaderID,
 		)
 		if err != nil {
 			return fmt.Errorf("link attachment %s: %w", aid, err)

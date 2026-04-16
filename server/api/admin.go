@@ -39,12 +39,6 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
-		return
-	}
-
 	users, err := h.DB.GetAllUsers()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -77,10 +71,6 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
-		return
-	}
 
 	// Extract user ID from path: /api/v1/admin/users/{id}
 	targetID := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
@@ -113,10 +103,6 @@ func (h *AdminHandler) SetAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
-		return
-	}
 
 	// Extract user ID from path: /api/v1/admin/users/{id}/admin
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
@@ -151,12 +137,6 @@ func (h *AdminHandler) SetAdmin(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
 		return
 	}
 
@@ -202,10 +182,6 @@ func (h *AdminHandler) ApproveUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
-		return
-	}
 
 	// Extract user ID from path: /api/v1/admin/users/{id}/approve
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
@@ -250,12 +226,6 @@ func (h *AdminHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
-		return
-	}
-
 	enabled, _ := h.DB.GetSetting("email_verification_enabled")
 
 	result := map[string]any{
@@ -280,12 +250,6 @@ func (h *AdminHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
 		return
 	}
 
@@ -324,14 +288,6 @@ func (h *AdminHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := UserFromContext(r.Context())
-	if user == nil {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	if !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
-		return
-	}
 
 	if user.Email == nil || *user.Email == "" {
 		writeError(w, http.StatusBadRequest, "your account does not have an email address")
@@ -362,12 +318,6 @@ func maskSecret(s string) string {
 func (h *AdminHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	user := UserFromContext(r.Context())
-	if user == nil || !user.IsAdmin {
-		writeError(w, http.StatusForbidden, "admin access required")
 		return
 	}
 

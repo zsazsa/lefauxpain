@@ -85,6 +85,15 @@ func (d *DB) ExpireVerificationCodeByUserID(userID string) error {
 	return nil
 }
 
+func (d *DB) CleanupExpiredVerificationCodes() (int, error) {
+	result, err := d.Exec(`DELETE FROM verification_codes WHERE expires_at < datetime('now', '-1 hour')`)
+	if err != nil {
+		return 0, fmt.Errorf("cleanup expired verification codes: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
 func (d *DB) GetVerificationCodeHash(userID string) (string, error) {
 	var hash string
 	err := d.QueryRow(`SELECT code_hash FROM verification_codes WHERE user_id = ?`, userID).Scan(&hash)

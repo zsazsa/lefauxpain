@@ -112,17 +112,17 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	adminHandler := &AdminHandler{DB: database, Hub: hub, EmailService: emailService, EncKey: encKey}
 	webhookHandler := &WebhookHandler{DB: database, Hub: hub}
 	webhookRL := NewIPRateLimiter(10, time.Minute)
-	mux.HandleFunc("/api/v1/admin/users", authMW.Wrap(adminHandler.ListUsers))
-	mux.HandleFunc("/api/v1/admin/settings/email/test", authMW.Wrap(adminHandler.SendTestEmail))
-	mux.HandleFunc("/api/v1/admin/settings/email", authMW.Wrap(adminHandler.GetEmailSettings))
-	mux.HandleFunc("/api/v1/admin/settings", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/admin/users", authMW.WrapAdmin(adminHandler.ListUsers))
+	mux.HandleFunc("/api/v1/admin/settings/email/test", authMW.WrapAdmin(adminHandler.SendTestEmail))
+	mux.HandleFunc("/api/v1/admin/settings/email", authMW.WrapAdmin(adminHandler.GetEmailSettings))
+	mux.HandleFunc("/api/v1/admin/settings", authMW.WrapAdmin(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			adminHandler.GetSettings(w, r)
 		} else {
 			adminHandler.UpdateSettings(w, r)
 		}
 	}))
-	mux.HandleFunc("/api/v1/admin/users/", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/admin/users/", authMW.WrapAdmin(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/admin") {
 			adminHandler.SetAdmin(w, r)
 			return
@@ -156,7 +156,7 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	})))
 
 	// Admin webhook key management (authenticated)
-	mux.HandleFunc("/api/v1/admin/webhook-keys", authMW.Wrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/admin/webhook-keys", authMW.WrapAdmin(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			webhookHandler.AdminListKeys(w, r)
@@ -166,7 +166,7 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
 	}))
-	mux.HandleFunc("/api/v1/admin/webhook-keys/", authMW.Wrap(webhookHandler.AdminDeleteKey))
+	mux.HandleFunc("/api/v1/admin/webhook-keys/", authMW.WrapAdmin(webhookHandler.AdminDeleteKey))
 
 	// Radio track upload/delete (authenticated + rate limited)
 	radioHandler := &RadioHandler{DB: database, Store: store, Hub: hub}

@@ -360,6 +360,17 @@ var migrations = []string{
 
 	// Version 27: Track last mention email sent time for rate limiting
 	`ALTER TABLE users ADD COLUMN last_mention_email_at DATETIME;`,
+
+	// Version 28: Attachment ownership + DB indexes + cleanup orphaned table
+	`ALTER TABLE attachments ADD COLUMN uploaded_by TEXT REFERENCES users(id) ON DELETE SET NULL;
+
+	CREATE INDEX IF NOT EXISTS idx_messages_channel_not_deleted
+		ON messages(channel_id, created_at DESC) WHERE deleted_at IS NULL;
+
+	CREATE INDEX IF NOT EXISTS idx_channels_not_deleted
+		ON channels(position) WHERE deleted_at IS NULL;
+
+	DROP TABLE IF EXISTS channel_reads;`,
 }
 
 func (d *DB) migrate() error {

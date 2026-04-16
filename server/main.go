@@ -121,6 +121,24 @@ func main() {
 		}
 	}()
 
+	// Periodic DB cleanup: expired verification codes + old read notifications (every hour)
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n, err := database.CleanupExpiredVerificationCodes(); err != nil {
+				log.Printf("verification code cleanup error: %v", err)
+			} else if n > 0 {
+				log.Printf("cleaned up %d expired verification codes", n)
+			}
+			if n, err := database.CleanupOldReadNotifications(); err != nil {
+				log.Printf("notification cleanup error: %v", err)
+			} else if n > 0 {
+				log.Printf("cleaned up %d old read notifications", n)
+			}
+		}
+	}()
+
 	staticFS, err := StaticSubFS()
 	if err != nil {
 		log.Fatalf("Failed to load static files: %v", err)

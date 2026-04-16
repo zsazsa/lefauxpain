@@ -70,6 +70,15 @@ func (d *DB) MarkNotificationRead(id, userID string) error {
 	return err
 }
 
+func (d *DB) CleanupOldReadNotifications() (int, error) {
+	result, err := d.Exec(`DELETE FROM notifications WHERE read = TRUE AND created_at < datetime('now', '-30 days')`)
+	if err != nil {
+		return 0, fmt.Errorf("cleanup old notifications: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
 func (d *DB) MarkAllNotificationsRead(userID string) error {
 	_, err := d.Exec(
 		`UPDATE notifications SET read = TRUE WHERE user_id = ? AND read = FALSE`,
