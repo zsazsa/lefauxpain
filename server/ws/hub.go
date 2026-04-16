@@ -62,6 +62,7 @@ type Hub struct {
 	strudelViewers  map[string]map[string]bool // patternID → set of userIDs
 	strudelViewMu   sync.RWMutex
 	voiceClients    map[string]*Client // userID → the connection that owns voice
+	done            chan struct{}
 }
 
 func NewHub(database *db.DB, sfuInstance *sfu.SFU, emailSvc *email.EmailService, devMode bool) *Hub {
@@ -85,12 +86,15 @@ func NewHub(database *db.DB, sfuInstance *sfu.SFU, emailSvc *email.EmailService,
 		strudelPlayback: make(map[string]*StrudelPlaybackState),
 		strudelViewers:  make(map[string]map[string]bool),
 		voiceClients:    make(map[string]*Client),
+		done:            make(chan struct{}),
 	}
 }
 
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.done:
+			return
 		case client := <-h.register:
 			h.mu.Lock()
 			wasOnline := len(h.clients[client.UserID]) > 0
@@ -172,6 +176,26 @@ func (h *Hub) Run() {
 			h.mu.RUnlock()
 		}
 	}
+}
+
+func (h *Hub) Shutdown() {
+	log.Println("Closing all WebSocket connections...")
+	h.mu.RLock()
+	var allClients []*Client
+	for _, clients := range h.clients {
+		allClients = append(allClients, clients...)
+	}
+	h.mu.RUnlock()
+
+	for _, client := range allClients {
+		client.CloseWithReason(websocket.StatusGoingAway, "server shutting down")
+	}
+
+	// Give close frames time to flush to peers
+	time.Sleep(500 * time.Millisecond)
+
+	close(h.done)
+	log.Printf("Closed %d WebSocket connections", len(allClients))
 }
 
 func (h *Hub) BroadcastAll(msg []byte) {

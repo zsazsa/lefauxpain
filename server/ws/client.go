@@ -331,3 +331,9 @@ func (c *Client) Close() {
 	c.cancel()
 	c.conn.Close(websocket.StatusNormalClosure, "")
 }
+
+func (c *Client) CloseWithReason(code websocket.StatusCode, reason string) {
+	// Send close frame before cancelling context so the peer receives it
+	c.conn.Close(code, reason)
+	c.cancel()
+}

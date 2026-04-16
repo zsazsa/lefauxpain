@@ -156,7 +156,8 @@ func main() {
 
 	shutdown := func() {
 		log.Println("Shutting down...")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		hub.Shutdown()
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
 			log.Fatalf("Server shutdown error: %v", err)
