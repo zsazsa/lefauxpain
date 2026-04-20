@@ -31,7 +31,7 @@ webkit2gtk = "=2.0.2"
 openh264 = { version = "0.6", features = ["source"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 arboard = "3"
-ashpd = "0.9"
+ashpd = "0.13"
 pipewire = "0.8"
 libspa = "0.8"
 cros-codecs = { version = "0.0.5", features = ["vaapi"], optional = true }
