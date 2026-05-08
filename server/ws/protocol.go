@@ -25,6 +25,7 @@ type ReadyData struct {
 	AllUsers       []UserPayload          `json:"all_users"`
 	Notifications  []NotificationPayload  `json:"notifications"`
 	ScreenShares   []sfu.ScreenShareState `json:"screen_shares"`
+	AudioSources   []AudioSourcePayload   `json:"audio_sources"`
 	MediaList      []MediaItemPayload     `json:"media_list"`
 	MediaPlayback   *MediaPlaybackPayload             `json:"media_playback"`
 	DeletedChannels []ChannelPayload                  `json:"deleted_channels,omitempty"`
@@ -37,6 +38,14 @@ type ReadyData struct {
 	StrudelPatterns []StrudelPatternPayload           `json:"strudel_patterns,omitempty"`
 	StrudelPlayback map[string]*StrudelPlaybackPayload `json:"strudel_playback,omitempty"`
 	StrudelViewers  map[string][]string               `json:"strudel_viewers,omitempty"`
+}
+
+// AudioSourcePayload describes one active live audio share, sent in the
+// ready snapshot and in voice_audio_source_added events.
+type AudioSourcePayload struct {
+	UserID   string `json:"user_id"`
+	SourceID string `json:"source_id"`
+	Label    string `json:"label"`
 }
 
 type MediaItemPayload struct {

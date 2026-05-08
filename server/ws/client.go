@@ -247,6 +247,18 @@ func (c *Client) sendReady() error {
 		screenShares = []sfu.ScreenShareState{}
 	}
 
+	// Get current audio shares from SFU
+	audioSources := make([]AudioSourcePayload, 0)
+	if c.hub.SFU != nil {
+		for _, s := range c.hub.SFU.ActiveShares() {
+			audioSources = append(audioSources, AudioSourcePayload{
+				UserID:   s.UserID,
+				SourceID: s.SourceID,
+				Label:    s.Label,
+			})
+		}
+	}
+
 	// Enabled features (from feature-gated applets)
 	enabledFeatures := c.hub.applets.EnabledFeatures(c.hub)
 
@@ -270,6 +282,7 @@ func (c *Client) sendReady() error {
 		"all_users":        allUsers,
 		"notifications":    notifPayloads,
 		"screen_shares":    screenShares,
+		"audio_sources":    audioSources,
 		"server_time":      nowUnix(),
 		"unread_counts":    unreadCounts,
 		"enabled_features": enabledFeatures,

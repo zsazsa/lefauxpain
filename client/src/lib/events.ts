@@ -41,6 +41,9 @@ import {
   setScreenShares,
   watchingScreenShare,
   setWatchingScreenShare,
+  setAudioSourceList,
+  addAudioSource,
+  removeAudioSource,
 } from "../stores/voice";
 import { setNotificationList, addNotification } from "../stores/notifications";
 import {
@@ -190,6 +193,7 @@ export function initEventHandlers() {
         setVoiceStateList(msg.d.voice_states || []);
         setNotificationList(msg.d.notifications || []);
         setScreenShares(msg.d.screen_shares || []);
+        setAudioSourceList(msg.d.audio_sources || []);
         setDeletedChannels(msg.d.deleted_channels || []);
         if (msg.d.unread_counts) {
           setUnreadCounts(msg.d.unread_counts);
@@ -336,6 +340,18 @@ export function initEventHandlers() {
 
       case "webrtc_ice":
         handleWebRTCICE(msg.d.candidate);
+        break;
+
+      case "voice_audio_source_added":
+        addAudioSource({
+          user_id: msg.d.user_id,
+          source_id: msg.d.source_id,
+          label: msg.d.label,
+        });
+        break;
+
+      case "voice_audio_source_removed":
+        removeAudioSource(msg.d.user_id, msg.d.source_id);
         break;
 
       case "screen_share_started":

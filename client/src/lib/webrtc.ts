@@ -4,6 +4,7 @@ import { setupAudioPipeline, cleanupAudioPipeline, cleanupTrack, setAllIncomingG
 import { startSpeakingDetection, stopSpeakingDetection, isDesktop, tauriInvoke } from "./devices";
 import { playJoinSound, playLeaveSound } from "./sounds";
 import { settings } from "../stores/settings";
+import { attachPendingShareIfAny, resetAudioShareState } from "./audioShare";
 
 let peerConnection: RTCPeerConnection | null = null;
 let localStream: MediaStream | null = null;
@@ -196,6 +197,7 @@ export function leaveVoice() {
     localStream = null;
   }
 
+  resetAudioShareState();
   playLeaveSound();
   cleanupAudioPipeline();
 }
@@ -295,7 +297,7 @@ export async function handleWebRTCOffer(sdp: string) {
 
   peerConnection
     .setRemoteDescription({ type: "offer", sdp })
-    .then(() => {
+    .then(async () => {
       console.log("[voice] Remote description set, creating answer...");
       // Flush any ICE candidates that arrived before remote description was set
       remoteDescriptionSet = true;
@@ -308,6 +310,11 @@ export async function handleWebRTCOffer(sdp: string) {
         }
         pendingIceCandidates = [];
       }
+      // If the user just started an audio share, the server will have
+      // added a recvonly audio transceiver for it. Attach the share
+      // track to the new transceiver before we answer so the answer's
+      // SDP reflects the active sendonly direction.
+      await attachPendingShareIfAny(peerConnection!);
       return peerConnection!.createAnswer();
     })
     .then((answer) => {
@@ -431,6 +438,7 @@ export function resetVoiceState() {
     localStream = null;
   }
 
+  resetAudioShareState();
   cleanupAudioPipeline();
 }
 

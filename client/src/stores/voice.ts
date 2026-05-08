@@ -22,6 +22,12 @@ export type ScreenShare = {
   channel_id: string;
 };
 
+export type AudioSource = {
+  user_id: string;
+  source_id: string;
+  label: string;
+};
+
 const [voiceStates, setVoiceStates] = createSignal<VoiceState[]>([]);
 const [currentVoiceChannelId, setCurrentVoiceChannelId] = createSignal<
   string | null
@@ -35,6 +41,7 @@ const [screenShareStream, setScreenShareStream] = createSignal<MediaStream | nul
 const [localScreenStream, setLocalScreenStream] = createSignal<MediaStream | null>(null);
 const [desktopPresenting, setDesktopPresenting] = createSignal(false);
 const [desktopPreviewUrl, setDesktopPreviewUrl] = createSignal<string | null>(null);
+const [audioSources, setAudioSources] = createSignal<AudioSource[]>([]);
 
 export {
   voiceStates,
@@ -57,6 +64,7 @@ export {
   setDesktopPresenting,
   desktopPreviewUrl,
   setDesktopPreviewUrl,
+  audioSources,
 };
 
 export function setVoiceStateList(states: VoiceState[]) {
@@ -106,4 +114,27 @@ export function removeScreenShare(userId: string) {
 
 export function getScreenShareForChannel(channelId: string): ScreenShare | undefined {
   return screenShares().find((s) => s.channel_id === channelId);
+}
+
+export function setAudioSourceList(sources: AudioSource[]) {
+  setAudioSources(sources || []);
+}
+
+export function addAudioSource(source: AudioSource) {
+  setAudioSources((prev) => {
+    // Replace any existing share for the same user (server enforces
+    // one-share-per-user, this is a defensive merge).
+    const filtered = prev.filter((s) => s.user_id !== source.user_id);
+    return [...filtered, source];
+  });
+}
+
+export function removeAudioSource(userId: string, sourceId: string) {
+  setAudioSources((prev) =>
+    prev.filter((s) => !(s.user_id === userId && s.source_id === sourceId)),
+  );
+}
+
+export function getAudioSourceForUser(userId: string): AudioSource | undefined {
+  return audioSources().find((s) => s.user_id === userId);
 }

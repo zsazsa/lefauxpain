@@ -135,7 +135,9 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 
-			// If this connection owned voice, clean up voice/screen share
+			// If this connection owned voice, clean up voice/screen share.
+			// RemovePeer fires OnShareEnded automatically if the user
+			// had an active audio share.
 			if isVoiceClient && h.SFU != nil {
 				// Stop screen share if presenter disconnects
 				if sr := h.SFU.GetUserScreenRoom(client.UserID); sr != nil {
@@ -700,6 +702,10 @@ func (h *Hub) HandleMessage(client *Client, msg *Message) {
 		h.handleVoiceSpeaking(client, msg.Data)
 	case "voice_server_mute":
 		h.handleVoiceServerMute(client, msg.Data)
+	case "voice_share_audio_start":
+		h.handleVoiceShareAudioStart(client, msg.Data)
+	case "voice_share_audio_stop":
+		h.handleVoiceShareAudioStop(client)
 	case "screen_share_start":
 		h.handleScreenShareStart(client, msg.Data)
 	case "screen_share_stop":

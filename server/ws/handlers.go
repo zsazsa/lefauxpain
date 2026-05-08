@@ -875,6 +875,10 @@ type VoiceSpeakingData struct {
 	Speaking bool `json:"speaking"`
 }
 
+type VoiceShareAudioStartData struct {
+	Label string `json:"label"`
+}
+
 type VoiceServerMuteData struct {
 	UserID string `json:"user_id"`
 	Muted  bool   `json:"muted"`
@@ -914,7 +918,9 @@ func (h *Hub) handleJoinVoice(c *Client, data json.RawMessage) {
 		oldVoiceClient.Send(dropMsg)
 	}
 
-	// Leave current room if in one
+	// Leave current room if in one. RemovePeer fires OnShareEnded if
+	// the user had an active share, so the hub broadcasts
+	// voice_audio_source_removed automatically.
 	if currentRoom := h.SFU.GetUserRoom(c.UserID); currentRoom != nil {
 		currentRoom.RemovePeer(c.UserID)
 		// Broadcast leave
@@ -969,8 +975,8 @@ func (h *Hub) handleLeaveVoice(c *Client) {
 		h.SFU.StopScreenShare(sr.ChannelID)
 	}
 
-	room := h.SFU.GetUserRoom(c.UserID)
-	if room != nil {
+	// RemovePeer fires OnShareEnded if the user had an active share.
+	if room := h.SFU.GetUserRoom(c.UserID); room != nil {
 		room.RemovePeer(c.UserID)
 	}
 
@@ -1114,6 +1120,88 @@ func (h *Hub) handleVoiceSpeaking(c *Client, data json.RawMessage) {
 		SelfDeafen: vs.SelfDeafen,
 		ServerMute: vs.ServerMute,
 		Speaking:   vs.Speaking,
+	})
+	h.BroadcastAll(msg)
+}
+
+const maxShareLabel = 64
+
+func (h *Hub) handleVoiceShareAudioStart(c *Client, data json.RawMessage) {
+	if h.SFU == nil {
+		return
+	}
+
+	var d VoiceShareAudioStartData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	label := strings.TrimSpace(d.Label)
+	if label == "" {
+		errMsg, _ := NewMessage("error", map[string]string{
+			"op":     "voice_share_audio_start",
+			"reason": "label required",
+		})
+		c.Send(errMsg)
+		return
+	}
+	if len(label) > maxShareLabel {
+		label = label[:maxShareLabel]
+	}
+
+	room := h.SFU.GetUserRoom(c.UserID)
+	if room == nil {
+		errMsg, _ := NewMessage("error", map[string]string{
+			"op":     "voice_share_audio_start",
+			"reason": "not in voice channel",
+		})
+		c.Send(errMsg)
+		return
+	}
+
+	sourceID := uuid.New().String()
+	if err := room.StartShare(c.UserID, sourceID, label); err != nil {
+		errMsg, _ := NewMessage("error", map[string]string{
+			"op":     "voice_share_audio_start",
+			"reason": err.Error(),
+		})
+		c.Send(errMsg)
+		return
+	}
+
+	// Broadcast immediately so receivers render the indicator. RTP
+	// will start flowing once the publisher answers the renegotiation
+	// offer; the indicator slightly precedes audio, same as how
+	// voice_state_update precedes WebRTC connect.
+	addMsg, _ := NewMessage("voice_audio_source_added", AudioSourcePayload{
+		UserID:   c.UserID,
+		SourceID: sourceID,
+		Label:    label,
+	})
+	h.BroadcastAll(addMsg)
+}
+
+func (h *Hub) handleVoiceShareAudioStop(c *Client) {
+	if h.SFU == nil {
+		return
+	}
+	room := h.SFU.GetUserRoom(c.UserID)
+	if room == nil {
+		return
+	}
+	sourceID, ok := room.StopShare(c.UserID)
+	if !ok {
+		return
+	}
+	h.broadcastAudioSourceRemoved(c.UserID, sourceID)
+}
+
+// broadcastAudioSourceRemoved is also called from cleanup paths
+// (leave_voice, channel switch, WS disconnect) when a share was active.
+func (h *Hub) broadcastAudioSourceRemoved(userID, sourceID string) {
+	msg, _ := NewMessage("voice_audio_source_removed", map[string]string{
+		"user_id":   userID,
+		"source_id": sourceID,
 	})
 	h.BroadcastAll(msg)
 }

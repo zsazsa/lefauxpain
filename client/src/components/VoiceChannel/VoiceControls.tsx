@@ -8,11 +8,13 @@ import {
   voiceStats,
   screenShares,
   getScreenShareForChannel,
+  getAudioSourceForUser,
 } from "../../stores/voice";
 import { currentUser } from "../../stores/auth";
 import { leaveVoice, toggleMute, toggleDeafen } from "../../lib/webrtc";
 import { startScreenShare, stopScreenShare, getIsPresenting } from "../../lib/screenshare";
-import { enumerateDevices } from "../../lib/devices";
+import { startAudioShare, stopAudioShare } from "../../lib/audioShare";
+import { enumerateDevices, isDesktop } from "../../lib/devices";
 import { channels } from "../../stores/channels";
 
 export default function VoiceControls() {
@@ -62,6 +64,22 @@ export default function VoiceControls() {
       stopScreenShare();
     } else {
       startScreenShare();
+    }
+  };
+
+  const myAudioShare = () => {
+    const userId = currentUser()?.id;
+    if (!userId) return null;
+    return getAudioSourceForUser(userId) || null;
+  };
+
+  const handleAudioShare = () => {
+    if (myAudioShare()) {
+      stopAudioShare();
+    } else {
+      startAudioShare().catch((err) =>
+        console.error("[voice] startAudioShare failed:", err),
+      );
     }
   };
 
@@ -189,6 +207,33 @@ export default function VoiceControls() {
           >
             {myScreenShare() ? "[STOP]" : "[SHARE]"}
           </button>
+
+          <Show when={!isDesktop}>
+            <button
+              onClick={handleAudioShare}
+              style={{
+                flex: "1",
+                padding: "5px",
+                "font-size": "11px",
+                border: myAudioShare()
+                  ? "1px solid var(--danger)"
+                  : "1px solid var(--border-gold)",
+                "background-color": myAudioShare()
+                  ? "rgba(232,64,64,0.15)"
+                  : "transparent",
+                color: myAudioShare()
+                  ? "var(--danger)"
+                  : "var(--text-secondary)",
+              }}
+              title={
+                myAudioShare()
+                  ? `Stop sharing: ${myAudioShare()!.label}`
+                  : "Share tab/system audio (use headphones)"
+              }
+            >
+              {myAudioShare() ? "[STOP AUDIO]" : "[AUDIO]"}
+            </button>
+          </Show>
 
           <button
             onClick={handleDisconnect}

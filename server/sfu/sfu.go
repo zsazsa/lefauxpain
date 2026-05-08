@@ -14,6 +14,7 @@ import (
 type SignalFunc func(userID string, op string, data any)
 type PeerRemovedFunc func(userID string)
 type ScreenShareStoppedFunc func(presenterID string, channelID string)
+type ShareEndedFunc func(userID string, sourceID string)
 
 type ScreenShareState struct {
 	UserID    string `json:"user_id"`
@@ -30,6 +31,7 @@ type SFU struct {
 	Signal               SignalFunc
 	OnPeerRemoved        PeerRemovedFunc
 	OnScreenShareStopped ScreenShareStoppedFunc
+	OnShareEnded         ShareEndedFunc
 }
 
 func New(stunServer string, publicIP string) *SFU {
@@ -352,4 +354,17 @@ func (s *SFU) VoiceStates() []VoiceState {
 		room.mu.RUnlock()
 	}
 	return states
+}
+
+// ActiveShares returns a snapshot of every active audio share across
+// every voice room. Used for ready snapshots.
+func (s *SFU) ActiveShares() []ShareSource {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var shares []ShareSource
+	for _, room := range s.rooms {
+		shares = append(shares, room.ActiveShares()...)
+	}
+	return shares
 }

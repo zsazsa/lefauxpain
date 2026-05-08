@@ -19,16 +19,48 @@ type Peer struct {
 	UserID    string
 	ChannelID string
 
-	mu                  sync.RWMutex
-	pc                  *webrtc.PeerConnection
-	localTrack          *webrtc.TrackLocalStaticRTP
-	room                *Room
-	needsRenegotiation  bool
+	mu                 sync.RWMutex
+	pc                 *webrtc.PeerConnection
+	localTrack         *webrtc.TrackLocalStaticRTP
+	room               *Room
+	needsRenegotiation bool
+
+	// Audio share state. A user may publish at most one additional
+	// audio source ("share") alongside the mic. shareSourceID and
+	// shareLabel are set eagerly by Room.StartShare when the share is
+	// requested (so ready snapshots include it immediately).
+	// shareLocalTrack is set in OnTrack once the publisher's RTP starts
+	// flowing — its nil-ness distinguishes "share requested" from
+	// "share active." Receivers see voice_audio_source_added either
+	// way; the only effect of the wait-for-RTP is which moment other
+	// peers start receiving frames.
+	shareLocalTrack *webrtc.TrackLocalStaticRTP
+	shareSourceID   string
+	shareLabel      string
 
 	SelfMute   bool
 	SelfDeafen bool
 	ServerMute bool
 	Speaking   bool
+}
+
+// ShareSource is a snapshot of an active audio share for inclusion in
+// ready / voice-state replays.
+type ShareSource struct {
+	UserID   string `json:"user_id"`
+	SourceID string `json:"source_id"`
+	Label    string `json:"label"`
+}
+
+// ActiveShare returns the peer's currently active share source, if any.
+// Returns ("", "", false) when there is no active share.
+func (p *Peer) ActiveShare() (sourceID, label string, ok bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.shareSourceID == "" {
+		return "", "", false
+	}
+	return p.shareSourceID, p.shareLabel, true
 }
 
 func (p *Peer) VoiceState() VoiceState {

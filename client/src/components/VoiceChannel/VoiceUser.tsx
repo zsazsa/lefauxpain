@@ -1,4 +1,5 @@
 import type { VoiceState } from "../../stores/voice";
+import { getAudioSourceForUser } from "../../stores/voice";
 import { isMobile } from "../../stores/responsive";
 
 interface VoiceUserProps {
@@ -11,6 +12,7 @@ export default function VoiceUser(props: VoiceUserProps) {
   const isMuted = () =>
     props.voiceState.self_mute || props.voiceState.server_mute;
   const isDeafened = () => props.voiceState.self_deafen;
+  const sharedAudio = () => getAudioSourceForUser(props.voiceState.user_id);
 
   return (
     <div
@@ -62,6 +64,14 @@ export default function VoiceUser(props: VoiceUserProps) {
           </span>
         )}
         {isDeafened() && <span style={{ color: "var(--danger)" }} title="Deafened">[DEAF]</span>}
+        {sharedAudio() && (
+          <span
+            style={{ color: "var(--accent)" }}
+            title={`Sharing audio: ${sharedAudio()!.label}`}
+          >
+            [♪]
+          </span>
+        )}
       </div>
     </div>
   );

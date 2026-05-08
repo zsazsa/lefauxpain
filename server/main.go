@@ -97,6 +97,22 @@ func main() {
 		hub.BroadcastAll(msg)
 	}
 
+	// When a peer's active audio share ends due to peer removal,
+	// broadcast voice_audio_source_removed. Fires from RemovePeer for
+	// every cleanup path (leave_voice, channel switch, WS unregister,
+	// PC connection state change) so we don't have to track this in
+	// every hub handler.
+	sfuInstance.OnShareEnded = func(userID, sourceID string) {
+		msg, err := ws.NewMessage("voice_audio_source_removed", map[string]string{
+			"user_id":   userID,
+			"source_id": sourceID,
+		})
+		if err != nil {
+			return
+		}
+		hub.BroadcastAll(msg)
+	}
+
 	go hub.Run()
 
 	// Orphaned attachment cleanup every 10 minutes
