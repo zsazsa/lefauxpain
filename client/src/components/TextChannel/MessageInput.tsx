@@ -15,8 +15,15 @@ interface MessageInputProps {
 
 type PendingAttachment = {
   id: string;
-  previewUrl: string;
+  previewUrl: string | null;
+  filename: string;
+  isImage: boolean;
 };
+
+const isZipFile = (f: File) =>
+  f.type === "application/zip" ||
+  f.type === "application/x-zip-compressed" ||
+  (f.type === "" && f.name.toLowerCase().endsWith(".zip"));
 
 export default function MessageInput(props: MessageInputProps) {
   const [text, setText] = createSignal("");
@@ -81,7 +88,9 @@ export default function MessageInput(props: MessageInputProps) {
 
   // Cleanup preview URLs on unmount
   onCleanup(() => {
-    attachments().forEach((a) => URL.revokeObjectURL(a.previewUrl));
+    attachments().forEach((a) => {
+      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+    });
   });
 
   const mentionableUsers = () => {
@@ -159,7 +168,9 @@ export default function MessageInput(props: MessageInputProps) {
     });
 
     // Cleanup preview URLs
-    atts.forEach((a) => URL.revokeObjectURL(a.previewUrl));
+    atts.forEach((a) => {
+      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+    });
     setText("");
     setAttachments([]);
     setReplyingTo(null);
@@ -213,19 +224,26 @@ export default function MessageInput(props: MessageInputProps) {
     updateMentionQuery(value, e.currentTarget.selectionStart || value.length);
   };
 
+  // Files uploaded as message attachments via /api/v1/upload: images and zips.
   const handleFiles = async (files: File[]) => {
-    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-    if (imageFiles.length === 0) return;
+    const uploadable = files.filter((f) => f.type.startsWith("image/") || isZipFile(f));
+    if (uploadable.length === 0) return;
 
     setUploading(true);
     try {
-      for (const file of imageFiles) {
-        const previewUrl = URL.createObjectURL(file);
-        const res = await uploadFile(file);
-        setAttachments((prev) => [...prev, { id: res.id, previewUrl }]);
+      for (const file of uploadable) {
+        const isImage = file.type.startsWith("image/");
+        const previewUrl = isImage ? URL.createObjectURL(file) : null;
+        try {
+          const res = await uploadFile(file);
+          setAttachments((prev) => [
+            ...prev,
+            { id: res.id, previewUrl, filename: file.name, isImage },
+          ]);
+        } catch {
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+        }
       }
-    } catch {
-      // ignore
     } finally {
       setUploading(false);
     }
@@ -233,7 +251,7 @@ export default function MessageInput(props: MessageInputProps) {
 
   const removeAttachment = (id: string) => {
     const att = attachments().find((a) => a.id === id);
-    if (att) URL.revokeObjectURL(att.previewUrl);
+    if (att?.previewUrl) URL.revokeObjectURL(att.previewUrl);
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
 
@@ -243,10 +261,10 @@ export default function MessageInput(props: MessageInputProps) {
     if (!e.dataTransfer?.files) return;
     const files = Array.from(e.dataTransfer.files);
 
-    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    const attachFiles = files.filter((f) => f.type.startsWith("image/") || isZipFile(f));
     const videoFiles = files.filter((f) => f.type.startsWith("video/"));
 
-    if (imageFiles.length > 0) handleFiles(imageFiles);
+    if (attachFiles.length > 0) handleFiles(attachFiles);
 
     if (videoFiles.length > 0) {
       (async () => {
@@ -360,16 +378,49 @@ export default function MessageInput(props: MessageInputProps) {
           <For each={attachments()}>
             {(att) => (
               <div style={{ position: "relative", display: "inline-block" }}>
-                <img
-                  src={att.previewUrl}
-                  style={{
-                    "max-width": "80px",
-                    "max-height": "80px",
-                    "border-radius": "2px",
-                    border: "1px solid var(--border-gold)",
-                    display: "block",
-                  }}
-                />
+                <Show
+                  when={att.isImage && att.previewUrl}
+                  fallback={
+                    <div
+                      title={att.filename}
+                      style={{
+                        display: "flex",
+                        "align-items": "center",
+                        gap: "6px",
+                        height: "80px",
+                        "max-width": "160px",
+                        padding: "0 10px",
+                        "border-radius": "2px",
+                        border: "1px solid var(--border-gold)",
+                        "background-color": "var(--bg-primary)",
+                        "font-size": "12px",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      <span style={{ "font-size": "18px", "flex-shrink": "0" }}>{"📦"}</span>
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          "text-overflow": "ellipsis",
+                          "white-space": "nowrap",
+                        }}
+                      >
+                        {att.filename}
+                      </span>
+                    </div>
+                  }
+                >
+                  <img
+                    src={att.previewUrl!}
+                    style={{
+                      "max-width": "80px",
+                      "max-height": "80px",
+                      "border-radius": "2px",
+                      border: "1px solid var(--border-gold)",
+                      display: "block",
+                    }}
+                  />
+                </Show>
                 <button
                   onClick={() => removeAttachment(att.id)}
                   style={{
@@ -593,16 +644,16 @@ export default function MessageInput(props: MessageInputProps) {
         </button>
         <input
           type="file"
-          accept="image/*,video/*"
+          accept="image/*,video/*,.zip,application/zip"
           multiple
           ref={fileInputRef}
           style={{ display: "none" }}
           onChange={(e) => {
             if (e.currentTarget.files) {
               const files = Array.from(e.currentTarget.files);
-              const images = files.filter((f) => f.type.startsWith("image/"));
+              const attach = files.filter((f) => f.type.startsWith("image/") || isZipFile(f));
               const videos = files.filter((f) => f.type.startsWith("video/"));
-              if (images.length > 0) handleFiles(images);
+              if (attach.length > 0) handleFiles(attach);
               if (videos.length > 0) {
                 (async () => {
                   for (const file of videos) {

@@ -6,6 +6,7 @@ export type Attachment = {
   url: string;
   thumb_url: string | null;
   mime_type: string;
+  size_bytes: number;
   width: number | null;
   height: number | null;
 };

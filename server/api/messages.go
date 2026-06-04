@@ -57,13 +57,14 @@ type replyPayload struct {
 }
 
 type attachPayload struct {
-	ID       string  `json:"id"`
-	Filename string  `json:"filename"`
-	URL      string  `json:"url"`
-	ThumbURL *string `json:"thumb_url"`
-	MimeType string  `json:"mime_type"`
-	Width    *int    `json:"width"`
-	Height   *int    `json:"height"`
+	ID        string  `json:"id"`
+	Filename  string  `json:"filename"`
+	URL       string  `json:"url"`
+	ThumbURL  *string `json:"thumb_url"`
+	MimeType  string  `json:"mime_type"`
+	SizeBytes int64   `json:"size_bytes"`
+	Width     *int    `json:"width"`
+	Height    *int    `json:"height"`
 }
 
 func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +141,7 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 					ap := attachPayload{
 						ID: a.ID, Filename: a.Filename,
 						URL: "/" + strings.ReplaceAll(a.Path, "\\", "/"),
-						MimeType: a.MimeType, Width: a.Width, Height: a.Height,
+						MimeType: a.MimeType, SizeBytes: a.SizeBytes, Width: a.Width, Height: a.Height,
 					}
 					if a.ThumbPath != nil {
 						t := "/" + strings.ReplaceAll(*a.ThumbPath, "\\", "/")
@@ -261,12 +262,13 @@ func (h *MessageHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			attachPayloads = make([]attachPayload, len(attachments))
 			for j, a := range attachments {
 				ap := attachPayload{
-					ID:       a.ID,
-					Filename: a.Filename,
-					URL:      "/" + strings.ReplaceAll(a.Path, "\\", "/"),
-					MimeType: a.MimeType,
-					Width:    a.Width,
-					Height:   a.Height,
+					ID:        a.ID,
+					Filename:  a.Filename,
+					URL:       "/" + strings.ReplaceAll(a.Path, "\\", "/"),
+					MimeType:  a.MimeType,
+					SizeBytes: a.SizeBytes,
+					Width:     a.Width,
+					Height:    a.Height,
 				}
 				if a.ThumbPath != nil {
 					t := "/" + strings.ReplaceAll(*a.ThumbPath, "\\", "/")
@@ -422,7 +424,7 @@ func (h *MessageHandler) GetThreadHistory(w http.ResponseWriter, r *http.Request
 				ap := attachPayload{
 					ID: a.ID, Filename: a.Filename,
 					URL: "/" + strings.ReplaceAll(a.Path, "\\", "/"),
-					MimeType: a.MimeType, Width: a.Width, Height: a.Height,
+					MimeType: a.MimeType, SizeBytes: a.SizeBytes, Width: a.Width, Height: a.Height,
 				}
 				if a.ThumbPath != nil {
 					t := "/" + strings.ReplaceAll(*a.ThumbPath, "\\", "/")

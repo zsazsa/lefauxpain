@@ -3,6 +3,7 @@ module github.com/kalman/voicechat
 go 1.25.0
 
 require (
+	github.com/disintegration/imaging v1.6.2
 	github.com/google/uuid v1.6.0
 	github.com/pion/interceptor v0.1.44
 	github.com/pion/rtcp v1.2.16

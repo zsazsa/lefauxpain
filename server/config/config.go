@@ -9,13 +9,14 @@ import (
 )
 
 type Config struct {
-	Port          int
-	DataDir       string
-	MaxUploadSize int64
-	DevMode       bool
-	PublicIP      string
-	STUNServer    string
-	RemoteURL     string // Desktop-only: connect to remote server instead of starting local one
+	Port           int
+	DataDir        string
+	MaxUploadSize  int64
+	MaxArchiveSize int64
+	DevMode        bool
+	PublicIP       string
+	STUNServer     string
+	RemoteURL      string // Desktop-only: connect to remote server instead of starting local one
 }
 
 func Parse() *Config {
@@ -23,7 +24,8 @@ func Parse() *Config {
 
 	flag.IntVar(&cfg.Port, "port", envInt("PORT", 8080), "HTTP server port")
 	flag.StringVar(&cfg.DataDir, "data-dir", envStr("DATA_DIR", "./data"), "Data directory path")
-	flag.Int64Var(&cfg.MaxUploadSize, "max-upload-size", envInt64("MAX_UPLOAD_SIZE", 10485760), "Max upload size in bytes")
+	flag.Int64Var(&cfg.MaxUploadSize, "max-upload-size", envInt64("MAX_UPLOAD_SIZE", 10485760), "Max image upload size in bytes")
+	flag.Int64Var(&cfg.MaxArchiveSize, "max-archive-size", envInt64("MAX_ARCHIVE_SIZE", 104857600), "Max zip archive upload size in bytes")
 	flag.BoolVar(&cfg.DevMode, "dev", false, "Enable dev mode (proxy frontend to Vite)")
 	flag.StringVar(&cfg.PublicIP, "public-ip", envStr("PUBLIC_IP", ""), "Public IP for SFU NAT traversal")
 	flag.StringVar(&cfg.STUNServer, "stun-server", envStr("STUN_SERVER", "stun:stun.l.google.com:19302"), "STUN server address")

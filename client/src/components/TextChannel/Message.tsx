@@ -23,6 +23,18 @@ function formatTime(dateStr: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let n = bytes;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${n >= 10 || i === 0 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;
+}
+
 // Generate a consistent color for a username from a small royal palette
 const USERNAME_COLORS = [
   "#c9a84c", // gold
@@ -431,21 +443,60 @@ export default function MessageItem(props: MessageProps) {
         <div style={{ "padding-left": "7ch", "margin-top": "2px", display: "flex", "flex-wrap": "wrap", gap: "4px" }}>
           <For each={props.message.attachments}>
             {(att) => (
-              <img
-                src={att.thumb_url || att.url}
-                alt={att.filename}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openLightbox(att.url);
-                }}
-                style={{
-                  "max-width": "400px",
-                  "max-height": "300px",
-                  "border-radius": "2px",
-                  border: "1px solid var(--border-gold)",
-                  cursor: "pointer",
-                }}
-              />
+              <Show
+                when={att.mime_type.startsWith("image/")}
+                fallback={
+                  <a
+                    href={att.url}
+                    download={att.filename}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: "inline-flex",
+                      "align-items": "center",
+                      gap: "8px",
+                      padding: "6px 10px",
+                      "background-color": "var(--bg-secondary)",
+                      border: "1px solid var(--border-gold)",
+                      "border-radius": "2px",
+                      "text-decoration": "none",
+                      color: "var(--text-primary)",
+                      "max-width": "320px",
+                    }}
+                  >
+                    <span style={{ "font-size": "16px", "flex-shrink": "0" }}>{"📦"}</span>
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        "text-overflow": "ellipsis",
+                        "white-space": "nowrap",
+                      }}
+                    >
+                      {att.filename}
+                    </span>
+                    <Show when={formatBytes(att.size_bytes)}>
+                      <span style={{ color: "var(--text-muted)", "flex-shrink": "0" }}>
+                        {formatBytes(att.size_bytes)}
+                      </span>
+                    </Show>
+                  </a>
+                }
+              >
+                <img
+                  src={att.thumb_url || att.url}
+                  alt={att.filename}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openLightbox(att.url);
+                  }}
+                  style={{
+                    "max-width": "400px",
+                    "max-height": "300px",
+                    "border-radius": "2px",
+                    border: "1px solid var(--border-gold)",
+                    cursor: "pointer",
+                  }}
+                />
+              </Show>
             )}
           </For>
         </div>

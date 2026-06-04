@@ -120,7 +120,7 @@ Format: `{ op: string, d: any }`
 | POST | `/api/v1/auth/password` | Yes | Change own password |
 | GET | `/api/v1/channels` | Yes | List channels |
 | GET | `/api/v1/channels/{id}/messages` | Yes | Cursor-paginated history |
-| POST | `/api/v1/upload` | Yes | Image upload (10MB, rate: 3/30s) |
+| POST | `/api/v1/upload` | Yes | Image (10MB) or zip archive (100MB) upload, rate: 3/30s. Office/jar/apk/epub zip-containers rejected by extension. |
 | POST | `/api/v1/media/upload` | Yes | Video/audio upload (10GB, rate: 2/min) |
 | DELETE | `/api/v1/media/{id}` | Yes | Delete media item |
 | GET | `/api/v1/admin/users` | Admin | List all users |
@@ -208,7 +208,8 @@ cd desktop && npm run tauri build                # Release build
 |------|---------|---------|-------------|
 | `--port` | `PORT` | `8080` | HTTP port |
 | `--data-dir` | `DATA_DIR` | `./data` | DB + uploads + thumbnails + avatars |
-| `--max-upload-size` | `MAX_UPLOAD_SIZE` | `10485760` | Max attachment upload (bytes) |
+| `--max-upload-size` | `MAX_UPLOAD_SIZE` | `10485760` | Max image attachment upload (bytes) |
+| `--max-archive-size` | `MAX_ARCHIVE_SIZE` | `104857600` | Max zip archive upload (bytes) |
 | `--dev` | — | `false` | Proxy SPA to Vite :5173 |
 | `--public-ip` | `PUBLIC_IP` | `""` | Public IP for SFU NAT traversal |
 | `--stun-server` | `STUN_SERVER` | `stun:stun.l.google.com:19302` | STUN server |

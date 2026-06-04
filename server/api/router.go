@@ -27,7 +27,7 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	docsHandler := &DocumentsHandler{DB: database}
 	messageHandler := &MessageHandler{DB: database}
 	starsHandler := &StarsHandler{DB: database}
-	uploadHandler := &UploadHandler{DB: database, Store: store, MaxSize: cfg.MaxUploadSize}
+	uploadHandler := &UploadHandler{DB: database, Store: store, MaxSize: cfg.MaxUploadSize, MaxArchiveSize: cfg.MaxArchiveSize}
 	uploadRL := NewIPRateLimiter(3, 30*time.Second)
 
 	registerRL := NewIPRateLimiter(3, time.Minute)

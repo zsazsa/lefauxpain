@@ -4,9 +4,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"image"
-	_ "image/gif"
-	"image/jpeg"
-	_ "image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -14,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/disintegration/imaging"
 	_ "golang.org/x/image/webp"
 )
 
@@ -27,6 +25,10 @@ var allowedMIME = map[string]string{
 var videoMIME = map[string]string{
 	"video/mp4":  ".mp4",
 	"video/webm": ".webm",
+}
+
+var archiveMIME = map[string]string{
+	"application/zip": ".zip",
 }
 
 var audioMIME = map[string]string{
@@ -104,13 +106,15 @@ func (fs *FileStore) Store(file multipart.File, mimeType string) (*StoredFile, e
 		dst.Close()
 	}
 
-	// Get image dimensions
+	// Decode with EXIF auto-orientation so dimensions and thumbnail
+	// reflect the orientation the browser will display.
 	tmpFile.Seek(0, 0)
-	imgCfg, _, err := image.DecodeConfig(tmpFile)
+	img, decodeErr := imaging.Decode(tmpFile, imaging.AutoOrientation(true))
 	width, height := 0, 0
-	if err == nil {
-		width = imgCfg.Width
-		height = imgCfg.Height
+	if decodeErr == nil {
+		b := img.Bounds()
+		width = b.Dx()
+		height = b.Dy()
 	}
 
 	// Generate thumbnail
@@ -120,10 +124,11 @@ func (fs *FileStore) Store(file multipart.File, mimeType string) (*StoredFile, e
 	thumbRelPath = filepath.Join(thumbRelDir, hash+".jpg")
 	thumbAbsPath := filepath.Join(fs.DataDir, thumbRelPath)
 
-	if _, err := os.Stat(thumbAbsPath); os.IsNotExist(err) {
+	if decodeErr != nil {
+		thumbRelPath = ""
+	} else if _, err := os.Stat(thumbAbsPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(thumbAbsDir, 0755); err == nil {
-			tmpFile.Seek(0, 0)
-			if err := generateThumbnail(tmpFile, thumbAbsPath, 400); err != nil {
+			if err := writeThumbnail(img, thumbAbsPath, 400); err != nil {
 				// Non-fatal — just no thumbnail
 				thumbRelPath = ""
 			}
@@ -141,40 +146,11 @@ func (fs *FileStore) Store(file multipart.File, mimeType string) (*StoredFile, e
 	return result, nil
 }
 
-func generateThumbnail(r io.ReadSeeker, destPath string, maxWidth int) error {
-	img, _, err := image.Decode(r)
-	if err != nil {
-		return err
+func writeThumbnail(img image.Image, destPath string, maxWidth int) error {
+	if img.Bounds().Dx() > maxWidth {
+		img = imaging.Resize(img, maxWidth, 0, imaging.Lanczos)
 	}
-
-	bounds := img.Bounds()
-	origW := bounds.Dx()
-	origH := bounds.Dy()
-
-	newW := maxWidth
-	newH := origH * maxWidth / origW
-	if origW <= maxWidth {
-		newW = origW
-		newH = origH
-	}
-
-	// Simple nearest-neighbor resize for thumbnails
-	thumb := image.NewRGBA(image.Rect(0, 0, newW, newH))
-	for y := 0; y < newH; y++ {
-		for x := 0; x < newW; x++ {
-			srcX := x * origW / newW
-			srcY := y * origH / newH
-			thumb.Set(x, y, img.At(bounds.Min.X+srcX, bounds.Min.Y+srcY))
-		}
-	}
-
-	f, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	return jpeg.Encode(f, thumb, &jpeg.Options{Quality: 80})
+	return imaging.Save(img, destPath, imaging.JPEGQuality(80))
 }
 
 func DetectMIME(file multipart.File) (string, error) {
@@ -255,6 +231,58 @@ func (fs *FileStore) StoreAudio(file multipart.File, mimeType string) (string, e
 	}
 
 	tmpFile, err := os.CreateTemp("", "audio-*")
+	if err != nil {
+		return "", fmt.Errorf("create temp: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tmpFile, hasher), file); err != nil {
+		return "", fmt.Errorf("copy file: %w", err)
+	}
+
+	hash := fmt.Sprintf("%x", hasher.Sum(nil))
+
+	relDir := filepath.Join("uploads", hash[:2], hash[2:4])
+	absDir := filepath.Join(fs.DataDir, relDir)
+	if err := os.MkdirAll(absDir, 0755); err != nil {
+		return "", fmt.Errorf("create upload dir: %w", err)
+	}
+
+	relPath := filepath.Join(relDir, hash+ext)
+	absPath := filepath.Join(fs.DataDir, relPath)
+
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		tmpFile.Seek(0, 0)
+		dst, err := os.Create(absPath)
+		if err != nil {
+			return "", fmt.Errorf("create file: %w", err)
+		}
+		if _, err := io.Copy(dst, tmpFile); err != nil {
+			dst.Close()
+			return "", fmt.Errorf("write file: %w", err)
+		}
+		dst.Close()
+	}
+
+	return relPath, nil
+}
+
+func (fs *FileStore) IsArchiveMIME(mime string) bool {
+	_, ok := archiveMIME[mime]
+	return ok
+}
+
+// StoreArchive stores a zip archive using hash-based deduplication. The archive
+// is treated as an opaque blob — it is never extracted, decoded, or inspected.
+func (fs *FileStore) StoreArchive(file multipart.File, mimeType string) (string, error) {
+	ext, ok := archiveMIME[mimeType]
+	if !ok {
+		return "", fmt.Errorf("unsupported archive MIME type: %s", mimeType)
+	}
+
+	tmpFile, err := os.CreateTemp("", "archive-*")
 	if err != nil {
 		return "", fmt.Errorf("create temp: %w", err)
 	}
