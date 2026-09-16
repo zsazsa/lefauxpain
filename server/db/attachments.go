@@ -66,6 +66,22 @@ func (d *DB) GetAttachmentsByMessage(messageID string) ([]Attachment, error) {
 	return attachments, rows.Err()
 }
 
+// CountFileReferences returns how many rows across attachments, media and
+// radio tracks still point at relPath. Used before deleting a deduplicated file.
+func (d *DB) CountFileReferences(relPath string) (int, error) {
+	var n int
+	err := d.QueryRow(
+		`SELECT (SELECT COUNT(*) FROM attachments WHERE path = ? OR thumb_path = ?)
+		      + (SELECT COUNT(*) FROM media WHERE path = ?)
+		      + (SELECT COUNT(*) FROM radio_tracks WHERE path = ?)`,
+		relPath, relPath, relPath, relPath,
+	).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count file references: %w", err)
+	}
+	return n, nil
+}
+
 func (d *DB) CleanupOrphanedAttachments() ([]Attachment, error) {
 	rows, err := d.Query(
 		`SELECT id, path, thumb_path FROM attachments

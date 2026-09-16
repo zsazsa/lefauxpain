@@ -13,10 +13,11 @@ type ipEntry struct {
 }
 
 type IPRateLimiter struct {
-	limit  int
-	window time.Duration
-	mu     sync.Mutex
-	ips    map[string]*ipEntry
+	limit     int
+	window    time.Duration
+	mu        sync.Mutex
+	ips       map[string]*ipEntry
+	lastSweep time.Time
 }
 
 func NewIPRateLimiter(limit int, window time.Duration) *IPRateLimiter {
@@ -32,6 +33,14 @@ func (rl *IPRateLimiter) Allow(ip string) bool {
 	defer rl.mu.Unlock()
 
 	now := time.Now()
+	if now.Sub(rl.lastSweep) > rl.window {
+		for k, e := range rl.ips {
+			if now.After(e.windowAt) {
+				delete(rl.ips, k)
+			}
+		}
+		rl.lastSweep = now
+	}
 	entry, ok := rl.ips[ip]
 	if !ok || now.After(entry.windowAt) {
 		rl.ips[ip] = &ipEntry{count: 1, windowAt: now.Add(rl.window)}
@@ -43,16 +52,19 @@ func (rl *IPRateLimiter) Allow(ip string) bool {
 }
 
 func clientIP(r *http.Request) string {
-	// Trust X-Real-IP set by nginx reverse proxy
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
+	remote := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(remote); err == nil {
+		remote = host
 	}
-	// Fall back to connection address
-	ip := r.RemoteAddr
-	if host, _, err := net.SplitHostPort(ip); err == nil {
-		return host
+	// Only trust X-Real-IP when the connection comes from a local reverse
+	// proxy (nginx on the same box or private network). A client hitting the
+	// Go port directly cannot spoof its way past the limiter.
+	if ip := net.ParseIP(remote); ip != nil && (ip.IsLoopback() || ip.IsPrivate()) {
+		if xr := r.Header.Get("X-Real-IP"); xr != "" {
+			return xr
+		}
 	}
-	return ip
+	return remote
 }
 
 func (rl *IPRateLimiter) Wrap(next http.HandlerFunc) http.HandlerFunc {

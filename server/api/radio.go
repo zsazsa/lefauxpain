@@ -169,12 +169,11 @@ func (h *RadioHandler) DeleteTrack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.Store.RemoveFile(track.Path)
-
 	if err := h.DB.DeleteRadioTrack(trackID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete track")
 		return
 	}
+	removeFileIfUnreferenced(h.DB, h.Store, track.Path)
 
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }

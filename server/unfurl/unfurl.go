@@ -1,6 +1,7 @@
 package unfurl
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,6 +66,14 @@ func isPrivateIP(ip net.IP) bool {
 		"192.168.0.0/16",
 		"169.254.0.0/16",
 		"0.0.0.0/8",
+		"100.64.0.0/10", // CGNAT
+		"192.0.0.0/24",  // IETF protocol assignments
+		"198.18.0.0/15", // benchmarking
+		"224.0.0.0/4",   // multicast
+		"240.0.0.0/4",   // reserved
+	}
+	if ip.IsPrivate() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
 	}
 	for _, cidr := range privateRanges {
 		_, network, _ := net.ParseCIDR(cidr)
@@ -108,12 +117,50 @@ func checkHostSSRF(hostname string) error {
 	return nil
 }
 
+// safeDialContext resolves the host, rejects private addresses, and dials the
+// exact IP that passed the check. This closes the DNS-rebinding window between
+// checkHostSSRF and the transport's own lookup.
+func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("dns lookup failed: %w", err)
+	}
+	for _, ipa := range ips {
+		if isPrivateIP(ipa.IP) {
+			return nil, fmt.Errorf("private IP blocked: %s", ipa.IP)
+		}
+	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	var lastErr error
+	for _, ipa := range ips {
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ipa.IP.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no addresses for %s", host)
+	}
+	return nil, lastErr
+}
+
 // FetchUnfurls fetches Open Graph metadata for a list of URLs.
 func FetchUnfurls(urls []string) []UnfurlResult {
 	results := make([]UnfurlResult, len(urls))
 
 	client := &http.Client{
 		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			DialContext:         safeDialContext,
+			TLSHandshakeTimeout: 5 * time.Second,
+			MaxIdleConns:        4,
+			IdleConnTimeout:     30 * time.Second,
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 2 {
 				return fmt.Errorf("too many redirects")

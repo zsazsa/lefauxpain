@@ -103,7 +103,7 @@ func (h *WebhookHandler) Incoming(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Broadcast to all connected WebSocket clients
+	// Broadcast to everyone allowed to see the channel
 	broadcast, _ := ws.NewMessage("message_create", ws.MessageCreatePayload{
 		ID:        msg.ID,
 		ChannelID: msg.ChannelID,
@@ -116,7 +116,11 @@ func (h *WebhookHandler) Incoming(w http.ResponseWriter, r *http.Request) {
 		Mentions:    []string{},
 		CreatedAt:   msg.CreatedAt,
 	})
-	h.Hub.BroadcastAll(broadcast)
+	if ch.Visibility != "public" {
+		h.Hub.BroadcastToMembers(broadcast, ch.ID)
+	} else {
+		h.Hub.BroadcastAll(broadcast)
+	}
 
 	writeJSON(w, http.StatusCreated, map[string]string{
 		"id":         msg.ID,

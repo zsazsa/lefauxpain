@@ -37,7 +37,8 @@ func (h *MediaHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	userID := user.ID
 
 	r.Body = http.MaxBytesReader(w, r.Body, h.MaxSize)
-	if err := r.ParseMultipartForm(h.MaxSize); err != nil {
+	// maxMemory is small on purpose: anything larger spills to a temp file.
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "file too large")
 		return
 	}
@@ -136,14 +137,12 @@ func (h *MediaHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove file from disk
-	h.Store.RemoveFile(item.Path)
-
-	// Remove from DB
+	// Remove from DB first, then the file if no other row shares it (content-addressed storage)
 	if err := h.DB.DeleteMedia(mediaID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete media")
 		return
 	}
+	removeFileIfUnreferenced(h.DB, h.Store, item.Path)
 
 	// If currently playing this video, stop playback
 	h.Hub.ClearMediaPlaybackIfVideo(mediaID)

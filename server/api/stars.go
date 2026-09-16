@@ -27,6 +27,15 @@ func (h *StarsHandler) Star(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	messageID := parts[len(parts)-1]
+	msg, _ := h.DB.GetMessageByID(messageID)
+	if msg == nil || msg.DeletedAt != nil {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if ok, err := h.DB.CanAccessChannel(msg.ChannelID, user.ID, user.IsAdmin); err != nil || !ok {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
 	if err := h.DB.StarMessage(user.ID, messageID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to star message")
 		return
@@ -76,8 +85,12 @@ func (h *StarsHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get starred messages")
 		return
 	}
-	if msgs == nil {
-		msgs = []db.StarredMessage{}
+	// Drop stars on messages the user can no longer see (removed from a private channel, etc.)
+	visible := make([]db.StarredMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if ok, err := h.DB.CanAccessChannel(m.ChannelID, user.ID, user.IsAdmin); err == nil && ok {
+			visible = append(visible, m)
+		}
 	}
-	writeJSON(w, http.StatusOK, msgs)
+	writeJSON(w, http.StatusOK, visible)
 }

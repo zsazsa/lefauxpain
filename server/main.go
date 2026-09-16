@@ -115,6 +115,19 @@ func main() {
 
 	go hub.Run()
 
+	// Files are content-addressed and shared between rows; only delete the
+	// last reference.
+	removeIfUnreferenced := func(relPath string) {
+		n, err := database.CountFileReferences(relPath)
+		if err != nil {
+			log.Printf("count file references %q: %v", relPath, err)
+			return
+		}
+		if n == 0 {
+			store.RemoveFile(relPath)
+		}
+	}
+
 	// Orphaned attachment cleanup every 10 minutes
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
@@ -126,9 +139,9 @@ func main() {
 				continue
 			}
 			for _, o := range orphans {
-				store.RemoveFile(o.Path)
+				removeIfUnreferenced(o.Path)
 				if o.ThumbPath != nil {
-					store.RemoveFile(*o.ThumbPath)
+					removeIfUnreferenced(*o.ThumbPath)
 				}
 			}
 			if len(orphans) > 0 {

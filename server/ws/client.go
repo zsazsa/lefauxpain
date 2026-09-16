@@ -32,7 +32,10 @@ type Client struct {
 func (c *Client) readPump() {
 	defer func() {
 		if c.User != nil {
-			c.hub.unregister <- c
+			select {
+			case c.hub.unregister <- c:
+			case <-c.hub.done:
+			}
 		}
 		c.Close()
 	}()

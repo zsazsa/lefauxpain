@@ -172,6 +172,21 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		}
 	}
 
+	// Validate reply_to and thread root are in the same channel before
+	// anything is written, so a bad reference never leaves an orphan row.
+	if d.ReplyToID != nil {
+		replyParent, _ := h.DB.GetMessageByID(*d.ReplyToID)
+		if replyParent == nil || replyParent.ChannelID != d.ChannelID {
+			return
+		}
+	}
+	if d.ThreadID != nil {
+		threadRoot, _ := h.DB.GetMessageByID(*d.ThreadID)
+		if threadRoot == nil || threadRoot.ChannelID != d.ChannelID {
+			return
+		}
+	}
+
 	msgID := uuid.New().String()
 	msg, err := h.DB.CreateMessage(msgID, d.ChannelID, c.UserID, d.Content, d.ReplyToID)
 	if err != nil {
@@ -186,22 +201,9 @@ func (h *Hub) handleSendMessage(c *Client, data json.RawMessage) {
 		}
 	}
 
-	// Validate reply_to is in the same channel
-	if d.ReplyToID != nil {
-		replyParent, _ := h.DB.GetMessageByID(*d.ReplyToID)
-		if replyParent == nil || replyParent.ChannelID != d.ChannelID {
-			return
-		}
-	}
-
 	// Thread logic: determine thread_id for this message
 	var threadID *string
 	if d.ThreadID != nil {
-		// Validate thread root is in the same channel
-		threadRoot, _ := h.DB.GetMessageByID(*d.ThreadID)
-		if threadRoot == nil || threadRoot.ChannelID != d.ChannelID {
-			return
-		}
 		// Explicit thread_id from client (replying within thread panel)
 		threadID = d.ThreadID
 		h.DB.SetThreadID(msgID, *d.ThreadID)
@@ -553,6 +555,22 @@ func isValidEmoji(s string) bool {
 	return len(r) >= 1 && len(r) <= 10 && len(s) <= 32
 }
 
+// canAccessChannel reports whether the client may see channelID (public, member, or admin).
+func (h *Hub) canAccessChannel(c *Client, channelID string) bool {
+	ok, err := h.DB.CanAccessChannel(channelID, c.UserID, c.User.IsAdmin)
+	return err == nil && ok
+}
+
+// broadcastChannel sends msg to every client allowed to see channelID.
+func (h *Hub) broadcastChannel(msg []byte, channelID string) {
+	ch, err := h.DB.GetChannelByID(channelID)
+	if err == nil && ch != nil && ch.Visibility != "public" {
+		h.BroadcastToMembers(msg, channelID)
+		return
+	}
+	h.BroadcastAll(msg)
+}
+
 func (h *Hub) handleAddReaction(c *Client, data json.RawMessage) {
 	var d ReactionData
 	if err := json.Unmarshal(data, &d); err != nil {
@@ -567,6 +585,9 @@ func (h *Hub) handleAddReaction(c *Client, data json.RawMessage) {
 	if msg == nil || msg.DeletedAt != nil {
 		return
 	}
+	if !h.canAccessChannel(c, msg.ChannelID) {
+		return
+	}
 
 	if err := h.DB.AddReaction(d.MessageID, c.UserID, d.Emoji); err != nil {
 		log.Printf("add reaction: %v", err)
@@ -578,12 +599,17 @@ func (h *Hub) handleAddReaction(c *Client, data json.RawMessage) {
 		UserID:    c.UserID,
 		Emoji:     d.Emoji,
 	})
-	h.BroadcastAll(broadcast)
+	h.broadcastChannel(broadcast, msg.ChannelID)
 }
 
 func (h *Hub) handleRemoveReaction(c *Client, data json.RawMessage) {
 	var d ReactionData
 	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	msg, _ := h.DB.GetMessageByID(d.MessageID)
+	if msg == nil || !h.canAccessChannel(c, msg.ChannelID) {
 		return
 	}
 
@@ -597,7 +623,7 @@ func (h *Hub) handleRemoveReaction(c *Client, data json.RawMessage) {
 		UserID:    c.UserID,
 		Emoji:     d.Emoji,
 	})
-	h.BroadcastAll(broadcast)
+	h.broadcastChannel(broadcast, msg.ChannelID)
 }
 
 func (h *Hub) handleTypingStart(c *Client, data json.RawMessage) {
@@ -1315,6 +1341,10 @@ func (h *Hub) handleScreenShareSubscribe(c *Client, data json.RawMessage) {
 
 	var d ScreenShareSubscribeData
 	if err := json.Unmarshal(data, &d); err != nil {
+		return
+	}
+
+	if !h.canAccessChannel(c, d.ChannelID) {
 		return
 	}
 

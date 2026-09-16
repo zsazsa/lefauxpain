@@ -129,6 +129,10 @@ func (h *ChannelSettingsHandler) HandleMembers(w http.ResponseWriter, r *http.Re
 
 	switch r.Method {
 	case http.MethodGet:
+		if ok, err := h.DB.CanAccessChannel(channelID, user.ID, user.IsAdmin); err != nil || !ok {
+			writeError(w, http.StatusNotFound, "channel not found")
+			return
+		}
 		members, err := h.DB.GetChannelMembers(channelID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")

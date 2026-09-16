@@ -181,8 +181,9 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 
 	// Audio device management (authenticated)
 	audioHandler := &AudioHandler{}
-	mux.HandleFunc("/api/v1/audio/devices", authMW.Wrap(audioHandler.ListDevices))
-	mux.HandleFunc("/api/v1/audio/device", authMW.Wrap(audioHandler.SetDevice))
+	// These change the host machine's default audio devices, so admin only.
+	mux.HandleFunc("/api/v1/audio/devices", authMW.WrapAdmin(audioHandler.ListDevices))
+	mux.HandleFunc("/api/v1/audio/device", authMW.WrapAdmin(audioHandler.SetDevice))
 
 	// Dev-mode test endpoints for email verification
 	if cfg.DevMode {

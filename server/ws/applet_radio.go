@@ -234,8 +234,17 @@ func (h *Hub) canManageRadioStation(c *Client, stationID string) bool {
 	return isManager
 }
 
+// canControlRadioPlayback allows station managers and admins always, and
+// everyone else only when the station has public controls enabled.
 func (h *Hub) canControlRadioPlayback(c *Client, stationID string) bool {
-	return true
+	if h.canManageRadioStation(c, stationID) {
+		return true
+	}
+	station, err := h.DB.GetRadioStationByID(stationID)
+	if err != nil || station == nil {
+		return false
+	}
+	return station.PublicControls
 }
 
 // --- Radio handlers ---
