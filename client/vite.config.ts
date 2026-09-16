@@ -26,18 +26,15 @@ export default defineConfig({
         "strudel-sandbox": resolve(__dirname, "strudel-sandbox.html"),
       },
       output: {
-        manualChunks: {
-          // Keep all strudel/superdough code in a single chunk so the sound
-          // registry (nanostores map) is shared between registration and playback.
-          // This chunk is only loaded by the sandbox iframe entry point.
-          strudel: [
-            "superdough",
-            "@strudel/core",
-            "@strudel/webaudio",
-            "@strudel/mini",
-            "@strudel/codemirror",
-            "@strudel/transpiler",
-          ],
+        // Keep all strudel/superdough code in a single chunk so the sound
+        // registry (nanostores map) is shared between registration and playback.
+        // This chunk is only loaded by the sandbox iframe entry point.
+        // Function form: the object form is rejected by Vite 8's rolldown bundler.
+        manualChunks(id: string) {
+          if (/node_modules\/(superdough|@strudel\/(core|webaudio|mini|codemirror|transpiler))\//.test(id)) {
+            return "strudel";
+          }
+          return undefined;
         },
       },
     },

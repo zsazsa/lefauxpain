@@ -21,7 +21,8 @@ specs or tests. It works. Our job is NOT to rewrite it. Our job is to:
 - If a scenario seems wrong, ask the architect — never modify it yourself
 - The validation runner in /validation/ must faithfully implement 
   each scenario step as described in the markdown
-- CI verifies scenario checksums on every push — tampering fails the build
+- CI verifies scenario checksums on every push (`make verify-scenarios`) — tampering fails the build.
+  When the architect intentionally adds or changes a scenario file, run `make update-scenario-checksums` and commit `specs/scenarios/CHECKSUMS.sha256` with it.
 
 ## How to Make Changes
 1. Read the spec for the requested change

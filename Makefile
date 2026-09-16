@@ -1,12 +1,35 @@
-.PHONY: validate lint test build-server
+.PHONY: validate lint test build build-client build-server verify-scenarios update-scenario-checksums
 
 VALIDATION_PORT ?= 18080
 GO ?= $(shell which go)
 
-build-server:
+# The Go binary embeds server/static (gitignored), so the client must be
+# built and copied in before the server compiles. Done automatically when
+# the embedded index.html is missing.
+build-client:
+	@cd client && npm install --silent && npm run build --silent
+	@mkdir -p server/static
+	@rm -rf server/static/assets/* server/static/index.html
+	@cp -r client/dist/* server/static/
+
+server/static/index.html:
+	@$(MAKE) build-client
+
+build-server: server/static/index.html
 	@cd server && $(GO) build -o voicechat .
 
-validate: build-server
+build: build-client build-server
+
+# Scenario files are the contract; their checksums are committed so CI
+# fails if one changes without the architect updating the manifest.
+verify-scenarios:
+	@cd specs/scenarios && sha256sum --check --strict CHECKSUMS.sha256
+
+update-scenario-checksums:
+	@cd specs/scenarios && ls *.md | LC_ALL=C sort | xargs sha256sum > CHECKSUMS.sha256
+	@echo "Updated specs/scenarios/CHECKSUMS.sha256"
+
+validate: verify-scenarios build-server
 	@set -e; \
 	TMPDIR=$$(mktemp -d); \
 	trap 'kill $$PID 2>/dev/null; rm -rf $$TMPDIR' EXIT; \
