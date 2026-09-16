@@ -275,6 +275,33 @@ export function deleteWebhookKey(id: string) {
   return request(`/admin/webhook-keys/${id}`, { method: "DELETE" });
 }
 
+export interface ApiKey {
+  id: string;
+  key_prefix: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface ApiKeyCreated extends ApiKey {
+  key: string;
+}
+
+export function getApiKeys(): Promise<ApiKey[]> {
+  return request("/api-keys");
+}
+
+export function createApiKey(name: string): Promise<ApiKeyCreated> {
+  return request("/api-keys", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteApiKey(id: string) {
+  return request(`/api-keys/${id}`, { method: "DELETE" });
+}
+
 export function getChannelThreads(channelId: string): Promise<any[]> {
   return request(`/channels/${channelId}/threads`);
 }

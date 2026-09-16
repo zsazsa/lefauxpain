@@ -371,6 +371,18 @@ var migrations = []string{
 		ON channels(position) WHERE deleted_at IS NULL;
 
 	DROP TABLE IF EXISTS channel_reads;`,
+
+	// Version 29: Per-user API keys for MCP / external integrations
+	`CREATE TABLE api_keys (
+		id           TEXT PRIMARY KEY,
+		user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		key_hash     TEXT NOT NULL UNIQUE,
+		key_prefix   TEXT NOT NULL,
+		name         TEXT NOT NULL,
+		created_at   DATETIME DEFAULT (datetime('now')),
+		last_used_at DATETIME
+	);
+	CREATE INDEX idx_api_keys_user ON api_keys(user_id);`,
 }
 
 func (d *DB) migrate() error {

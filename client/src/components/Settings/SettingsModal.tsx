@@ -10,7 +10,7 @@ import {
 import { microphones, speakers, enumerateDevices, desktopInputs, desktopOutputs, setDesktopDefaultDevice, isDesktop, isTauri } from "../../lib/devices";
 import { applyMasterVolume, setSpeaker } from "../../lib/audio";
 import { muteChannelMic, unmuteChannelMic } from "../../lib/webrtc";
-import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, updateEmail, approveUser, getEmailSettings, saveEmailSettings, sendTestEmail, getWebhookKeys, createWebhookKey, deleteWebhookKey, WebhookKey } from "../../lib/api";
+import { getAudioDevices, setAudioDevice, getUsers, deleteUser, setUserAdmin, setUserPassword, changePassword, updateEmail, approveUser, getEmailSettings, saveEmailSettings, sendTestEmail, getWebhookKeys, createWebhookKey, deleteWebhookKey, WebhookKey, getApiKeys, createApiKey, deleteApiKey, ApiKey } from "../../lib/api";
 import { currentUser, setUser } from "../../stores/auth";
 import { allUsers, removeAllUser } from "../../stores/users";
 import { isMobile } from "../../stores/responsive";
@@ -39,7 +39,7 @@ type AdminUser = {
   created_at: string;
 };
 
-type Tab = "account" | "display" | "audio" | "admin" | "email" | "webhooks" | "app" | "about";
+type Tab = "account" | "display" | "audio" | "admin" | "email" | "webhooks" | "api" | "app" | "about";
 
 export default function SettingsModal() {
   const [activeTab, setActiveTab] = createSignal<Tab>("account");
@@ -115,6 +115,16 @@ export default function SettingsModal() {
   const [createdKey, setCreatedKey] = createSignal<string | null>(null);
   const [keyCopied, setKeyCopied] = createSignal(false);
   const [confirmDeleteKey, setConfirmDeleteKey] = createSignal<string | null>(null);
+
+  // Personal API keys (MCP) state
+  const [apiKeys, setApiKeys] = createSignal<ApiKey[]>([]);
+  const [apiKeyError, setApiKeyError] = createSignal("");
+  const [apiKeyLoading, setApiKeyLoading] = createSignal(false);
+  const [newApiKeyName, setNewApiKeyName] = createSignal("");
+  const [createdApiKey, setCreatedApiKey] = createSignal<string | null>(null);
+  const [apiKeyCopied, setApiKeyCopied] = createSignal(false);
+  const [confirmDeleteApiKey, setConfirmDeleteApiKey] = createSignal<string | null>(null);
+  const mcpEndpoint = () => `${window.location.origin}/api/v1/mcp`;
 
   const fetchAdminUsers = async () => {
     setAdminError("");
@@ -404,6 +414,35 @@ export default function SettingsModal() {
     }
   };
 
+  const handleCreateApiKey = async () => {
+    const name = newApiKeyName().trim();
+    if (!name) return;
+    setApiKeyLoading(true);
+    setApiKeyError("");
+    setCreatedApiKey(null);
+    try {
+      const result = await createApiKey(name);
+      setCreatedApiKey(result.key);
+      setNewApiKeyName("");
+      setApiKeys(await getApiKeys());
+    } catch (e: any) {
+      setApiKeyError(e.message || "Failed to create key");
+    } finally {
+      setApiKeyLoading(false);
+    }
+  };
+
+  const handleDeleteApiKey = async (id: string) => {
+    setApiKeyError("");
+    try {
+      await deleteApiKey(id);
+      setApiKeys((prev) => prev.filter((k) => k.id !== id));
+      setConfirmDeleteApiKey(null);
+    } catch (e: any) {
+      setApiKeyError(e.message || "Failed to revoke key");
+    }
+  };
+
   const handleDeleteWebhookKey = async (id: string) => {
     setWebhookError("");
     try {
@@ -466,6 +505,16 @@ export default function SettingsModal() {
       getWebhookKeys()
         .then((keys) => setWebhookKeys(keys))
         .catch((e) => setWebhookError(e.message || "Failed to load webhook keys"));
+    }
+  });
+
+  // Fetch personal API keys when the API tab is selected
+  createEffect(() => {
+    if (settingsOpen() && activeTab() === "api") {
+      setApiKeyError("");
+      getApiKeys()
+        .then((keys) => setApiKeys(keys))
+        .catch((e) => setApiKeyError(e.message || "Failed to load API keys"));
     }
   });
 
@@ -615,6 +664,7 @@ export default function SettingsModal() {
       list.push({ id: "email", label: "Email" });
     }
     list.push({ id: "webhooks", label: "Webhooks" });
+    list.push({ id: "api", label: "API / MCP" });
     if (isTauri) {
       list.push({ id: "app", label: "App" });
     }
@@ -2038,6 +2088,230 @@ export default function SettingsModal() {
                     )}
                   </For>
                   </Show>
+                </div>
+              </Show>
+
+              {/* Personal API keys + MCP */}
+              <Show when={activeTab() === "api"}>
+                <div>
+                  <div style={sectionHeaderStyle}>AI Integration (MCP)</div>
+                  <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-bottom": "12px", "line-height": "1.5" }}>
+                    Connect an AI assistant to this server with the Model Context Protocol. It can list channels,
+                    read and search messages, read channel documents, and post messages — always as you, with your
+                    permissions. Keys are hashed; the full key is shown only once.
+                  </div>
+                  <div style={{ ...labelStyle, "margin-bottom": "4px" }}>Endpoint</div>
+                  <code style={{
+                    display: "block",
+                    "font-family": "var(--font-mono)",
+                    "font-size": "11px",
+                    color: "var(--text-primary)",
+                    "background-color": "#1a1a2e",
+                    padding: "6px 10px",
+                    border: "1px solid rgba(201,168,76,0.4)",
+                    "margin-bottom": "12px",
+                    "user-select": "all",
+                    "word-break": "break-all",
+                  }}>
+                    {mcpEndpoint()}
+                  </code>
+                  <div style={{ ...labelStyle, "margin-bottom": "4px" }}>Claude Code</div>
+                  <code style={{
+                    display: "block",
+                    "font-family": "var(--font-mono)",
+                    "font-size": "10px",
+                    color: "var(--text-secondary)",
+                    "background-color": "#1a1a2e",
+                    padding: "6px 10px",
+                    border: "1px solid rgba(201,168,76,0.2)",
+                    "margin-bottom": "20px",
+                    "white-space": "pre-wrap",
+                    "word-break": "break-all",
+                  }}>
+                    {`claude mcp add --transport http lefauxpain ${mcpEndpoint()} --header "Authorization: Bearer YOUR_KEY"`}
+                  </code>
+
+                  {apiKeyError() && (
+                    <div style={{ color: "var(--danger)", "font-size": "11px", "margin-bottom": "8px" }}>
+                      {apiKeyError()}
+                    </div>
+                  )}
+
+                  {createdApiKey() && (
+                    <div style={{
+                      "background-color": "rgba(76,175,80,0.1)",
+                      border: "1px solid var(--success)",
+                      padding: "12px",
+                      "margin-bottom": "16px",
+                      "font-size": "11px",
+                    }}>
+                      <div style={{ color: "var(--success)", "font-weight": "600", "margin-bottom": "8px", "font-family": "var(--font-display)", "letter-spacing": "1px", "text-transform": "uppercase" }}>
+                        Key Created — Copy It Now
+                      </div>
+                      <div style={{ color: "var(--text-muted)", "margin-bottom": "8px", "font-size": "10px" }}>
+                        This key will not be shown again. Anyone holding it can act as you.
+                      </div>
+                      <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+                        <code style={{
+                          flex: "1",
+                          "font-family": "var(--font-mono)",
+                          "font-size": "11px",
+                          color: "var(--text-primary)",
+                          "background-color": "#1a1a2e",
+                          padding: "6px 10px",
+                          border: "1px solid rgba(201,168,76,0.4)",
+                          "word-break": "break-all",
+                          "user-select": "all",
+                        }}>
+                          {createdApiKey()}
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(createdApiKey()!);
+                            setApiKeyCopied(true);
+                            setTimeout(() => setApiKeyCopied(false), 2000);
+                          }}
+                          style={{
+                            "font-size": "11px",
+                            padding: "4px 12px",
+                            border: apiKeyCopied() ? "1px solid var(--success)" : "1px solid var(--cyan)",
+                            "background-color": apiKeyCopied() ? "rgba(76,175,80,0.15)" : "rgba(0,188,212,0.1)",
+                            color: apiKeyCopied() ? "var(--success)" : "var(--cyan)",
+                            cursor: "pointer",
+                            "white-space": "nowrap",
+                            "font-family": "var(--font-display)",
+                            "letter-spacing": "1px",
+                          }}
+                        >
+                          {apiKeyCopied() ? "[copied]" : "[copy]"}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setCreatedApiKey(null)}
+                        style={{
+                          "margin-top": "8px",
+                          "font-size": "10px",
+                          padding: "2px 8px",
+                          border: "1px solid var(--text-muted)",
+                          "background-color": "transparent",
+                          color: "var(--text-muted)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        [dismiss]
+                      </button>
+                    </div>
+                  )}
+
+                  <div style={{ "margin-bottom": "20px" }}>
+                    <div style={labelStyle}>Create New Key</div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <input
+                        type="text"
+                        placeholder="Key name (e.g. claude-desktop)"
+                        value={newApiKeyName()}
+                        onInput={(e) => setNewApiKeyName(e.currentTarget.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && newApiKeyName().trim()) {
+                            handleCreateApiKey();
+                          }
+                        }}
+                        style={{ ...inputStyle, flex: "1" }}
+                      />
+                      <button
+                        onClick={() => handleCreateApiKey()}
+                        disabled={apiKeyLoading() || !newApiKeyName().trim()}
+                        style={{
+                          ...actionBtnStyle,
+                          opacity: (apiKeyLoading() || !newApiKeyName().trim()) ? "0.5" : "1",
+                          cursor: (apiKeyLoading() || !newApiKeyName().trim()) ? "not-allowed" : "pointer",
+                          "white-space": "nowrap",
+                        }}
+                      >
+                        {apiKeyLoading() ? "[creating...]" : "[create key]"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={sectionHeaderStyle}>Your Keys</div>
+                  {apiKeys().length === 0 && (
+                    <div style={{ "font-size": "11px", color: "var(--text-muted)", "font-style": "italic" }}>
+                      No API keys yet.
+                    </div>
+                  )}
+                  <For each={apiKeys()}>
+                    {(k) => (
+                      <div style={{
+                        "border-bottom": "1px solid rgba(201,168,76,0.1)",
+                        padding: "10px 0",
+                        display: "flex",
+                        "align-items": "center",
+                        "justify-content": "space-between",
+                      }}>
+                        <div>
+                          <div style={{ "font-size": "12px", color: "var(--text-primary)", "margin-bottom": "2px" }}>
+                            {k.name}
+                          </div>
+                          <div style={{ "font-size": "10px", color: "var(--text-muted)", "font-family": "var(--font-mono)" }}>
+                            {k.key_prefix} · created {new Date(k.created_at).toLocaleDateString()}
+                            {k.last_used_at ? ` · last used ${new Date(k.last_used_at).toLocaleString()}` : " · never used"}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: "4px", "flex-shrink": "0" }}>
+                          {confirmDeleteApiKey() === k.id ? (
+                            <>
+                              <button
+                                onClick={() => handleDeleteApiKey(k.id)}
+                                style={{
+                                  "font-size": "11px",
+                                  padding: "2px 8px",
+                                  color: "var(--danger)",
+                                  border: "1px solid var(--danger)",
+                                  "background-color": "rgba(232,64,64,0.15)",
+                                  cursor: "pointer",
+                                  "font-family": "var(--font-display)",
+                                  "letter-spacing": "1px",
+                                }}
+                              >
+                                [confirm]
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteApiKey(null)}
+                                style={{
+                                  "font-size": "11px",
+                                  padding: "2px 8px",
+                                  color: "var(--text-muted)",
+                                  border: "1px solid var(--text-muted)",
+                                  "background-color": "transparent",
+                                  cursor: "pointer",
+                                  "font-family": "var(--font-display)",
+                                  "letter-spacing": "1px",
+                                }}
+                              >
+                                [cancel]
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteApiKey(k.id)}
+                              style={{
+                                "font-size": "11px",
+                                padding: "2px 8px",
+                                color: "var(--danger)",
+                                border: "1px solid var(--danger)",
+                                "background-color": "transparent",
+                                cursor: "pointer",
+                                "font-family": "var(--font-display)",
+                                "letter-spacing": "1px",
+                              }}
+                            >
+                              [revoke]
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </For>
                 </div>
               </Show>
 

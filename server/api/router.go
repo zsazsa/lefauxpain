@@ -174,6 +174,14 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	mux.HandleFunc("/api/v1/radio/playlists/", radioRL.Wrap(authMW.Wrap(radioHandler.UploadTrack)))
 	mux.HandleFunc("/api/v1/radio/tracks/", authMW.Wrap(radioHandler.DeleteTrack))
 
+	// Personal API keys (authenticated) and the MCP endpoint they unlock
+	apiKeysHandler := &APIKeysHandler{DB: database}
+	mux.HandleFunc("/api/v1/api-keys", authMW.Wrap(apiKeysHandler.Handle))
+	mux.HandleFunc("/api/v1/api-keys/", authMW.Wrap(apiKeysHandler.Delete))
+	mcpHandler := &MCPHandler{DB: database, Hub: hub}
+	mcpRL := NewIPRateLimiter(120, time.Minute)
+	mux.HandleFunc("/api/v1/mcp", mcpRL.Wrap(mcpHandler.ServeHTTP))
+
 	// URL unfurl preview (authenticated + rate limited)
 	unfurlHandler := &UnfurlHandler{}
 	unfurlRL := NewIPRateLimiter(10, 10*time.Second)
@@ -263,8 +271,9 @@ func securityHeaders(next http.Handler) http.Handler {
 func secureFileServer(dir string) http.Handler {
 	fs := http.FileServer(http.Dir(dir))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Prevent directory listing
-		if strings.HasSuffix(r.URL.Path, "/") {
+		// Prevent directory listing. After StripPrefix the directory root
+		// arrives as "" (no trailing slash), so check that too.
+		if r.URL.Path == "" || strings.HasSuffix(r.URL.Path, "/") {
 			http.NotFound(w, r)
 			return
 		}

@@ -37,15 +37,17 @@ Le Faux Pain is a self-hostable Discord alternative for small groups. Users get 
 
 - **WS send buffer overflow = instant disconnect** (`server/ws/client.go`) — If a client's send channel (cap 256) is full, they're disconnected immediately. No backpressure, no warning. A slow client during a burst of messages just gets dropped.
 
-- **Admin auth is per-handler, not middleware** — Each handler individually checks `c.User.IsAdmin`. Easy to forget on a new endpoint. No centralized admin gate.
+- **Admin auth on WebSocket ops is per-handler** — REST admin routes go through `WrapAdmin` middleware, but WS handlers each check `c.User.IsAdmin` inline. Easy to forget on a new op. Channel access checks likewise live in each handler (`canAccessChannel` / `CanAccessChannel` helpers exist; use them).
 
 - **`channel_reads` table exists but is underutilized** — Schema is there (migration v1) but unread indicators aren't fully wired up in the frontend. The table gets written to but the read state isn't surfaced.
 
 - **Orphan attachment cleanup** — Background goroutine runs every 10 minutes, deletes attachments unlinked for >1 hour. A crash between upload and `send_message` orphans the file until the next cycle. Not transactional.
 
-- **Single WebSocket per user** — Opening a second tab closes the first connection. The hub's `register` channel handler calls `existing.Close()`. No multi-tab support.
+- **Multiple WebSockets per user, one voice connection** — `hub.clients` is `map[userID][]*Client`; voice is pinned to a single connection via `voiceClients`. A second tab gets chat but not voice.
 
-- **No token expiry** — Tokens in the `tokens` table have an `expires_at` column but it's always NULL. Tokens live forever until the user is deleted.
+- **Tokens expire after 30 days** — `expires_at` is set at login and enforced by `GetUserByToken`. There is no refresh; the client must log in again. Personal API keys (`api_keys`) never expire and are revoked manually.
+
+- **Content-addressed files are shared between rows** — attachments, media and radio tracks may point at the same `uploads/ab/cd/<hash>` file. Deletion goes through `CountFileReferences` and only unlinks the last reference. Never call `RemoveFile` directly on a path a DB row might still use.
 
 ## What Works Reliably
 
@@ -130,6 +132,11 @@ Format: `{ op: string, d: any }`
 | DELETE | `/api/v1/admin/users/{id}` | Admin | Delete user (kicks WS) |
 | POST | `/api/v1/radio/playlists/{id}/tracks` | Yes | Upload radio track (500MB, rate: 5/30s) |
 | DELETE | `/api/v1/radio/tracks/{id}` | Yes | Delete radio track |
+| GET | `/api/v1/audio/devices` | Admin | List host audio devices (wpctl) |
+| POST | `/api/v1/audio/device` | Admin | Set host default audio device |
+| GET/POST | `/api/v1/api-keys` | Yes | List / create personal API keys (MCP) |
+| DELETE | `/api/v1/api-keys/{id}` | Yes | Revoke own API key |
+| POST | `/api/v1/mcp` | API key or token | MCP Streamable HTTP endpoint (rate: 120/min). See `specs/features/mcp.md` |
 
 ### Database Schema (13 migrations)
 
@@ -150,6 +157,7 @@ Format: `{ op: string, d: any }`
 | `radio_station_managers` | Per-station manager permissions |
 | `radio_playlists` | Playlists belonging to stations |
 | `radio_tracks` | Audio tracks with pre-computed waveform peaks |
+| `api_keys` | Per-user personal API keys (hashed) for the MCP endpoint |
 
 ### Frontend Architecture
 
@@ -227,6 +235,16 @@ ssh user@your-server "sudo systemctl start voicechat"
 ```
 
 nginx serves static files from `/opt/voicechat/static/`, proxies `/api/` and `/ws` to Go on :8080, serves uploads/thumbs/avatars directly from `/opt/voicechat/data/`. SSL via Let's Encrypt. See `docs/deploy.md` for a full nginx + systemd + Let's Encrypt example.
+
+## MCP (AI assistant) API
+
+`POST /api/v1/mcp` speaks the Model Context Protocol over Streamable HTTP in stateless mode. Auth is `Authorization: Bearer <lfp_ key>` (personal keys from Settings → API / MCP) or a session token. Tools: `list_channels`, `read_messages`, `search_messages`, `send_message`, `list_users`, `list_documents`, `read_document`. Every tool acts as the key's owner with that user's channel permissions; inaccessible channels read as "not found". Connect from Claude Code with:
+
+```bash
+claude mcp add --transport http lefauxpain https://your-server/api/v1/mcp --header "Authorization: Bearer lfp_..."
+```
+
+Full behaviour: `specs/features/mcp.md`; validation: `validation/mcp_test.go`.
 
 ## Webhook API
 

@@ -388,3 +388,57 @@ func (d *DB) GetChannelThreads(channelID string) ([]ThreadListItem, error) {
 	}
 	return items, nil
 }
+
+// SearchResult is one hit from SearchMessages.
+type SearchResult struct {
+	ID             string  `json:"id"`
+	ChannelID      string  `json:"channel_id"`
+	ChannelName    string  `json:"channel"`
+	AuthorUsername string  `json:"author"`
+	Content        *string `json:"content"`
+	ThreadID       *string `json:"thread_id,omitempty"`
+	CreatedAt      string  `json:"created_at"`
+}
+
+// SearchMessages does a case-insensitive substring search over messages the
+// user may read: public channels plus channels they are a member of (admins
+// see everything). channelID narrows the search when non-empty.
+func (d *DB) SearchMessages(userID string, isAdmin bool, query, channelID string, limit int) ([]SearchResult, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+	// Escape LIKE metacharacters so the query is a literal substring.
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
+	admin := 0
+	if isAdmin {
+		admin = 1
+	}
+	rows, err := d.Query(
+		`SELECT m.id, m.channel_id, c.name, COALESCE(u.username, 'Deleted User'), m.content, m.thread_id, m.created_at
+		 FROM messages m
+		 JOIN channels c ON c.id = m.channel_id
+		 LEFT JOIN users u ON u.id = m.author_id
+		 WHERE m.deleted_at IS NULL AND c.deleted_at IS NULL AND c.type = 'text'
+		   AND m.content LIKE '%' || ? || '%' ESCAPE '\'
+		   AND (? = 1 OR c.visibility = 'public'
+		        OR EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?))
+		   AND (? = '' OR m.channel_id = ?)
+		 ORDER BY m.created_at DESC
+		 LIMIT ?`,
+		escaped, admin, userID, channelID, channelID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search messages: %w", err)
+	}
+	defer rows.Close()
+
+	results := []SearchResult{}
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.ID, &r.ChannelID, &r.ChannelName, &r.AuthorUsername, &r.Content, &r.ThreadID, &r.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan search result: %w", err)
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
