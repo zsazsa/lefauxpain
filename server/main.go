@@ -20,8 +20,14 @@ import (
 	"github.com/kalman/voicechat/ws"
 )
 
+// Version is the build identifier (git short hash) stamped in with
+// -ldflags "-X main.Version=...". Clients compare it against their own build
+// to detect a stale tab after a deploy.
+var Version = "dev"
+
 func main() {
 	cfg := config.Parse()
+	cfg.Version = Version
 
 	// Desktop thin-client mode: just open a window to the remote server
 	if guiMode && cfg.RemoteURL != "" {
@@ -56,6 +62,7 @@ func main() {
 	sfuInstance := sfu.New(cfg.STUNServer, cfg.PublicIP)
 
 	hub := ws.NewHub(database, sfuInstance, emailSvc, cfg.DevMode)
+	hub.Version = Version
 
 	// Wire SFU signaling back through the hub
 	sfuInstance.Signal = func(userID string, op string, data any) {

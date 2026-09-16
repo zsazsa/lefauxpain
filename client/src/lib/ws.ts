@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js";
+import { announceAuthRejected } from "../stores/auth";
 
 export type WSMessage = {
   op: string;
@@ -50,11 +51,20 @@ export function connectWS(token: string) {
     } catch {}
   };
 
-  socket.onclose = () => {
+  socket.onclose = (e: CloseEvent) => {
     socket = null;
     stopPing();
     setPing(null);
     if (intentionalDisconnect) return;
+    // 1008 (policy violation) is how the server rejects credentials: expired or
+    // invalid token, deleted account, pending approval. Retrying would loop
+    // forever, so hand the user back to the login screen instead.
+    if (e.code === 1008) {
+      intentionalDisconnect = true;
+      setConnState("offline");
+      announceAuthRejected(friendlyAuthReason(e.reason));
+      return;
+    }
     failedAttempts++;
     // After a few failed attempts show "Offline" instead of "Waiting"; keep retrying regardless.
     setConnState(failedAttempts >= 3 ? "offline" : "reconnecting");
@@ -64,6 +74,12 @@ export function connectWS(token: string) {
   socket.onerror = () => {
     socket?.close();
   };
+}
+
+function friendlyAuthReason(reason: string): string {
+  if (reason.includes("pending")) return "Your account is still waiting for approval.";
+  if (reason.includes("token")) return "Your session has expired. Please sign in again.";
+  return "You were signed out by the server. Please sign in again.";
 }
 
 function startPing() {

@@ -10,7 +10,8 @@ import { connectWS, disconnectWS, connState } from "./lib/ws";
 import { initEventHandlers } from "./lib/events";
 import { leaveVoice } from "./lib/webrtc";
 import { cleanupScreenShare } from "./lib/screenshare";
-import { currentUser, token, login, logout, setUser } from "./stores/auth";
+import { currentUser, token, login, logout, setUser, setAuthNotice, AUTH_REJECTED_EVENT } from "./stores/auth";
+import { staleVersion } from "./stores/version";
 import {
   channels,
   selectedChannelId,
@@ -47,6 +48,16 @@ function App() {
     logout();
     setReady(false);
   };
+
+  // Server rejected our credentials (WS close 1008 or REST 401): back to login.
+  const onAuthRejected = (e: Event) => {
+    setAuthNotice((e as CustomEvent<string>).detail || "Please sign in again.");
+    handleLogout();
+  };
+  onMount(() => {
+    window.addEventListener(AUTH_REJECTED_EVENT, onAuthRejected);
+    onCleanup(() => window.removeEventListener(AUTH_REJECTED_EVENT, onAuthRejected));
+  });
 
   // Connect WS when we have a token
   onMount(() => {
@@ -165,6 +176,27 @@ function App() {
         }}
 
         <div style={{ flex: "1", display: "flex", "flex-direction": "column", "min-width": "0" }}>
+          <Show when={staleVersion()}>
+            <div style={{
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              gap: "12px",
+              padding: "8px 16px",
+              "background-color": "rgba(0,188,212,0.12)",
+              "border-bottom": "1px solid rgba(0,188,212,0.35)",
+              "font-size": "13px",
+              color: "var(--cyan)",
+            }}>
+              A new version of Le Faux Pain is available.
+              <button
+                onClick={() => window.location.reload()}
+                style={{ padding: "2px 10px", border: "1px solid var(--cyan)", color: "var(--cyan)", "background-color": "transparent", cursor: "pointer" }}
+              >
+                [reload]
+              </button>
+            </div>
+          </Show>
           <Show when={connState() !== "connected"}>
             <div style={{
               display: "flex",

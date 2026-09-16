@@ -17,6 +17,7 @@ type Config struct {
 	PublicIP       string
 	STUNServer     string
 	RemoteURL      string // Desktop-only: connect to remote server instead of starting local one
+	Version        string // Build identifier, set by main from the ldflags-stamped variable
 }
 
 func Parse() *Config {

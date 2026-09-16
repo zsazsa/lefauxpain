@@ -289,6 +289,7 @@ func (c *Client) sendReady() error {
 		"server_time":      nowUnix(),
 		"unread_counts":    unreadCounts,
 		"enabled_features": enabledFeatures,
+		"server_version":   c.hub.Version,
 	}
 	if deletedChannelPayloads != nil {
 		readyMap["deleted_channels"] = deletedChannelPayloads

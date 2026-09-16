@@ -1,9 +1,23 @@
 import { defineConfig } from "vite";
 import solidPlugin from "vite-plugin-solid";
 import { resolve } from "path";
+import { execSync } from "child_process";
+
+// Same identifier the server is stamped with (Makefile exports APP_VERSION).
+function appVersion(): string {
+  if (process.env.APP_VERSION) return process.env.APP_VERSION;
+  try {
+    return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim() || "dev";
+  } catch {
+    return "dev";
+  }
+}
 
 export default defineConfig({
   plugins: [solidPlugin()],
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion()),
+  },
   server: {
     port: 5173,
     proxy: {

@@ -51,11 +51,14 @@ For full architecture, WS protocol, REST endpoints, DB schema, known fragile are
 cd client && npm install && npm run dev          # Vite HMR on :5173
 cd server && go run . --dev --port 8080          # Proxies frontend to Vite
 
-# Production build (order matters: frontend first, then copy, then Go)
-cd client && npm run build
-rm -rf server/static/assets/* server/static/index.html
-cp -r client/dist/* server/static/
-cd server && go build -o voicechat .
+# Production build (order matters: frontend first, then copy, then Go).
+# `make build` does all of this and stamps the git hash into both bundles
+# (APP_VERSION) so stale browser tabs reload themselves after a deploy.
+make build            # or: make build-release for a static binary
+# Manual equivalent:
+#   cd client && APP_VERSION=$(git rev-parse --short HEAD) npm run build
+#   rm -rf server/static/assets/* server/static/index.html && cp -r client/dist/* server/static/
+#   cd server && go build -ldflags "-X main.Version=$(git rev-parse --short HEAD)" -o voicechat .
 
 # Validation (builds server, starts fresh instance, runs 35 scenarios)
 make validate

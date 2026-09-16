@@ -47,6 +47,8 @@ Le Faux Pain is a self-hostable Discord alternative for small groups. Users get 
 
 - **Tokens expire after 30 days** — `expires_at` is set at login and enforced by `GetUserByToken`. There is no refresh; the client must log in again. Personal API keys (`api_keys`) never expire and are revoked manually.
 
+- **Client/server version handshake** — Both bundles are stamped with the git short hash (`APP_VERSION` / `main.Version`). `ready` carries `server_version`; the client reloads once when it differs (guarded by sessionStorage), otherwise shows a "new version" banner. A failed lazy-chunk load (`vite:preloadError`) also triggers one reload. Deploys must keep last week's `static/assets` so open tabs survive until they reload. WebSocket close 1008 and REST 401 (outside `/auth/`) send the client back to the login screen with a notice instead of retrying forever.
+
 - **Content-addressed files are shared between rows** — attachments, media and radio tracks may point at the same `uploads/ab/cd/<hash>` file. Deletion goes through `CountFileReferences` and only unlinks the last reference. Never call `RemoveFile` directly on a path a DB row might still use.
 
 ## What Works Reliably
@@ -116,7 +118,7 @@ Format: `{ op: string, d: any }`
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| GET | `/api/v1/health` | No | Health check |
+| GET | `/api/v1/health` | No | Health check; includes `version` (build hash) |
 | POST | `/api/v1/auth/register` | No | Register (rate: 3/min) |
 | POST | `/api/v1/auth/login` | No | Login (rate: 5/min) |
 | POST | `/api/v1/auth/password` | Yes | Change own password |

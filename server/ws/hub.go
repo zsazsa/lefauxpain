@@ -41,6 +41,7 @@ type StrudelPlaybackState struct {
 }
 
 type Hub struct {
+	Version        string // build identifier, reported to clients in "ready"
 	DB             *db.DB
 	SFU            *sfu.SFU
 	EmailService   *email.EmailService

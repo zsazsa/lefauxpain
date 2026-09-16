@@ -26,6 +26,7 @@ import {
   setMessages,
 } from "../stores/messages";
 import { getMessages } from "./api";
+import { checkServerVersion } from "../stores/version";
 import {
   setOnlineUserList,
   setAllUserList,
@@ -205,6 +206,7 @@ export function initEventHandlers() {
     switch (msg.op) {
       case "ready":
         const isReconnect = readyCount++ > 0;
+        checkServerVersion(msg.d.server_version);
         setUser(msg.d.user);
         setChannelList(msg.d.channels);
         setOnlineUserList(msg.d.online_users);

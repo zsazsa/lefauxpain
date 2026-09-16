@@ -1,6 +1,7 @@
 import { createSignal, onMount, Show } from "solid-js";
 import { isTauri } from "../../lib/devices";
 import { t } from "../../stores/theme";
+import { authNotice } from "../../stores/auth";
 
 interface LoginProps {
   onLogin: (token: string, username: string) => void;
@@ -832,6 +833,20 @@ function Login(props: LoginProps) {
               : "// authenticate to continue"}
           </p>
 
+          {authNotice() && !error() && (
+            <div
+              style={{
+                "background-color": "rgba(201,168,76,0.1)",
+                border: "1px solid var(--accent)",
+                color: "var(--accent)",
+                padding: "8px",
+                "margin-bottom": "16px",
+                "font-size": "12px",
+              }}
+            >
+              {authNotice()}
+            </div>
+          )}
           {error() && (
             <div
               style={{

@@ -36,7 +36,7 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	// Health check (unauthenticated — used by desktop app and login page)
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		emailRequired, _ := emailService.IsVerificationEnabled()
-		writeJSON(w, http.StatusOK, map[string]any{"app": "voicechat", "email_required": emailRequired})
+		writeJSON(w, http.StatusOK, map[string]any{"app": "voicechat", "email_required": emailRequired, "version": cfg.Version})
 	})
 
 	verifyRL := NewIPRateLimiter(10, time.Minute)

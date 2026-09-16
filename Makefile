@@ -2,6 +2,10 @@
 
 VALIDATION_PORT ?= 18080
 GO ?= $(shell which go)
+# Build identifier shared by server and client so a stale tab can detect a deploy.
+APP_VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
+export APP_VERSION
+GO_LDFLAGS ?= -X main.Version=$(APP_VERSION)
 
 # The Go binary embeds server/static (gitignored), so the client must be
 # built and copied in before the server compiles. Done automatically when
@@ -16,7 +20,11 @@ server/static/index.html:
 	@$(MAKE) build-client
 
 build-server: server/static/index.html
-	@cd server && $(GO) build -o voicechat .
+	@cd server && $(GO) build -ldflags "$(GO_LDFLAGS)" -o voicechat .
+
+# Static production binary (no glibc dependency) for deploying to a VPS.
+build-release: server/static/index.html
+	@cd server && CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w $(GO_LDFLAGS)" -o voicechat .
 
 build: build-client build-server
 

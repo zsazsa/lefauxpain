@@ -2,6 +2,15 @@
 import { render } from "solid-js/web";
 import App from "./App";
 import "./styles/global.css";
+import { reloadForMissingChunk } from "./stores/version";
+
+// A deploy replaces the hashed asset files. A tab that was already open then
+// fails to fetch any chunk it hasn't loaded yet; reload once to pick up the
+// new bundle instead of leaving a dead feature.
+window.addEventListener("vite:preloadError", (e) => {
+  e.preventDefault();
+  reloadForMissingChunk();
+});
 
 // Desktop app detection: the Tauri server selector passes ?tauri=1 when
 // navigating here. Persist to localStorage (on this origin) so it survives

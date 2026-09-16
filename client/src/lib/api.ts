@@ -1,4 +1,5 @@
 import { computePeaksFromFile, serializePeaks } from "./waveform";
+import { announceAuthRejected } from "../stores/auth";
 
 const BASE = "/api/v1";
 
@@ -21,6 +22,11 @@ async function request(path: string, opts: RequestInit = {}) {
   const res = await fetch(`${BASE}${path}`, { ...opts, headers });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: "request failed" }));
+    // A 401 with a token attached means the session is dead (expired, revoked,
+    // account deleted). Auth-flow endpoints report 401 for wrong input, so skip those.
+    if (res.status === 401 && token && !path.startsWith("/auth/")) {
+      announceAuthRejected("Your session has expired. Please sign in again.");
+    }
     throw new Error(data.error || `HTTP ${res.status}`);
   }
   return res.json();

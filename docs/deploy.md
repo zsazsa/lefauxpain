@@ -52,7 +52,7 @@ there first, then compile:
 
 ```bash
 # Copy frontend into embed directory
-rm -rf server/static/assets/* server/static/index.html
+rm -rf server/static/assets/* server/static/index.html   # local embed dir only; never do this on the server
 cp -r client/dist/* server/static/
 
 # Build
@@ -81,7 +81,9 @@ sudo cp /tmp/voicechat-new /opt/lefauxpain/bin/voicechat
 sudo chmod +x /opt/lefauxpain/bin/voicechat
 
 # Replace frontend static files (served by nginx)
-sudo rm -rf /opt/lefauxpain/static/assets/*
+# Keep last week's hashed assets so tabs that are still open keep working
+# until they reload (the client reloads itself when it sees a new version).
+sudo find /opt/lefauxpain/static/assets -type f -mtime +7 -delete
 sudo cp -r /tmp/static-new/* /opt/lefauxpain/static/
 
 # Restart
@@ -104,7 +106,7 @@ If only frontend code changed (no Go changes):
 ```bash
 cd client && npm run build
 scp -r dist/* youruser@YOUR_SERVER_IP:/tmp/static-new/
-ssh youruser@YOUR_SERVER_IP 'sudo rm -rf /opt/lefauxpain/static/assets/* && sudo cp -r /tmp/static-new/* /opt/lefauxpain/static/'
+ssh youruser@YOUR_SERVER_IP 'sudo find /opt/lefauxpain/static/assets -type f -mtime +7 -delete && sudo cp -r /tmp/static-new/* /opt/lefauxpain/static/'
 ```
 
 No service restart needed — nginx picks up the new files immediately.
