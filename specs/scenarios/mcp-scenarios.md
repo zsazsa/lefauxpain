@@ -54,3 +54,50 @@ Validation: `validation/mcp_test.go`
 ### Scenario MCP09: No server-initiated stream
 1. `GET /api/v1/mcp` with valid auth
 2. Assert: 405
+
+## Radio (validation: `validation/mcp_radio_test.go`)
+
+Setup for R01-R06: alice's key creates a station and a playlist "Set A", then uploads two audio tracks (120s, 90s) over REST.
+
+### Scenario R01: Create and inspect
+1. `create_station` → result has `you_can_manage: true`
+2. `create_playlist` on the station by name
+3. `station_status` lists one playlist with two tracks and `playback: null`
+4. `list_stations` includes the station
+
+### Scenario R02: Playback round trip with a listener
+1. Bob tunes to the station over WS
+2. `radio_play` (no playlist) → playing track 1; bob receives `radio_playback` with `playing: true`
+3. `radio_pause` → `playing: false`
+4. `radio_seek` to 42 → position 42
+5. `radio_resume` → `playing: true`
+6. `radio_next` → track 2
+7. `radio_stop` → `playback: "stopped"`; bob receives `radio_playback` with `stopped: true`
+8. `radio_pause` on the idle station → tool error
+
+### Scenario R03: Playback ACL
+1. Bob's key: `radio_play`, `set_public_controls`, `set_station_mode` → tool errors
+2. Alice enables public controls
+3. Bob's key: `radio_play` → succeeds
+
+### Scenario R04: Playback mode
+1. `set_station_mode` with `shuffle` → tool error
+2. `set_station_mode` `loop_one` → applied
+3. Play, next, next → track index wraps to 0 instead of stopping
+
+### Scenario R05: Reorder tracks
+1. Partial id list → tool error
+2. Full reversed list by playlist name → new order returned
+3. Bob's key reordering alice's playlist → tool error
+
+### Scenario R06: Name resolution
+1. `station_status` by upper-cased name resolves to the same id
+2. Unknown station → tool error
+3. `create_station` with an existing name → tool error
+
+### Scenario R07: Empty playlists
+1. Station with an empty playlist: `radio_play` → "no playlist with tracks"
+2. `radio_play` naming the empty playlist → "no tracks"
+
+### Scenario R08: Discovery
+1. `tools/list` includes all thirteen radio tools

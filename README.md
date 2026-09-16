@@ -78,7 +78,7 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 - Optional email verification for registration (Postmark or SMTP)
 - Admin panel: approve/reject users, promote/demote admins, set passwords, delete accounts
 - Webhook API — external systems can post messages to channels via API key auth
-- MCP integration — connect Claude Desktop, Claude Code or any Model Context Protocol client with a personal API key; the assistant reads, searches and posts as you, with your permissions
+- MCP integration — connect Claude Desktop, Claude Code or any Model Context Protocol client with a personal API key; the assistant reads, searches, posts and DJs radio stations as you, with your permissions
 
 ### Theme System
 - Multiple color themes (gold, cyan, green) with French and English language options

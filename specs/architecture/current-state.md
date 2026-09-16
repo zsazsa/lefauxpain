@@ -238,7 +238,7 @@ nginx serves static files from `/opt/voicechat/static/`, proxies `/api/` and `/w
 
 ## MCP (AI assistant) API
 
-`POST /api/v1/mcp` speaks the Model Context Protocol over Streamable HTTP in stateless mode. Auth is `Authorization: Bearer <lfp_ key>` (personal keys from Settings → API / MCP) or a session token. Tools: `list_channels`, `read_messages`, `search_messages`, `send_message`, `list_users`, `list_documents`, `read_document`. Every tool acts as the key's owner with that user's channel permissions; inaccessible channels read as "not found". Connect from Claude Code with:
+`POST /api/v1/mcp` speaks the Model Context Protocol over Streamable HTTP in stateless mode. Auth is `Authorization: Bearer <lfp_ key>` (personal keys from Settings → API / MCP) or a session token. Tools: `list_channels`, `read_messages`, `search_messages`, `send_message`, `list_users`, `list_documents`, `read_document`, plus radio DJ tools (`list_stations`, `station_status`, `create_station`, `create_playlist`, `radio_play/pause/resume/next/seek/stop`, `set_station_mode`, `set_public_controls`, `reorder_tracks`) that run the radio applet handlers through `Hub.ExecuteAs`. Every tool acts as the key's owner with that user's channel permissions; inaccessible channels read as "not found". Connect from Claude Code with:
 
 ```bash
 claude mcp add --transport http lefauxpain https://your-server/api/v1/mcp --header "Authorization: Bearer lfp_..."

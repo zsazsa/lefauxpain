@@ -64,13 +64,40 @@ so private channels are not enumerable.
 | `list_documents` | `channel` | Metadata of the channel's markdown documents |
 | `read_document` | `channel`, `path` | Full document content |
 
+### Radio tools
+
+Radio tools run the same WebSocket applet handlers the web client uses,
+via `Hub.ExecuteAs`, so permissions and broadcasts are identical. Stations
+and playlists accept a name (case-insensitive) or an id.
+
+| Tool | Arguments | Behaviour |
+|------|-----------|-----------|
+| `list_stations` | — | Every station: mode, public controls, managers, whether you can manage/control, listener count, current playback |
+| `station_status` | `station` | The above plus every playlist with its tracks; playback position is live |
+| `create_station` | `name` (1-32) | Creates a station; caller becomes manager; duplicate names refused |
+| `create_playlist` | `station`, `name` (1-64) | Empty playlist owned by the caller. Tracks are uploaded in the web app; MCP cannot carry audio |
+| `radio_play` | `station`, `playlist?` | With a playlist: play it from the top. Without: resume if paused, else first playlist with tracks |
+| `radio_pause` / `radio_resume` / `radio_stop` | `station` | Pause at the live position / resume / stop |
+| `radio_next` | `station` | Next track; at the end the station's mode applies |
+| `radio_seek` | `station`, `position` | Seconds into the current track, clamped to its duration |
+| `set_station_mode` | `station`, `mode` | `play_all`, `loop_one`, `loop_all`, `single`. Managers only |
+| `set_public_controls` | `station`, `enabled` | Let everyone control playback. Managers only |
+| `reorder_tracks` | `station`, `playlist`, `track_ids` | Full permutation of the playlist's track ids. Playlist owner (or admin) only |
+
+Playback control (`radio_play`/`pause`/`resume`/`next`/`seek`/`stop`) needs
+manager rights or public controls, exactly like the web client. Because the
+underlying handlers are silent, each tool validates preconditions first and
+reports the resulting playback state (or a tool error) afterwards.
+
 Tool failures (bad arguments, not found, validation) come back as MCP tool
 results with `isError: true`, not JSON-RPC errors, so the model can recover.
 
-### Out of scope for v1
+### Out of scope
 
-Mentions and thread replies via MCP, unfurling of URLs in MCP-sent messages,
-reactions, voice, and OAuth-based authorization. Session tokens are accepted
+Uploading audio, listening (tuning is a client-side audio concern), deleting
+stations or playlists, station manager changes, mentions and thread replies
+via MCP, unfurling of URLs in MCP-sent messages, reactions, voice, and
+OAuth-based authorization. Session tokens are accepted
 on the endpoint for convenience but keys are the documented path.
 
 ## Constraints
