@@ -17,6 +17,6 @@
     "opener:default"
   ],
   "remote": {
-    "urls": ["https://*/*", "http://*/*"]
+    "urls": ["https://*/*", "http://localhost:*/*", "http://127.0.0.1:*/*"]
   }
 }

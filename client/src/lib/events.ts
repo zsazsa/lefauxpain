@@ -22,7 +22,10 @@ import {
   setMessageUnfurls,
   addThreadMessage,
   updateThreadSummary,
+  messagesByChannel,
+  setMessages,
 } from "../stores/messages";
+import { getMessages } from "./api";
 import {
   setOnlineUserList,
   setAllUserList,
@@ -178,6 +181,22 @@ function initDesktopVoiceEvents() {
   console.log("[voice] Desktop voice event listeners registered (fallback)");
 }
 
+let readyCount = 0;
+
+// After a reconnect, anything sent while the socket was down is missing from
+// the store. Refetch the latest page for every channel we have loaded.
+function resyncLoadedChannels() {
+  for (const channelId of Object.keys(messagesByChannel())) {
+    getMessages(channelId)
+      .then((msgs: any[]) => {
+        const reversed = [...msgs].reverse();
+        mergeKnownUsers(reversed.map((m: any) => m.author));
+        setMessages(channelId, reversed);
+      })
+      .catch(() => {});
+  }
+}
+
 export function initEventHandlers() {
   // Set up desktop voice event listeners (Rust → Frontend)
   initDesktopVoiceEvents();
@@ -185,6 +204,7 @@ export function initEventHandlers() {
   return onMessage((msg: WSMessage) => {
     switch (msg.op) {
       case "ready":
+        const isReconnect = readyCount++ > 0;
         setUser(msg.d.user);
         setChannelList(msg.d.channels);
         setOnlineUserList(msg.d.online_users);
@@ -202,10 +222,12 @@ export function initEventHandlers() {
         setEnabledFeatures(msg.d.enabled_features || []);
         // Dispatch to applet ready handlers
         dispatchReady(msg.d);
-        // Auto-rejoin voice if we were in a channel before refresh
+        if (isReconnect) resyncLoadedChannels();
+        // Auto-rejoin voice if we were in a channel before a page refresh.
+        // Skip when we're still in voice: a WS blip must not tear down the call.
         {
           const savedChannel = sessionStorage.getItem("voice_channel");
-          if (savedChannel) {
+          if (savedChannel && !currentVoiceChannelId()) {
             sessionStorage.removeItem("voice_channel");
             setTimeout(() => joinVoice(savedChannel), 500);
           }

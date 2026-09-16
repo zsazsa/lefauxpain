@@ -245,7 +245,13 @@ export default function RadioPlayer() {
     rafId = requestAnimationFrame(tickProgress);
   };
   rafId = requestAnimationFrame(tickProgress);
-  onCleanup(() => cancelAnimationFrame(rafId));
+  onCleanup(() => {
+    cancelAnimationFrame(rafId);
+    // Browsers cap live AudioContexts; release ours or repeated mounts leak them.
+    try { audioCtx?.close(); } catch {}
+    audioCtx = null;
+    analyser = null;
+  });
 
   const trackDuration = () => pb()?.track?.duration || 0;
   const progress = () => {

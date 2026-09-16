@@ -52,6 +52,18 @@ function Login(props: LoginProps) {
     url = url.replace(/\/+$/, "");
 
     setServerError("");
+    // The desktop shell hands the remote page native capabilities, so only
+    // trust plaintext http for local or private-network servers.
+    if (/^http:/i.test(url)) {
+      let host = "";
+      try { host = new URL(url).hostname; } catch {}
+      const local = host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".local")
+        || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+      if (!local) {
+        setServerError("Use https:// for remote servers");
+        return;
+      }
+    }
     setServerLoading(true);
     try {
       const res = await fetch(url + "/api/v1/health");

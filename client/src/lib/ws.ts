@@ -14,6 +14,7 @@ let reconnectDelay = 1000;
 let pingInterval: number | null = null;
 let pingSentAt = 0;
 let intentionalDisconnect = false;
+let failedAttempts = 0;
 
 export type ConnState = "connected" | "reconnecting" | "offline";
 const [connState, setConnState] = createSignal<ConnState>("offline");
@@ -22,7 +23,7 @@ const [ping, setPing] = createSignal<number | null>(null);
 export { connState, ping };
 
 export function connectWS(token: string) {
-  if (socket?.readyState === WebSocket.OPEN) return;
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
 
   intentionalDisconnect = false;
   setConnState("reconnecting");
@@ -32,6 +33,7 @@ export function connectWS(token: string) {
 
   socket.onopen = () => {
     reconnectDelay = 1000;
+    failedAttempts = 0;
     setConnState("connected");
     send("authenticate", { token });
     startPing();
@@ -53,7 +55,9 @@ export function connectWS(token: string) {
     stopPing();
     setPing(null);
     if (intentionalDisconnect) return;
-    setConnState("reconnecting");
+    failedAttempts++;
+    // After a few failed attempts show "Offline" instead of "Waiting"; keep retrying regardless.
+    setConnState(failedAttempts >= 3 ? "offline" : "reconnecting");
     scheduleReconnect(token);
   };
 
@@ -81,11 +85,13 @@ function stopPing() {
 
 function scheduleReconnect(token: string) {
   if (reconnectTimer) return;
+  // Jitter spreads clients out after a server restart so they don't all reconnect in lockstep.
+  const jitter = Math.random() * 0.4 * reconnectDelay;
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = null;
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
     connectWS(token);
-  }, reconnectDelay);
+  }, reconnectDelay + jitter);
 }
 
 export function disconnectWS() {
