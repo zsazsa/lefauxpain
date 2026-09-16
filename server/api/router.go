@@ -171,8 +171,9 @@ func NewRouter(cfg *config.Config, database *db.DB, hub *ws.Hub, store *storage.
 	// Radio track upload/delete (authenticated + rate limited)
 	radioHandler := &RadioHandler{DB: database, Store: store, Hub: hub}
 	radioRL := NewIPRateLimiter(5, 30*time.Second)
-	mux.HandleFunc("/api/v1/radio/playlists/", radioRL.Wrap(authMW.Wrap(radioHandler.UploadTrack)))
-	mux.HandleFunc("/api/v1/radio/tracks/", authMW.Wrap(radioHandler.DeleteTrack))
+	// Track upload/delete also accept personal API keys so an MCP DJ can add audio.
+	mux.HandleFunc("/api/v1/radio/playlists/", radioRL.Wrap(authMW.WrapWithAPIKey(radioHandler.UploadTrack)))
+	mux.HandleFunc("/api/v1/radio/tracks/", authMW.WrapWithAPIKey(radioHandler.DeleteTrack))
 
 	// Personal API keys (authenticated) and the MCP endpoint they unlock
 	apiKeysHandler := &APIKeysHandler{DB: database}

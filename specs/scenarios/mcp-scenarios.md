@@ -101,3 +101,10 @@ Setup for R01-R06: alice's key creates a station and a playlist "Set A", then up
 
 ### Scenario R08: Discovery
 1. `tools/list` includes all thirteen radio tools
+
+### Scenario R09: API keys add and remove tracks
+1. Alice's key uploads an audio file to her playlist over REST → 200 with a track id
+2. Bob's key uploads to alice's playlist → 403
+3. An `lfp_` key that does not exist → 401
+4. Alice's key deletes the track → 200
+5. A personal key on an unrelated REST endpoint (`GET /api/v1/channels`) → 401

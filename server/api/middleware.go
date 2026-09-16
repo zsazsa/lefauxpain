@@ -45,6 +45,35 @@ func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// WrapWithAPIKey is Wrap plus acceptance of personal API keys (lfp_...).
+// Used only on the radio track endpoints so an MCP-driven DJ can add and
+// remove tracks; the key still acts strictly as its owner.
+func (m *AuthMiddleware) WrapWithAPIKey(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		secret := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		if !strings.HasPrefix(auth, "Bearer ") || !strings.HasPrefix(secret, db.APIKeyPrefix) {
+			m.Wrap(next)(w, r)
+			return
+		}
+		user, err := m.DB.GetUserByAPIKey(secret)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if user == nil {
+			writeError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		if !user.Approved {
+			writeError(w, http.StatusForbidden, "account pending approval")
+			return
+		}
+		ctx := context.WithValue(r.Context(), userContextKey, user)
+		next(w, r.WithContext(ctx))
+	}
+}
+
 func (m *AuthMiddleware) WrapAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return m.Wrap(func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())

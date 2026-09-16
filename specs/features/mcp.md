@@ -75,7 +75,7 @@ and playlists accept a name (case-insensitive) or an id.
 | `list_stations` | — | Every station: mode, public controls, managers, whether you can manage/control, listener count, current playback |
 | `station_status` | `station` | The above plus every playlist with its tracks; playback position is live |
 | `create_station` | `name` (1-32) | Creates a station; caller becomes manager; duplicate names refused |
-| `create_playlist` | `station`, `name` (1-64) | Empty playlist owned by the caller. Tracks are uploaded in the web app; MCP cannot carry audio |
+| `create_playlist` | `station`, `name` (1-64) | Empty playlist owned by the caller. Tracks are added over REST (see below); MCP itself cannot carry audio |
 | `radio_play` | `station`, `playlist?` | With a playlist: play it from the top. Without: resume if paused, else first playlist with tracks |
 | `radio_pause` / `radio_resume` / `radio_stop` | `station` | Pause at the live position / resume / stop |
 | `radio_next` | `station` | Next track; at the end the station's mode applies |
@@ -83,6 +83,15 @@ and playlists accept a name (case-insensitive) or an id.
 | `set_station_mode` | `station`, `mode` | `play_all`, `loop_one`, `loop_all`, `single`. Managers only |
 | `set_public_controls` | `station`, `enabled` | Let everyone control playback. Managers only |
 | `reorder_tracks` | `station`, `playlist`, `track_ids` | Full permutation of the playlist's track ids. Playlist owner (or admin) only |
+
+### Adding tracks with an API key
+
+`POST /api/v1/radio/playlists/{id}/tracks` and `DELETE /api/v1/radio/tracks/{id}`
+accept `Authorization: Bearer lfp_...` in addition to session tokens
+(`WrapWithAPIKey`). This is the only REST surface a personal key unlocks
+besides `/api/v1/mcp`; the key still acts strictly as its owner, so only the
+playlist owner can add or remove tracks. Upload is multipart with `file` and
+an optional `duration` (seconds); rate limit 5 per 30 s per IP.
 
 Playback control (`radio_play`/`pause`/`resume`/`next`/`seek`/`stop`) needs
 manager rights or public controls, exactly like the web client. Because the
@@ -94,7 +103,7 @@ results with `isError: true`, not JSON-RPC errors, so the model can recover.
 
 ### Out of scope
 
-Uploading audio, listening (tuning is a client-side audio concern), deleting
+Uploading audio through MCP itself, listening (tuning is a client-side audio concern), deleting
 stations or playlists, station manager changes, mentions and thread replies
 via MCP, unfurling of URLs in MCP-sent messages, reactions, voice, and
 OAuth-based authorization. Session tokens are accepted

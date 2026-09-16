@@ -28,6 +28,15 @@ func fakeMP3(seed byte) []byte {
 // uploadTrack posts an audio file with an explicit duration to a playlist.
 func uploadTrack(t *testing.T, token, playlistID, filename string, data []byte, duration float64) string {
 	t.Helper()
+	status, id, raw := uploadTrackRaw(token, playlistID, filename, data, duration)
+	if status != 201 && status != 200 {
+		t.Fatalf("upload track: expected 2xx, got %d: %s", status, raw)
+	}
+	return id
+}
+
+// uploadTrackRaw is uploadTrack without assertions; returns status, id, body.
+func uploadTrackRaw(token, playlistID, filename string, data []byte, duration float64) (int, string, string) {
 	body := &bytes.Buffer{}
 	boundary := "----RadioBoundary"
 	body.WriteString("--" + boundary + "\r\n")
@@ -45,16 +54,13 @@ func uploadTrack(t *testing.T, token, playlistID, filename string, data []byte, 
 	req.Header.Set("X-Real-IP", fmt.Sprintf("10.6.0.%d", nameCounter.Add(1)%250+1))
 	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
 	if err != nil {
-		t.Fatalf("upload track: %v", err)
+		return 0, "", err.Error()
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 201 && resp.StatusCode != 200 {
-		t.Fatalf("upload track: expected 2xx, got %d: %s", resp.StatusCode, raw)
-	}
 	var out map[string]any
 	json.Unmarshal(raw, &out)
-	return jsonStr(out, "id")
+	return resp.StatusCode, jsonStr(out, "id"), string(raw)
 }
 
 // radioJSON decodes a tool's text result.
@@ -305,5 +311,31 @@ func TestScenarioMCPR08_ToolsAdvertised(t *testing.T) {
 		if !names[want] {
 			t.Fatalf("tools/list missing %s", want)
 		}
+	}
+}
+
+// Scenario R09: API keys add and remove tracks over REST.
+func TestScenarioMCPR09_APIKeyTrackUpload(t *testing.T) {
+	aliceKey, _, playlistID, _ := setupStation(t)
+	bobKey := createAPIKey(t, bobToken, "radio-bob3")
+
+	status, trackID, raw := uploadTrackRaw(aliceKey, playlistID, "three.mp3", fakeMP3(3), 60)
+	if status != 200 || trackID == "" {
+		t.Fatalf("alice key upload: expected 200, got %d: %s", status, raw)
+	}
+	if status, _, _ := uploadTrackRaw(bobKey, playlistID, "evil.mp3", fakeMP3(4), 60); status != 403 {
+		t.Fatalf("bob key upload to alice's playlist: expected 403, got %d", status)
+	}
+	if status, _, _ := uploadTrackRaw("lfp_doesnotexist", playlistID, "x.mp3", fakeMP3(5), 60); status != 401 {
+		t.Fatalf("unknown key: expected 401, got %d", status)
+	}
+
+	c := NewHTTPClient()
+	c.Token = aliceKey
+	if status, _, _ := c.DeleteJSON("/api/v1/radio/tracks/" + trackID); status != 200 {
+		t.Fatalf("alice key delete track: expected 200, got %d", status)
+	}
+	if status, _, _ := c.GetJSON("/api/v1/channels"); status != 401 {
+		t.Fatalf("api key on unrelated REST endpoint: expected 401, got %d", status)
 	}
 }
