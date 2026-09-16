@@ -16,8 +16,6 @@ import {
   selectedChannelId,
   selectedChannel,
 } from "./stores/channels";
-import { uiMode } from "./stores/mode";
-import TerminalLayout from "./components/Terminal/TerminalLayout";
 import { watchingScreenShare } from "./stores/voice";
 import { watchingMedia, selectedMediaId } from "./stores/media";
 import { tunedStationId } from "./stores/radio";
@@ -101,11 +99,6 @@ function App() {
           <div style={{ height: "100%" }}>
           <SettingsModal />
           <Lightbox />
-          {() => {
-            if (uiMode() === "terminal") {
-              return <TerminalLayout onLogout={handleLogout} />;
-            }
-            return (
           <div
             style={{
               display: "flex",
@@ -275,8 +268,6 @@ function App() {
           </div>
         </div>
           </div>
-            );
-          }}
           </div>
         </Show>
       </div>

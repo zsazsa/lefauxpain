@@ -280,29 +280,6 @@ import "./strudel";
 
 This barrel is imported from `events.ts` to ensure all applets are registered before any events arrive.
 
-### Command Registration
-
-Applets register their own slash commands:
-
-```typescript
-// In client/src/applets/radio.ts
-
-import { registerCommands } from "../components/Terminal/commandRegistry";
-import { registerCommandHandler } from "../components/Terminal/commandExecutor";
-
-registerCommands([
-    { name: "radio", description: "Open radio stations" },
-    { name: "tune", description: "Tune into a station", args: "<station>" },
-    { name: "detune", description: "Stop listening to radio" },
-]);
-
-registerCommandHandler("radio", (args, ctx) => {
-    ctx.openDialog("radio");
-});
-registerCommandHandler("tune", (args, ctx) => { /* ... */ });
-registerCommandHandler("detune", (args, ctx) => { /* ... */ });
-```
-
 ## Database Storage
 
 Applets share the main SQLite database but manage their own schema independently.
@@ -455,7 +432,6 @@ import { createSignal } from "solid-js";
 import { registerReadyHandler, registerEventHandler } from "../lib/appletRegistry";
 import { registerSidebarApplet } from "../lib/appletComponents";
 import { registerApplet } from "../stores/applets";
-import { registerCommands, registerCommandHandler } from "../components/Terminal/commandRegistry";
 
 // Store
 const [items, setItems] = createSignal([]);
@@ -476,14 +452,6 @@ registerReadyHandler((data) => {
 
 registerEventHandler("yourname_created", (d) => {
     setItems((prev) => [...prev, d]);
-});
-
-registerCommands([
-    { name: "yourname", description: "Open your feature" },
-]);
-
-registerCommandHandler("yourname", (args, ctx) => {
-    ctx.openDialog("yourname");
 });
 ```
 

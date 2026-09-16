@@ -21,7 +21,6 @@ import CreateChannel from "./CreateChannel";
 import VoiceControls from "../VoiceChannel/VoiceControls";
 import NotificationDropdown from "../Notifications/NotificationDropdown";
 import { t } from "../../stores/theme";
-import { setUIMode } from "../../stores/mode";
 import { setViewingPattern } from "../../stores/strudel";
 import { getSidebarApplets } from "../../lib/appletComponents";
 
@@ -439,17 +438,6 @@ export default function Sidebar(props: SidebarProps) {
           {props.username}
         </span>
         <div style={{ display: "flex", gap: "4px" }}>
-          <button
-            onClick={() => setUIMode("terminal")}
-            style={{
-              padding: "2px 6px",
-              "font-size": "11px",
-              color: "var(--text-muted)",
-            }}
-            title="Terminal mode"
-          >
-            [{">_"}]
-          </button>
           <button
             onClick={() => setSettingsOpen(true)}
             style={{

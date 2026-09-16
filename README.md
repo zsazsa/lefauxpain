@@ -83,12 +83,6 @@ Self-hostable voice and text chat — like Discord, but yours. One Go binary, on
 - Multiple color themes (gold, cyan, green) with French and English language options
 - French Royal Cyberpunk terminal aesthetic
 
-### Terminal Mode
-- Alternative keyboard-driven interface — slash commands instead of mouse navigation
-- Command palette with fuzzy matching (50+ commands)
-- Covers all features: navigation, chat, voice, radio, settings, admin
-- Toggle between standard and terminal mode (persisted per user)
-
 ### Desktop Client (Tauri)
 - Native app for Windows, macOS, and Linux
 - Server selector — connect to any Le Faux Pain instance
