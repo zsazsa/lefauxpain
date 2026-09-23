@@ -137,11 +137,11 @@ export default function VoiceControls() {
           </div>
         </Show>
 
-        <div style={{ display: "flex", gap: "4px" }}>
+        <div style={{ display: "flex", "flex-wrap": "wrap", gap: "4px" }}>
           <button
             onClick={handleMute}
             style={{
-              flex: "1",
+              flex: "1 1 auto",
               padding: "5px",
               "font-size": "11px",
               border: selfMute()
@@ -160,7 +160,7 @@ export default function VoiceControls() {
           <button
             onClick={handleDeafen}
             style={{
-              flex: "1",
+              flex: "1 1 auto",
               padding: "5px",
               "font-size": "11px",
               border: selfDeafen()
@@ -180,7 +180,7 @@ export default function VoiceControls() {
             onClick={handleScreenShare}
             disabled={!!otherScreenShare()}
             style={{
-              flex: "1",
+              flex: "1 1 auto",
               padding: "5px",
               "font-size": "11px",
               border: myScreenShare()
@@ -212,7 +212,7 @@ export default function VoiceControls() {
             <button
               onClick={handleAudioShare}
               style={{
-                flex: "1",
+                flex: "1 1 auto",
                 padding: "5px",
                 "font-size": "11px",
                 border: myAudioShare()
@@ -238,7 +238,7 @@ export default function VoiceControls() {
           <button
             onClick={handleDisconnect}
             style={{
-              flex: "1",
+              flex: "1 1 auto",
               padding: "5px",
               "font-size": "11px",
               border: "1px solid var(--danger)",
