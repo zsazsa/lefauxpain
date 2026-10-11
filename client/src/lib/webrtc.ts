@@ -1,5 +1,15 @@
 import { send } from "./ws";
-import { setJoinedVoiceChannel, setVoiceStats } from "../stores/voice";
+import {
+  setJoinedVoiceChannel,
+  setVoiceStats,
+  currentVoiceChannelId,
+  selfMute,
+  selfDeafen,
+  setVoiceLink,
+  setMicWarning,
+  micWarning,
+  setMicLevel,
+} from "../stores/voice";
 import { setupAudioPipeline, cleanupAudioPipeline, cleanupTrack, setAllIncomingGain } from "./audio";
 import { startSpeakingDetection, stopSpeakingDetection, isDesktop, tauriInvoke } from "./devices";
 import { playJoinSound, playLeaveSound } from "./sounds";
@@ -8,6 +18,7 @@ import { attachPendingShareIfAny, resetAudioShareState } from "./audioShare";
 
 let peerConnection: RTCPeerConnection | null = null;
 let localStream: MediaStream | null = null;
+let micSender: RTCRtpSender | null = null;
 let statsInterval: number | null = null;
 let prevBytesSent = 0;
 let prevTimestamp = 0;
@@ -16,6 +27,24 @@ let desktopVoiceActive = false;
 // Queue ICE candidates received before remote description is set
 let pendingIceCandidates: RTCIceCandidateInit[] = [];
 let remoteDescriptionSet = false;
+
+// --- Recovery state (spec: voice-resilience) ---
+// Set while we asked the server to drop our peer ourselves (leave or
+// rejoin), so our own leave broadcast is not mistaken for a server-side
+// drop that needs a rejoin.
+let leaveExpected = false;
+let leaveExpectedTimer: number | null = null;
+let rejoinAttempts = 0;
+let rejoinTimer: number | null = null;
+let disconnectedTimer: number | null = null;
+const MAX_REJOIN_ATTEMPTS = 3;
+const DISCONNECTED_GRACE_MS = 8000;
+
+// --- Mic health state ---
+let micMuteTimer: number | null = null;
+const MIC_NOT_DELIVERING = "Mic is not delivering audio";
+const MIC_FALLBACK = "Saved mic not found, using default";
+const MIC_LOST = "Mic was lost";
 
 function startStatsPolling() {
   stopStatsPolling();
@@ -68,6 +97,7 @@ function startStatsPolling() {
       packetLoss: Math.max(0, lossPercent),
       bitrate,
       codec,
+      packetsSent,
     });
   }, 2000);
 }
@@ -80,12 +110,128 @@ function stopStatsPolling() {
   setVoiceStats(null);
 }
 
+// ---------------------------------------------------------------------
+// Microphone acquisition and health
+// ---------------------------------------------------------------------
+
+/**
+ * Get the microphone with the saved device, falling back to the default
+ * device (and warning the user) when the saved one is gone.
+ */
+async function acquireMic(): Promise<MediaStream> {
+  const s = settings();
+  const audioConstraints: MediaTrackConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  };
+  console.log("[voice] acquireMic: isDesktop:", isDesktop, "inputDeviceId:", s.inputDeviceId);
+  if (s.inputDeviceId && !isDesktop) {
+    audioConstraints.deviceId = { exact: s.inputDeviceId };
+  }
+  console.log("[voice] getUserMedia constraints:", JSON.stringify(audioConstraints));
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+  } catch (err) {
+    const name = (err as DOMException)?.name;
+    if (audioConstraints.deviceId && (name === "OverconstrainedError" || name === "NotFoundError")) {
+      console.warn("[voice] Saved device not found, falling back to default mic");
+      delete audioConstraints.deviceId;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      setMicWarning(MIC_FALLBACK);
+      return stream;
+    }
+    throw err;
+  }
+}
+
+function clearMicMuteTimer() {
+  if (micMuteTimer !== null) {
+    clearTimeout(micMuteTimer);
+    micMuteTimer = null;
+  }
+}
+
+/**
+ * Watch the local mic track. On Windows a Bluetooth profile switch, a USB
+ * re-enumeration or the OS privacy toggle leaves the track attached but
+ * muted (Chrome sends silence) or ends it outright. Both used to go
+ * unnoticed: the server kept "receiving" the track and nobody could hear
+ * the user.
+ */
+function attachMicTrackHandlers(track: MediaStreamTrack) {
+  track.onmute = () => {
+    console.warn("[voice] local mic track muted by the system");
+    if (micMuteTimer !== null) return;
+    micMuteTimer = window.setTimeout(() => {
+      micMuteTimer = null;
+      if (track.muted && track.readyState === "live") {
+        setMicWarning(MIC_NOT_DELIVERING);
+      }
+    }, 1000);
+  };
+  track.onunmute = () => {
+    console.log("[voice] local mic track unmuted");
+    clearMicMuteTimer();
+    if (micWarning() === MIC_NOT_DELIVERING) setMicWarning(null);
+  };
+  track.onended = () => {
+    console.warn("[voice] local mic track ended, re-acquiring");
+    clearMicMuteTimer();
+    if (!localStream) return;
+    reacquireMic().catch((err) => {
+      console.error("[voice] re-acquire after track end failed:", err);
+      setMicWarning(MIC_LOST);
+    });
+  };
+}
+
+/**
+ * Re-acquire the microphone and swap it into the live sender. Used
+ * automatically when the track ends and by the [RETRY MIC] button.
+ */
+export async function reacquireMic(): Promise<void> {
+  if (isDesktop || !localStream) return;
+  const old = localStream;
+  const wasEnabled = old.getAudioTracks()[0]?.enabled ?? !selfMute();
+
+  setMicWarning(null);
+  const newStream = await acquireMic();
+  const newTrack = newStream.getAudioTracks()[0];
+  newTrack.enabled = wasEnabled;
+  attachMicTrackHandlers(newTrack);
+
+  if (micSender) {
+    await micSender.replaceTrack(newTrack);
+  }
+
+  old.getTracks().forEach((t) => t.stop());
+  localStream = newStream;
+
+  stopSpeakingDetection();
+  startSpeakingDetection(localStream);
+  console.log("[voice] mic re-acquired:", newTrack.label);
+}
+
+// ---------------------------------------------------------------------
+// Join / leave
+// ---------------------------------------------------------------------
+
 export async function joinVoice(channelId: string) {
   // Leave current voice first
   if (peerConnection || desktopVoiceActive) {
     leaveVoice();
   }
+  clearRecoveryTimers();
+  rejoinAttempts = 0;
+  await startVoiceSession(channelId, { quiet: false });
+}
 
+/**
+ * Acquire media and ask the server for a peer. Shared by the user-initiated
+ * join and the automatic rejoin (which runs quietly: no join sound).
+ */
+async function startVoiceSession(channelId: string, opts: { quiet: boolean }) {
   if (isDesktop) {
     // Desktop: Rust handles mic capture, WebRTC, and audio playback
     try {
@@ -100,44 +246,22 @@ export async function joinVoice(channelId: string) {
       }
     } catch (err) {
       console.error("[voice] Failed to start native voice engine:", err);
+      if (opts.quiet) setVoiceLink("failed");
       return;
     }
     desktopVoiceActive = true;
     sessionStorage.setItem("voice_channel", channelId);
-    playJoinSound();
+    if (!opts.quiet) playJoinSound();
     setJoinedVoiceChannel(channelId);
+    if (!opts.quiet) setVoiceLink("connected");
     send("join_voice", { channel_id: channelId });
+    resendSelfState();
     return;
   }
 
   // Browser: existing WebRTC path
   try {
-    const s = settings();
-    const audioConstraints: MediaTrackConstraints = {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    };
-    console.log("[voice] joinVoice: isDesktop:", isDesktop, "inputDeviceId:", s.inputDeviceId);
-    if (s.inputDeviceId && !isDesktop) {
-      audioConstraints.deviceId = { exact: s.inputDeviceId };
-    }
-    console.log("[voice] getUserMedia constraints:", JSON.stringify(audioConstraints));
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({
-        audio: audioConstraints,
-      });
-    } catch (err) {
-      if (audioConstraints.deviceId && (err as DOMException)?.name === "OverconstrainedError") {
-        console.warn("[voice] Saved device not found, falling back to default mic");
-        delete audioConstraints.deviceId;
-        localStream = await navigator.mediaDevices.getUserMedia({
-          audio: audioConstraints,
-        });
-      } else {
-        throw err;
-      }
-    }
+    localStream = await acquireMic();
     const tracks = localStream.getAudioTracks();
     console.log("[voice] getUserMedia succeeded, tracks:", tracks.map(t => ({
       label: t.label,
@@ -146,8 +270,13 @@ export async function joinVoice(channelId: string) {
       readyState: t.readyState,
       settings: t.getSettings(),
     })));
+    if (tracks[0]) {
+      tracks[0].enabled = !selfMute();
+      attachMicTrackHandlers(tracks[0]);
+    }
   } catch (err) {
     console.error("[voice] Failed to get microphone:", err);
+    if (opts.quiet) setVoiceLink("failed");
     return;
   }
 
@@ -155,16 +284,101 @@ export async function joinVoice(channelId: string) {
   startSpeakingDetection(localStream);
 
   sessionStorage.setItem("voice_channel", channelId);
-  playJoinSound();
+  if (!opts.quiet) playJoinSound();
   setJoinedVoiceChannel(channelId);
+  // A fresh join shows "connected" right away (as before); a rejoin stays
+  // "reconnecting" until the new peer connection reports connected.
+  if (!opts.quiet) setVoiceLink("connected");
   send("join_voice", { channel_id: channelId });
+  resendSelfState();
+}
+
+/** After a (re)join the server peer is new: re-announce mute/deafen. */
+function resendSelfState() {
+  if (selfMute()) {
+    send("voice_self_mute", { muted: true });
+    if (isDesktop) {
+      desktopMuted = true;
+      tauriInvoke("voice_set_mute", { muted: true }).catch(() => {});
+    }
+  }
+  if (selfDeafen()) {
+    send("voice_self_deafen", { deafened: true });
+    if (isDesktop) tauriInvoke("voice_set_deafen", { deafened: true }).catch(() => {});
+    else setAllIncomingGain(0);
+  }
+}
+
+function expectLeave() {
+  leaveExpected = true;
+  if (leaveExpectedTimer !== null) clearTimeout(leaveExpectedTimer);
+  // Safety valve: never stay "expected" forever if the ack never comes.
+  leaveExpectedTimer = window.setTimeout(() => {
+    leaveExpected = false;
+    leaveExpectedTimer = null;
+  }, 10000);
+}
+
+/** True while our own leave broadcast is the result of something we asked for. */
+export function isLeaveExpected(): boolean {
+  return leaveExpected;
+}
+
+/** Called when the server confirms our join (own voice_state_update with a channel). */
+export function markVoiceJoinAck() {
+  leaveExpected = false;
+  if (leaveExpectedTimer !== null) {
+    clearTimeout(leaveExpectedTimer);
+    leaveExpectedTimer = null;
+  }
+}
+
+function clearRecoveryTimers() {
+  if (rejoinTimer !== null) {
+    clearTimeout(rejoinTimer);
+    rejoinTimer = null;
+  }
+  if (disconnectedTimer !== null) {
+    clearTimeout(disconnectedTimer);
+    disconnectedTimer = null;
+  }
+}
+
+/** Tear down browser media without touching the voice store. */
+function teardownBrowserMedia() {
+  stopSpeakingDetection();
+  stopStatsPolling();
+  clearMicMuteTimer();
+
+  if (peerConnection) {
+    peerConnection.onconnectionstatechange = null;
+    peerConnection.close();
+    peerConnection = null;
+  }
+  micSender = null;
+  pendingIceCandidates = [];
+  remoteDescriptionSet = false;
+
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
+
+  resetAudioShareState();
+  cleanupAudioPipeline();
+  setMicLevel(0);
 }
 
 export function leaveVoice() {
   sessionStorage.removeItem("voice_channel");
+  clearRecoveryTimers();
+  rejoinAttempts = 0;
+  setMicWarning(null);
+  setVoiceLink("connected");
 
   if (isDesktop && desktopVoiceActive) {
     // Desktop: tell Rust to tear down
+    expectLeave();
     send("leave_voice", {});
     setJoinedVoiceChannel(null);
     tauriInvoke("voice_stop").catch((e: any) =>
@@ -176,31 +390,74 @@ export function leaveVoice() {
   }
 
   // Browser path
-  stopSpeakingDetection();
-
   // Send leave_voice BEFORE closing the PC so the server
   // can broadcast voice_state_update before the connection drops
+  expectLeave();
   send("leave_voice", {});
   setJoinedVoiceChannel(null);
 
-  stopStatsPolling();
-
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
-  }
-  pendingIceCandidates = [];
-  remoteDescriptionSet = false;
-
-  if (localStream) {
-    localStream.getTracks().forEach((t) => t.stop());
-    localStream = null;
-  }
-
-  resetAudioShareState();
+  teardownBrowserMedia();
   playLeaveSound();
-  cleanupAudioPipeline();
 }
+
+/**
+ * Drop the current peer (server-side and local) and join the same channel
+ * again. Used when the peer connection fails, when the server reports it no
+ * longer has a peer for us after a WebSocket reconnect, and by [REJOIN].
+ */
+export async function rejoinVoice(): Promise<void> {
+  const channelId = currentVoiceChannelId();
+  if (!channelId) return;
+  clearRecoveryTimers();
+  console.warn("[voice] rejoining", channelId, "attempt", rejoinAttempts);
+  setVoiceLink("reconnecting");
+
+  // Ask the server to drop any stale peer first; harmless if it already did.
+  expectLeave();
+  send("leave_voice", {});
+
+  if (isDesktop && desktopVoiceActive) {
+    desktopVoiceActive = false;
+    try {
+      await tauriInvoke("voice_stop");
+    } catch (e) {
+      console.error("[voice] voice_stop failed:", e);
+    }
+  } else {
+    teardownBrowserMedia();
+  }
+
+  await startVoiceSession(channelId, { quiet: true });
+}
+
+/**
+ * Schedule an automatic rejoin with backoff (2 s, 4 s, 8 s). After the last
+ * attempt the panel shows "VOICE LOST" with a manual [REJOIN].
+ */
+function scheduleRejoin(reason: string) {
+  if (!currentVoiceChannelId()) return;
+  if (rejoinTimer !== null) return;
+  if (rejoinAttempts >= MAX_REJOIN_ATTEMPTS) {
+    console.error("[voice] giving up after", rejoinAttempts, "rejoin attempts");
+    setVoiceLink("failed");
+    return;
+  }
+  rejoinAttempts++;
+  const delay = 1000 * Math.pow(2, rejoinAttempts);
+  console.warn(`[voice] peer ${reason}; rejoin attempt ${rejoinAttempts} in ${delay}ms`);
+  setVoiceLink("reconnecting");
+  rejoinTimer = window.setTimeout(() => {
+    rejoinTimer = null;
+    rejoinVoice().catch((err) => {
+      console.error("[voice] rejoin failed:", err);
+      scheduleRejoin("rejoin error");
+    });
+  }, delay);
+}
+
+// ---------------------------------------------------------------------
+// Signaling
+// ---------------------------------------------------------------------
 
 export async function handleWebRTCOffer(sdp: string) {
   if (isDesktop && desktopVoiceActive) {
@@ -230,11 +487,13 @@ export async function handleWebRTCOffer(sdp: string) {
       return;
     }
     console.log("[voice] PeerConnection created");
+    const pc = peerConnection;
 
     // Add local audio track with 128kbps bitrate
     localStream.getAudioTracks().forEach((track) => {
       console.log("[voice] Adding local track:", track.label, "enabled:", track.enabled);
-      const sender = peerConnection!.addTrack(track, localStream!);
+      const sender = pc.addTrack(track, localStream!);
+      micSender = sender;
       // Set max bitrate to 128kbps
       const params = sender.getParameters();
       if (!params.encodings || params.encodings.length === 0) {
@@ -245,7 +504,7 @@ export async function handleWebRTCOffer(sdp: string) {
     });
 
     // Handle incoming tracks from other users
-    peerConnection.ontrack = (event) => {
+    pc.ontrack = (event) => {
       console.log("[voice] ontrack: streams:", event.streams.length, "track:", event.track.kind, event.track.id);
       const track = event.track;
       let stream: MediaStream;
@@ -272,7 +531,7 @@ export async function handleWebRTCOffer(sdp: string) {
     };
 
     // Send ICE candidates
-    peerConnection.onicecandidate = (event) => {
+    pc.onicecandidate = (event) => {
       if (event.candidate) {
         console.log("[voice] ICE candidate:", event.candidate.candidate.slice(0, 60));
         send("webrtc_ice", { candidate: event.candidate.toJSON() });
@@ -281,12 +540,39 @@ export async function handleWebRTCOffer(sdp: string) {
       }
     };
 
-    peerConnection.onconnectionstatechange = () => {
-      console.log("[voice] Connection state:", peerConnection?.connectionState);
+    // Recovery: a failed peer, or one disconnected for longer than the
+    // grace period, is dropped and rejoined automatically.
+    pc.onconnectionstatechange = () => {
+      if (pc !== peerConnection) return; // stale PC
+      const state = pc.connectionState;
+      console.log("[voice] Connection state:", state);
+      if (state === "connected") {
+        if (disconnectedTimer !== null) {
+          clearTimeout(disconnectedTimer);
+          disconnectedTimer = null;
+        }
+        rejoinAttempts = 0;
+        setVoiceLink("connected");
+      } else if (state === "disconnected") {
+        if (disconnectedTimer === null) {
+          disconnectedTimer = window.setTimeout(() => {
+            disconnectedTimer = null;
+            if (pc === peerConnection && pc.connectionState === "disconnected") {
+              scheduleRejoin("disconnected");
+            }
+          }, DISCONNECTED_GRACE_MS);
+        }
+      } else if (state === "failed") {
+        if (disconnectedTimer !== null) {
+          clearTimeout(disconnectedTimer);
+          disconnectedTimer = null;
+        }
+        scheduleRejoin("failed");
+      }
     };
 
-    peerConnection.oniceconnectionstatechange = () => {
-      console.log("[voice] ICE connection state:", peerConnection?.iceConnectionState);
+    pc.oniceconnectionstatechange = () => {
+      console.log("[voice] ICE connection state:", pc.iceConnectionState);
     };
 
     startStatsPolling();
@@ -411,6 +697,10 @@ export function toggleDeafen(deafened: boolean) {
  */
 export function resetVoiceState() {
   sessionStorage.removeItem("voice_channel");
+  clearRecoveryTimers();
+  rejoinAttempts = 0;
+  setMicWarning(null);
+  setVoiceLink("connected");
 
   if (isDesktop && desktopVoiceActive) {
     setJoinedVoiceChannel(null);
@@ -422,24 +712,8 @@ export function resetVoiceState() {
   }
 
   // Browser path
-  stopSpeakingDetection();
   setJoinedVoiceChannel(null);
-  stopStatsPolling();
-
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
-  }
-  pendingIceCandidates = [];
-  remoteDescriptionSet = false;
-
-  if (localStream) {
-    localStream.getTracks().forEach((t) => t.stop());
-    localStream = null;
-  }
-
-  resetAudioShareState();
-  cleanupAudioPipeline();
+  teardownBrowserMedia();
 }
 
 export async function switchMicrophone(deviceId: string) {
@@ -461,9 +735,11 @@ export async function switchMicrophone(deviceId: string) {
   });
 
   const newTrack = newStream.getAudioTracks()[0];
-  const sender = peerConnection
-    .getSenders()
-    .find((s) => s.track?.kind === "audio");
+  newTrack.enabled = localStream.getAudioTracks()[0]?.enabled ?? true;
+  attachMicTrackHandlers(newTrack);
+  const sender =
+    micSender ||
+    peerConnection.getSenders().find((s) => s.track?.kind === "audio");
 
   if (sender) {
     await sender.replaceTrack(newTrack);
@@ -472,6 +748,7 @@ export async function switchMicrophone(deviceId: string) {
   // Stop old track
   localStream.getAudioTracks().forEach((t) => t.stop());
   localStream = newStream;
+  if (micWarning() === MIC_FALLBACK || micWarning() === MIC_NOT_DELIVERING) setMicWarning(null);
 
   // Restart speaking detection with new stream
   stopSpeakingDetection();

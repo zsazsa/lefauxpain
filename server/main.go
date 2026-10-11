@@ -92,6 +92,19 @@ func main() {
 		hub.BroadcastAll(msg)
 	}
 
+	// Viewer count changes on a screen share (spec: screen-share-discoverability)
+	sfuInstance.OnScreenViewerCount = func(presenterID, channelID string, count int) {
+		msg, err := ws.NewMessage("screen_share_viewers", ws.ScreenShareViewersPayload{
+			UserID:    presenterID,
+			ChannelID: channelID,
+			Count:     count,
+		})
+		if err != nil {
+			return
+		}
+		hub.BroadcastAll(msg)
+	}
+
 	// When a peer is removed (connection failure, etc.), broadcast voice leave
 	sfuInstance.OnPeerRemoved = func(userID string) {
 		msg, err := ws.NewMessage("voice_state_update", ws.VoiceStatePayload{

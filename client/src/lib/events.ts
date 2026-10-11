@@ -48,14 +48,31 @@ import {
   setAudioSourceList,
   addAudioSource,
   removeAudioSource,
+  showVoiceToast,
+  setScreenShareViewerCount,
 } from "../stores/voice";
+import { onlineUsers } from "../stores/users";
 import { setNotificationList, addNotification } from "../stores/notifications";
 import {
   setEnabledFeatures,
   toggleFeature,
 } from "../stores/strudel";
-import { handleWebRTCOffer, handleWebRTCICE, joinVoice, resetVoiceState } from "./webrtc";
-import { handleScreenOffer, handleScreenICE, unsubscribeScreenShare, resetScreenShareState } from "./screenshare";
+import {
+  handleWebRTCOffer,
+  handleWebRTCICE,
+  joinVoice,
+  resetVoiceState,
+  rejoinVoice,
+  isLeaveExpected,
+  markVoiceJoinAck,
+} from "./webrtc";
+import {
+  handleScreenOffer,
+  handleScreenICE,
+  unsubscribeScreenShare,
+  resetScreenShareState,
+  watchScreenShare,
+} from "./screenshare";
 import { playJoinSound, playLeaveSound } from "./sounds";
 import { isDesktop } from "./devices";
 import { dispatchReady, dispatchEvent } from "./appletRegistry";
@@ -234,6 +251,17 @@ export function initEventHandlers() {
             setTimeout(() => joinVoice(savedChannel), 500);
           }
         }
+        // Reconcile after a WS reconnect (spec: voice-resilience). The server
+        // drops our peer when the socket closes; if we still think we're in
+        // voice but the snapshot doesn't list us, the call is a ghost: rejoin.
+        if (isReconnect && currentVoiceChannelId()) {
+          const me = msg.d.user?.id;
+          const listed = (msg.d.voice_states || []).some((v: any) => v.user_id === me);
+          if (!listed) {
+            console.warn("[voice] server has no peer for us after reconnect, rejoining");
+            setTimeout(() => rejoinVoice().catch((e) => console.error("[voice] rejoin failed:", e)), 300);
+          }
+        }
         break;
 
       case "message_create": {
@@ -337,6 +365,16 @@ export function initEventHandlers() {
       case "voice_state_update": {
         const myId = currentUser()?.id;
         const myChannel = currentVoiceChannelId();
+        if (msg.d.user_id === myId) {
+          if (msg.d.channel_id) {
+            markVoiceJoinAck();
+          } else if (myChannel && !isLeaveExpected()) {
+            // The server dropped our peer (connection failed, socket
+            // re-registered) while we still believe we're in voice.
+            console.warn("[voice] server removed our peer, rejoining");
+            setTimeout(() => rejoinVoice().catch((e) => console.error("[voice] rejoin failed:", e)), 300);
+          }
+        }
         if (msg.d.user_id !== myId && myChannel) {
           const wasInChannel = voiceStates().some(
             (s) => s.user_id === msg.d.user_id && s.channel_id === myChannel
@@ -378,16 +416,30 @@ export function initEventHandlers() {
         removeAudioSource(msg.d.user_id, msg.d.source_id);
         break;
 
-      case "screen_share_started":
+      case "screen_share_started": {
         addScreenShare(msg.d.user_id, msg.d.channel_id);
+        // Tell people in that voice channel where to click (spec:
+        // screen-share-discoverability).
+        const me = currentUser()?.id;
+        if (msg.d.user_id !== me && currentVoiceChannelId() === msg.d.channel_id) {
+          const name = onlineUsers().find((u) => u.id === msg.d.user_id)?.username || "Someone";
+          const share = { user_id: msg.d.user_id, channel_id: msg.d.channel_id };
+          showVoiceToast(`🖥 ${name} started sharing · click to watch`, () => watchScreenShare(share));
+        }
         break;
+      }
 
       case "screen_share_stopped":
         removeScreenShare(msg.d.user_id);
+        setScreenShareViewerCount(msg.d.user_id, 0);
         if (watchingScreenShare()?.user_id === msg.d.user_id) {
           unsubscribeScreenShare();
           setWatchingScreenShare(null);
         }
+        break;
+
+      case "screen_share_viewers":
+        setScreenShareViewerCount(msg.d.user_id, msg.d.count || 0);
         break;
 
       case "webrtc_screen_offer":

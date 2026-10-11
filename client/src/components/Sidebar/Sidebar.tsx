@@ -5,9 +5,8 @@ import {
   getUsersInVoiceChannel,
   currentVoiceChannelId,
   screenShares,
-  setWatchingScreenShare,
 } from "../../stores/voice";
-import { subscribeScreenShare } from "../../lib/screenshare";
+import { watchScreenShare } from "../../lib/screenshare";
 import { onlineUsers, allUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { joinVoice } from "../../lib/webrtc";
@@ -210,9 +209,16 @@ export default function Sidebar(props: SidebarProps) {
                     const user = () =>
                       onlineUsers().find((u) => u.id === vs.user_id) ||
                       (currentUser()?.id === vs.user_id ? currentUser() : null);
+                    // One rule: a row with the monitor glyph watches on click
+                    // (spec: screen-share-discoverability).
+                    const share = () => screenShares().find((s) => s.user_id === vs.user_id);
+                    const canWatch = () => !!share() && vs.user_id !== currentUser()?.id;
                     return (
                       <Show when={user()}>
                         <div
+                          class={canWatch() ? "watch-row" : undefined}
+                          onClick={() => canWatch() && watchScreenShare(share()!)}
+                          title={canWatch() ? `Watch ${user()!.username}'s screen` : undefined}
                           style={{
                             padding: "1px 16px 1px 40px",
                             "font-size": "12px",
@@ -220,6 +226,7 @@ export default function Sidebar(props: SidebarProps) {
                             display: "flex",
                             "align-items": "center",
                             gap: "6px",
+                            cursor: canWatch() ? "pointer" : "default",
                           }}
                         >
                           <span
@@ -243,9 +250,14 @@ export default function Sidebar(props: SidebarProps) {
                               {"\u{1F508}"}
                             </span>
                           )}
-                          {screenShares().some((s) => s.user_id === vs.user_id) && (
-                            <span style={{ "font-size": "10px" }}>
+                          {share() && (
+                            <span style={{ "font-size": "12px", color: "var(--accent)" }}>
                               {"\uD83D\uDDA5"}
+                            </span>
+                          )}
+                          {canWatch() && (
+                            <span class="watch-hint" style={{ "font-size": "10px", color: "var(--accent)", "margin-left": "auto" }}>
+                              watch
                             </span>
                           )}
                         </div>
@@ -335,18 +347,18 @@ export default function Sidebar(props: SidebarProps) {
           </Show>
           <For each={onlineUsers()}>
             {(user) => {
-              const isSharing = () => screenShares().some((s) => s.user_id === user.id);
+              const share = () => screenShares().find((s) => s.user_id === user.id);
+              const isSharing = () => !!share();
               const canWatch = () => isSharing();
               const handleClick = () => {
                 if (!canWatch()) return;
-                const share = screenShares().find((s) => s.user_id === user.id)!;
-                setWatchingScreenShare({ user_id: share.user_id, channel_id: share.channel_id });
-                subscribeScreenShare(share.channel_id);
-                if (isMobile()) setSidebarOpen(false);
+                watchScreenShare(share()!);
               };
               return (
                 <div
+                  class={canWatch() ? "watch-row" : undefined}
                   onClick={handleClick}
+                  title={canWatch() ? `Watch ${user.username}'s screen` : undefined}
                   style={{
                     padding: "2px 0",
                     "font-size": "12px",
@@ -359,11 +371,16 @@ export default function Sidebar(props: SidebarProps) {
                 >
                   <span style={{
                     color: isSharing() ? "var(--accent)" : "var(--success)",
-                    "font-size": isSharing() ? "10px" : "8px",
+                    "font-size": isSharing() ? "12px" : "8px",
                   }}>
                     {isSharing() ? "\uD83D\uDDA5" : "\u25CF"}
                   </span>
                   {user.username}
+                  {canWatch() && (
+                    <span class="watch-hint" style={{ "font-size": "10px", color: "var(--accent)", "margin-left": "auto", "padding-right": "8px" }}>
+                      watch
+                    </span>
+                  )}
                 </div>
               );
             }}

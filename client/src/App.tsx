@@ -17,7 +17,7 @@ import {
   selectedChannelId,
   selectedChannel,
 } from "./stores/channels";
-import { watchingScreenShare } from "./stores/voice";
+import { watchingScreenShare, voiceToast, dismissVoiceToast } from "./stores/voice";
 import { watchingMedia, selectedMediaId } from "./stores/media";
 import { tunedStationId } from "./stores/radio";
 import { activePatternId, viewingPattern } from "./stores/strudel";
@@ -233,6 +233,34 @@ function App() {
           {/* Floating radio player */}
           <Show when={tunedStationId()}>
             <RadioPlayer />
+          </Show>
+          {/* Voice toast (e.g. "X started sharing · click to watch") */}
+          <Show when={voiceToast()}>
+            {(toast) => (
+              <div
+                role="status"
+                onClick={() => {
+                  toast().onClick?.();
+                  dismissVoiceToast();
+                }}
+                style={{
+                  position: "fixed",
+                  right: "16px",
+                  bottom: "16px",
+                  "z-index": "60",
+                  "max-width": "calc(100vw - 32px)",
+                  padding: "10px 14px",
+                  "font-size": "12px",
+                  color: "var(--accent)",
+                  "background-color": "var(--bg-secondary)",
+                  border: "1px solid var(--border-gold)",
+                  "box-shadow": "0 6px 24px rgba(0,0,0,0.5)",
+                  cursor: toast().onClick ? "pointer" : "default",
+                }}
+              >
+                {toast().text}
+              </div>
+            )}
           </Show>
           <div style={{ flex: "1", "min-height": "0", display: "flex", "flex-direction": "column" }}>
           {() => {

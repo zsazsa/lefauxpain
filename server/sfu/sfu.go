@@ -15,6 +15,7 @@ type SignalFunc func(userID string, op string, data any)
 type PeerRemovedFunc func(userID string)
 type ScreenShareStoppedFunc func(presenterID string, channelID string)
 type ShareEndedFunc func(userID string, sourceID string)
+type ScreenViewerCountFunc func(presenterID string, channelID string, count int)
 
 type ScreenShareState struct {
 	UserID    string `json:"user_id"`
@@ -32,6 +33,7 @@ type SFU struct {
 	OnPeerRemoved        PeerRemovedFunc
 	OnScreenShareStopped ScreenShareStoppedFunc
 	OnShareEnded         ShareEndedFunc
+	OnScreenViewerCount  ScreenViewerCountFunc
 }
 
 func New(stunServer string, publicIP string) *SFU {
@@ -42,7 +44,10 @@ func New(stunServer string, publicIP string) *SFU {
 			MimeType:    webrtc.MimeTypeOpus,
 			ClockRate:   48000,
 			Channels:    2,
-			SDPFmtpLine: "minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=128000",
+			// No usedtx: Chrome honours DTX from the remote SDP and stops
+			// sending whenever its voice detector classifies a quiet mic as
+			// silence, which dropped words for users with low-gain mics.
+			SDPFmtpLine: "minptime=10;useinbandfec=1;maxaveragebitrate=128000",
 		},
 		PayloadType: 111,
 	}, webrtc.RTPCodecTypeAudio); err != nil {

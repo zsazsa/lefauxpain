@@ -3,6 +3,7 @@ import {
   screenShareStream,
   watchingScreenShare,
   setWatchingScreenShare,
+  getScreenShareViewerCount,
 } from "../../stores/voice";
 import { currentUser } from "../../stores/auth";
 import { onlineUsers } from "../../stores/users";
@@ -83,9 +84,15 @@ export default function ScreenShareView(props: ScreenShareViewProps) {
       >
         <span style={{ "font-size": "13px", color: "var(--text-secondary)" }}>
           {"\uD83D\uDDA5"} {presenterName()}{isPresenter() ? " (sharing)" : " is sharing"}
+          {isPresenter() && (
+            <span style={{ color: "var(--text-muted)" }} title="People watching your screen">
+              {" \u00B7 "}{getScreenShareViewerCount(props.userId)} watching
+            </span>
+          )}
         </span>
         <button
           onClick={handleClose}
+          title={isPresenter() ? "Stop sharing your screen" : "Close the screen view (the share keeps running)"}
           style={{
             padding: "2px 8px",
             "font-size": "11px",
@@ -94,7 +101,7 @@ export default function ScreenShareView(props: ScreenShareViewProps) {
             color: "var(--danger)",
           }}
         >
-          {isPresenter() ? "[STOP SHARING]" : "[X]"}
+          {isPresenter() ? "[STOP SHARING]" : "[STOP WATCHING]"}
         </button>
       </div>
 

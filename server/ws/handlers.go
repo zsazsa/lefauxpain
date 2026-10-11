@@ -1281,6 +1281,14 @@ type ScreenSharePayload struct {
 	ChannelID string `json:"channel_id"`
 }
 
+// ScreenShareViewersPayload is broadcast as screen_share_viewers whenever
+// the number of viewers of a share changes (0 when the share stops).
+type ScreenShareViewersPayload struct {
+	UserID    string `json:"user_id"`
+	ChannelID string `json:"channel_id"`
+	Count     int    `json:"count"`
+}
+
 type ScreenShareErrorPayload struct {
 	Error string `json:"error"`
 }

@@ -2,6 +2,7 @@ package sfu
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/pion/webrtc/v4"
 )
@@ -24,6 +25,18 @@ type Peer struct {
 	localTrack         *webrtc.TrackLocalStaticRTP
 	room               *Room
 	needsRenegotiation bool
+
+	// negotiationMu serialises offer/answer exchanges for this peer so
+	// two triggers (e.g. two users joining at once) can never both see
+	// "stable" and put two offers in flight. Held across the state check
+	// + CreateOffer + SetLocalDescription, and across SetRemoteDescription
+	// + the deferred-renegotiation check. Never held while taking Room.mu.
+	negotiationMu sync.Mutex
+
+	// RTP packets received from this publisher since the last stats
+	// tick. Logged every 30s by Room.statsLoop and reset.
+	rxPackets      atomic.Uint64
+	shareRxPackets atomic.Uint64
 
 	// Audio share state. A user may publish at most one additional
 	// audio source ("share") alongside the mic. shareSourceID and

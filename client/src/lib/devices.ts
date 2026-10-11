@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import { send } from "./ws";
+import { setMicLevel } from "../stores/voice";
 
 export type MediaDeviceInfo2 = {
   deviceId: string;
@@ -157,6 +158,9 @@ export function startSpeakingDetection(stream: MediaStream) {
     // slow release (brief pauses don't flicker)
     const alpha = rms > smoothedRms ? EMA_ATTACK : EMA_RELEASE;
     smoothedRms = alpha * rms + (1 - alpha) * smoothedRms;
+    // Feed the level meter in the voice panel. Speech RMS sits around
+    // 0.05–0.2, so x6 maps a normal voice to roughly a third to full bar.
+    setMicLevel(Math.min(1, smoothedRms * 6));
 
     const now = performance.now();
     let isSpeaking: boolean;
@@ -189,4 +193,5 @@ export function stopSpeakingDetection() {
     speakingContext = null;
   }
   speakingAnalyser = null;
+  setMicLevel(0);
 }

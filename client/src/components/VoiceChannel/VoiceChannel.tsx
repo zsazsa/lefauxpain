@@ -1,11 +1,20 @@
 import { For, Show, onMount, onCleanup } from "solid-js";
 import { channels } from "../../stores/channels";
-import { getUsersInVoiceChannel, currentVoiceChannelId, localScreenStream, desktopPresenting, desktopPreviewUrl } from "../../stores/voice";
+import {
+  getUsersInVoiceChannel,
+  currentVoiceChannelId,
+  localScreenStream,
+  desktopPresenting,
+  desktopPreviewUrl,
+  getScreenShareForChannel,
+  getScreenShareViewerCount,
+} from "../../stores/voice";
 import { onlineUsers } from "../../stores/users";
 import { currentUser } from "../../stores/auth";
 import { isMobile, setSidebarOpen } from "../../stores/responsive";
 import VoiceUser from "./VoiceUser";
 import { joinVoice, leaveVoice } from "../../lib/webrtc";
+import { watchScreenShare } from "../../lib/screenshare";
 
 interface VoiceChannelProps {
   channelId: string;
@@ -37,6 +46,15 @@ export default function VoiceChannel(props: VoiceChannelProps) {
       joinVoice(props.channelId);
     }
   };
+
+  // Someone else's share in this channel (spec: screen-share-discoverability)
+  const otherShare = () => {
+    const share = getScreenShareForChannel(props.channelId);
+    if (!share || share.user_id === currentUser()?.id) return null;
+    return share;
+  };
+  const sharerName = () =>
+    onlineUsers().find((u) => u.id === otherShare()?.user_id)?.username || "Someone";
 
   return (
     <div
@@ -119,6 +137,42 @@ export default function VoiceChannel(props: VoiceChannelProps) {
         </div>
       </div>
 
+      {/* Watch banner: the one obvious place to click when someone is sharing */}
+      <Show when={otherShare()}>
+        {(share) => (
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "space-between",
+              gap: "12px",
+              "flex-wrap": "wrap",
+              padding: isMobile() ? "10px 12px" : "10px 16px",
+              "background-color": "rgba(201,168,76,0.10)",
+              "border-bottom": "1px solid var(--border-gold)",
+            }}
+          >
+            <span style={{ "font-size": "13px", color: "var(--accent)", "min-width": "0" }}>
+              {"🖥"} <b>{sharerName()}</b> is sharing their screen
+            </span>
+            <button
+              onClick={() => watchScreenShare(share())}
+              style={{
+                padding: "5px 14px",
+                "background-color": "rgba(80,200,120,0.12)",
+                border: "1px solid var(--success)",
+                color: "var(--success)",
+                "font-size": "12px",
+                "font-weight": "600",
+                "white-space": "nowrap",
+              }}
+            >
+              [WATCH SCREEN]
+            </button>
+          </div>
+        )}
+      </Show>
+
       {/* User grid */}
       <div
         style={{
@@ -156,11 +210,18 @@ export default function VoiceChannel(props: VoiceChannelProps) {
               const user = () =>
                 onlineUsers().find((u) => u.id === vs.user_id) ||
                 (currentUser()?.id === vs.user_id ? currentUser() : null);
+              const share = () => {
+                const s = getScreenShareForChannel(props.channelId);
+                return s && s.user_id === vs.user_id ? s : null;
+              };
+              const isMe = () => currentUser()?.id === vs.user_id;
               return (
                 <Show when={user()}>
                   <VoiceUser
                     username={user()!.username}
                     voiceState={vs}
+                    sharing={!!share()}
+                    onWatch={!isMe() && share() ? () => watchScreenShare(share()!) : undefined}
                   />
                 </Show>
               );
@@ -194,6 +255,9 @@ export default function VoiceChannel(props: VoiceChannelProps) {
                 "margin-bottom": "6px",
               }}>
                 sharing your screen
+                <span title="People watching your screen">
+                  {" · "}{getScreenShareViewerCount(currentUser()?.id || "")} watching
+                </span>
               </div>
               {localScreenStream() ? (
                 <video

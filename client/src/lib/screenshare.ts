@@ -6,10 +6,32 @@ import {
   setDesktopPresenting,
   setDesktopPreviewUrl,
   watchingScreenShare,
+  dismissVoiceToast,
 } from "../stores/voice";
 import { isDesktop, tauriInvoke } from "./devices";
+import { isMobile, setSidebarOpen } from "../stores/responsive";
 
 let screenPC: RTCPeerConnection | null = null;
+
+/**
+ * Open the watch view for a share. Every "watch" entry point (banner, user
+ * tile, [WATCH] button, sidebar rows, toast) goes through here.
+ */
+export function watchScreenShare(share: { user_id: string; channel_id: string }) {
+  dismissVoiceToast();
+  const current = watchingScreenShare();
+  if (current?.user_id === share.user_id) return;
+  if (current) unsubscribeScreenShare();
+  setWatchingScreenShare({ user_id: share.user_id, channel_id: share.channel_id });
+  subscribeScreenShare(share.channel_id);
+  if (isMobile()) setSidebarOpen(false);
+}
+
+/** Close the watch view and tell the server to drop our viewer peer. */
+export function stopWatching() {
+  unsubscribeScreenShare();
+  setWatchingScreenShare(null);
+}
 let screenStream: MediaStream | null = null;
 let previewStream: MediaStream | null = null;
 let isPresenting = false;

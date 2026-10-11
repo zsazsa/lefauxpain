@@ -58,6 +58,7 @@ func (c *Client) readPump() {
 
 	// Register with hub
 	c.hub.register <- c
+	log.Printf("ws: connected user=%s id=%s", user.Username, user.ID)
 
 	// Message loop with per-user rate limiting (30 msgs/sec)
 	const wsRateLimit = 30
@@ -68,6 +69,7 @@ func (c *Client) readPump() {
 	for {
 		_, data, err := c.conn.Read(c.ctx)
 		if err != nil {
+			log.Printf("ws: disconnected user=%s id=%s reason=%v", user.Username, user.ID, err)
 			return
 		}
 

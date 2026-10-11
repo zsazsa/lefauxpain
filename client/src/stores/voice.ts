@@ -15,7 +15,14 @@ export type VoiceStats = {
   packetLoss: number; // percentage 0-100
   bitrate: number;   // send bitrate in kbps
   codec: string;     // codec name
+  packetsSent: number; // outbound-rtp packetsSent (0 while nothing leaves the mic)
 };
+
+// Health of the voice link, driven by lib/webrtc (spec: voice-resilience).
+export type VoiceLink = "connected" | "reconnecting" | "failed";
+
+// A short notice shown bottom-right (e.g. "X started sharing · click to watch").
+export type VoiceToast = { text: string; onClick?: () => void };
 
 export type ScreenShare = {
   user_id: string;
@@ -42,6 +49,49 @@ const [localScreenStream, setLocalScreenStream] = createSignal<MediaStream | nul
 const [desktopPresenting, setDesktopPresenting] = createSignal(false);
 const [desktopPreviewUrl, setDesktopPreviewUrl] = createSignal<string | null>(null);
 const [audioSources, setAudioSources] = createSignal<AudioSource[]>([]);
+const [voiceLink, setVoiceLink] = createSignal<VoiceLink>("connected");
+const [micWarning, setMicWarning] = createSignal<string | null>(null);
+const [micLevel, setMicLevel] = createSignal(0); // 0..1, local mic RMS, smoothed
+const [screenShareViewers, setScreenShareViewers] = createSignal<Record<string, number>>({});
+const [voiceToast, setVoiceToast] = createSignal<VoiceToast | null>(null);
+
+export {
+  voiceLink,
+  setVoiceLink,
+  micWarning,
+  setMicWarning,
+  micLevel,
+  setMicLevel,
+  screenShareViewers,
+  voiceToast,
+};
+
+let toastTimer: number | null = null;
+
+export function showVoiceToast(text: string, onClick?: () => void, ms = 8000) {
+  if (toastTimer !== null) clearTimeout(toastTimer);
+  setVoiceToast({ text, onClick });
+  toastTimer = window.setTimeout(() => {
+    toastTimer = null;
+    setVoiceToast(null);
+  }, ms);
+}
+
+export function dismissVoiceToast() {
+  if (toastTimer !== null) {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+  setVoiceToast(null);
+}
+
+export function setScreenShareViewerCount(userId: string, count: number) {
+  setScreenShareViewers((prev) => ({ ...prev, [userId]: count }));
+}
+
+export function getScreenShareViewerCount(userId: string): number {
+  return screenShareViewers()[userId] ?? 0;
+}
 
 export {
   voiceStates,

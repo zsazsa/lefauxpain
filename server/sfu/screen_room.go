@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
@@ -27,6 +28,23 @@ type ScreenViewer struct {
 	pc                 *webrtc.PeerConnection
 	mu                 sync.Mutex
 	needsRenegotiation bool
+	// Serialises offer/answer exchanges for this viewer (see Peer.negotiationMu).
+	negotiationMu sync.Mutex
+}
+
+// notifyViewerCount tells the hub how many viewers this share has now.
+func (sr *ScreenRoom) notifyViewerCount() {
+	if sr.sfu.OnScreenViewerCount == nil {
+		return
+	}
+	sr.mu.RLock()
+	count := len(sr.viewers)
+	stopped := sr.stopped
+	sr.mu.RUnlock()
+	if stopped {
+		count = 0
+	}
+	sr.sfu.OnScreenViewerCount(sr.PresenterID, sr.ChannelID, count)
 }
 
 func newScreenRoom(channelID, presenterID string, sfu *SFU) *ScreenRoom {
@@ -85,16 +103,22 @@ func (sr *ScreenRoom) SetupPresenter() error {
 		// Add this track to existing viewers
 		sr.addTrackToViewers(localTrack)
 
-		// Forward RTP packets
+		// Forward RTP packets. Only the presenter's Read error ends the
+		// loop; a single viewer's closed pipe must not stop the share for
+		// everyone else.
 		go func() {
 			buf := make([]byte, 1500)
+			var lastWriteWarn time.Time
 			for {
 				n, _, err := track.Read(buf)
 				if err != nil {
 					return
 				}
 				if _, err := localTrack.Write(buf[:n]); err != nil {
-					return
+					if time.Since(lastWriteWarn) > 10*time.Second {
+						lastWriteWarn = time.Now()
+						log.Printf("sfu/screen: room %s forward %s from %s: viewer write: %v", sr.ChannelID, track.Kind(), sr.PresenterID, err)
+					}
 				}
 			}
 		}()
@@ -240,6 +264,7 @@ func (sr *ScreenRoom) AddViewer(userID string) error {
 		})
 	}
 
+	sr.notifyViewerCount()
 	return nil
 }
 
@@ -272,6 +297,7 @@ func (sr *ScreenRoom) RemoveViewer(userID string) {
 	sr.mu.Unlock()
 
 	viewer.pc.Close()
+	sr.notifyViewerCount()
 }
 
 func (sr *ScreenRoom) Stop() {
@@ -296,6 +322,7 @@ func (sr *ScreenRoom) Stop() {
 	if pc != nil {
 		pc.Close()
 	}
+	sr.notifyViewerCount()
 }
 
 func (sr *ScreenRoom) HandleAnswer(userID string, sdp string, role string) {
@@ -326,6 +353,15 @@ func (sr *ScreenRoom) HandleAnswer(userID string, sdp string, role string) {
 		return
 	}
 
+	var viewer *ScreenViewer
+	if isViewer {
+		viewer = sr.viewers[userID]
+	}
+	if viewer != nil {
+		viewer.negotiationMu.Lock()
+		defer viewer.negotiationMu.Unlock()
+	}
+
 	err := pc.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeAnswer,
 		SDP:  sdp,
@@ -336,17 +372,15 @@ func (sr *ScreenRoom) HandleAnswer(userID string, sdp string, role string) {
 	}
 
 	// Handle deferred renegotiation for viewers
-	if isViewer {
-		if viewer, ok := sr.viewers[userID]; ok {
-			viewer.mu.Lock()
-			needsRenego := viewer.needsRenegotiation
-			viewer.needsRenegotiation = false
-			viewer.mu.Unlock()
+	if viewer != nil {
+		viewer.mu.Lock()
+		needsRenego := viewer.needsRenegotiation
+		viewer.needsRenegotiation = false
+		viewer.mu.Unlock()
 
-			if needsRenego {
-				log.Printf("sfu/screen: running deferred renegotiation for viewer %s", userID)
-				sr.renegotiateViewer(viewer)
-			}
+		if needsRenego {
+			log.Printf("sfu/screen: running deferred renegotiation for viewer %s", userID)
+			sr.renegotiateViewerLocked(viewer)
 		}
 	}
 }
@@ -411,6 +445,13 @@ func (sr *ScreenRoom) addTrackToViewers(track *webrtc.TrackLocalStaticRTP) {
 }
 
 func (sr *ScreenRoom) renegotiateViewer(viewer *ScreenViewer) {
+	viewer.negotiationMu.Lock()
+	defer viewer.negotiationMu.Unlock()
+	sr.renegotiateViewerLocked(viewer)
+}
+
+// renegotiateViewerLocked is renegotiateViewer with viewer.negotiationMu held.
+func (sr *ScreenRoom) renegotiateViewerLocked(viewer *ScreenViewer) {
 	viewer.mu.Lock()
 	if viewer.pc.SignalingState() != webrtc.SignalingStateStable {
 		viewer.needsRenegotiation = true

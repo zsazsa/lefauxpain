@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js";
 import type { VoiceState } from "../../stores/voice";
 import { getAudioSourceForUser } from "../../stores/voice";
 import { isMobile } from "../../stores/responsive";
@@ -5,6 +6,10 @@ import { isMobile } from "../../stores/responsive";
 interface VoiceUserProps {
   username: string;
   voiceState: VoiceState;
+  /** This user is sharing their screen (spec: screen-share-discoverability). */
+  sharing?: boolean;
+  /** When set, the tile is a click target that opens the watch view. */
+  onWatch?: () => void;
 }
 
 export default function VoiceUser(props: VoiceUserProps) {
@@ -13,9 +18,21 @@ export default function VoiceUser(props: VoiceUserProps) {
     props.voiceState.self_mute || props.voiceState.server_mute;
   const isDeafened = () => props.voiceState.self_deafen;
   const sharedAudio = () => getAudioSourceForUser(props.voiceState.user_id);
+  const watchable = () => !!(props.sharing && props.onWatch);
+  const [hover, setHover] = createSignal(false);
+
+  const borderColor = () => {
+    if (watchable() && hover()) return "var(--accent)";
+    if (isSpeaking()) return "var(--success)";
+    return "var(--border-gold)";
+  };
 
   return (
     <div
+      onClick={() => watchable() && props.onWatch!()}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={watchable() ? `Watch ${props.username}'s screen` : undefined}
       style={{
         width: isMobile() ? "100px" : "120px",
         display: "flex",
@@ -23,10 +40,10 @@ export default function VoiceUser(props: VoiceUserProps) {
         "align-items": "center",
         gap: "6px",
         padding: isMobile() ? "10px" : "14px",
-        border: isSpeaking()
-          ? "1px solid var(--success)"
-          : "1px solid var(--border-gold)",
+        border: `1px solid ${borderColor()}`,
+        "box-shadow": watchable() && hover() ? "0 0 0 1px var(--accent)" : "none",
         "background-color": "var(--bg-secondary)",
+        cursor: watchable() ? "pointer" : "default",
       }}
     >
       {/* Username */}
@@ -53,6 +70,8 @@ export default function VoiceUser(props: VoiceUserProps) {
           "align-items": "center",
           "font-size": "11px",
           color: "var(--text-muted)",
+          "flex-wrap": "wrap",
+          "justify-content": "center",
         }}
       >
         <span style={{ color: isSpeaking() ? "var(--success)" : "var(--text-muted)" }}>
@@ -72,7 +91,25 @@ export default function VoiceUser(props: VoiceUserProps) {
             [♪]
           </span>
         )}
+        {props.sharing && (
+          <span
+            style={{
+              color: "var(--accent)",
+              "font-weight": "600",
+              "letter-spacing": "1px",
+            }}
+            title={watchable() ? "Click to watch" : "Sharing screen"}
+          >
+            SHARING
+          </span>
+        )}
       </div>
+
+      {props.sharing && watchable() && (
+        <span style={{ "font-size": "10px", color: hover() ? "var(--accent)" : "var(--text-muted)" }}>
+          [watch]
+        </span>
+      )}
     </div>
   );
 }

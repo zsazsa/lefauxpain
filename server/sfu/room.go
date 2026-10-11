@@ -4,22 +4,62 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/pion/webrtc/v4"
 )
+
+// statsInterval is how often each room logs per-publisher packet counts.
+const statsInterval = 30 * time.Second
 
 type Room struct {
 	ChannelID string
 	sfu       *SFU
 	mu        sync.RWMutex
 	peers     map[string]*Peer // userID → peer
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func newRoom(channelID string, sfu *SFU) *Room {
-	return &Room{
+	r := &Room{
 		ChannelID: channelID,
 		sfu:       sfu,
 		peers:     make(map[string]*Peer),
+		done:      make(chan struct{}),
+	}
+	go r.statsLoop()
+	return r
+}
+
+// statsLoop logs, every statsInterval, how many RTP packets each publisher
+// delivered in that window. A connected publisher at 0 is a silent mic (or a
+// client that stopped sending); a count that stops while the peer stays
+// connected points at the forwarder, not the network.
+func (r *Room) statsLoop() {
+	t := time.NewTicker(statsInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-r.done:
+			return
+		case <-t.C:
+			r.mu.RLock()
+			peers := make([]*Peer, 0, len(r.peers))
+			for _, p := range r.peers {
+				peers = append(peers, p)
+			}
+			r.mu.RUnlock()
+			for _, p := range peers {
+				rx := p.rxPackets.Swap(0)
+				share := p.shareRxPackets.Swap(0)
+				line := fmt.Sprintf("sfu: room %s user %s rx_packets=%d", r.ChannelID, p.UserID, rx)
+				if share > 0 {
+					line += fmt.Sprintf(" share_rx_packets=%d", share)
+				}
+				log.Printf("%s state=%s (%ds)", line, p.pc.ConnectionState(), int(statsInterval.Seconds()))
+			}
+		}
 	}
 }
 
@@ -89,12 +129,23 @@ func (r *Room) AddPeer(userID string) (*Peer, error) {
 		// Forward RTP packets. ServerMute applies only to the mic; the
 		// share is independent so it can keep flowing while the mic is
 		// server-muted.
+		//
+		// Only the publisher's own Read error ends this loop. Write
+		// returns an error when ANY subscriber's pipe is closed (a peer
+		// leaving mid-packet), and returning on that would silence this
+		// publisher for everyone else while they keep hearing the room.
 		go func() {
 			buf := make([]byte, 1500)
+			var lastWriteWarn time.Time
 			for {
 				n, _, err := track.Read(buf)
 				if err != nil {
 					return
+				}
+				if isShare {
+					peer.shareRxPackets.Add(1)
+				} else {
+					peer.rxPackets.Add(1)
 				}
 
 				if !isShare {
@@ -107,7 +158,10 @@ func (r *Room) AddPeer(userID string) (*Peer, error) {
 				}
 
 				if _, err := localTrack.Write(buf[:n]); err != nil {
-					return
+					if time.Since(lastWriteWarn) > 10*time.Second {
+						lastWriteWarn = time.Now()
+						log.Printf("sfu: room %s forward from %s (share=%v): subscriber write: %v", r.ChannelID, userID, isShare, err)
+					}
 				}
 			}
 		}()
@@ -235,6 +289,7 @@ func (r *Room) RemovePeer(userID string) {
 	r.mu.RUnlock()
 
 	if empty {
+		r.closeOnce.Do(func() { close(r.done) })
 		r.sfu.RemoveRoom(r.ChannelID)
 	}
 }
@@ -269,6 +324,13 @@ func (r *Room) addTrackToOthers(fromUserID string, track *webrtc.TrackLocalStati
 }
 
 func (r *Room) renegotiatePeer(peer *Peer) {
+	peer.negotiationMu.Lock()
+	defer peer.negotiationMu.Unlock()
+	r.renegotiateLocked(peer)
+}
+
+// renegotiateLocked is renegotiatePeer with peer.negotiationMu already held.
+func (r *Room) renegotiateLocked(peer *Peer) {
 	// Only renegotiate when signaling state is stable.
 	// If not stable, mark the peer so HandleAnswer triggers renegotiation later.
 	peer.mu.Lock()
@@ -307,6 +369,12 @@ func (r *Room) HandleAnswer(userID string, sdp string) {
 		return
 	}
 
+	// Hold the negotiation lock across the answer and the deferred check
+	// so a renegotiation trigger arriving right now either waits for this
+	// answer (and then sees "stable") or gets picked up by the flag.
+	peer.negotiationMu.Lock()
+	defer peer.negotiationMu.Unlock()
+
 	log.Printf("sfu: HandleAnswer from %s (signaling=%s)", userID, peer.pc.SignalingState())
 	err := peer.pc.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeAnswer,
@@ -327,7 +395,7 @@ func (r *Room) HandleAnswer(userID string, sdp string) {
 
 	if needsRenego {
 		log.Printf("sfu: running deferred renegotiation for %s", userID)
-		r.renegotiatePeer(peer)
+		r.renegotiateLocked(peer)
 	}
 }
 

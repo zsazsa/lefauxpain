@@ -23,7 +23,7 @@ Le Faux Pain is a self-hostable Discord alternative for small groups. Users get 
 
 ## Known Fragile Areas
 
-- **SFU renegotiation timing** — When a user joins/leaves voice while another offer/answer exchange is in-flight, renegotiation is deferred via a `needsRenegotiation` flag checked in `HandleAnswer`. Correct but subtle — a missed flag means a peer silently stops hearing someone. Same pattern used for screen share viewers.
+- **SFU renegotiation timing** — When a user joins/leaves voice while another offer/answer exchange is in-flight, renegotiation is deferred via a `needsRenegotiation` flag checked in `HandleAnswer`. Since Oct 2026 a per-peer `negotiationMu` is held across the state check + offer and across the answer + deferred check, so two offers can no longer be in flight for one peer. Still subtle — a missed flag means a peer silently stops hearing someone. Same pattern used for screen share viewers. Each room logs `rx_packets` per publisher every 30s; the forwarding loop only exits on the publisher's read error (see `specs/features/voice-resilience.md`).
 
 - **`sendReady` is a god function** (`server/ws/client.go:136-332`) — Assembles the entire initial state snapshot from 10+ sequential DB queries. No parallelism. If any query silently fails (errors are discarded with `_`), that section of state is just empty. A user connects and silently has no playlists, no notifications, etc.
 
@@ -55,7 +55,7 @@ Le Faux Pain is a self-hostable Discord alternative for small groups. Users get 
 
 - **Text chat** — Messages, replies, reactions, mentions, notifications, edit/delete, file uploads with thumbnails. Battle-tested across all sessions. Cursor pagination for history works correctly.
 
-- **Voice (browser)** — Join/leave, mute/deafen, server mute, speaking detection. The SFU correctly renegotiates peers on join/leave. Opus codec matching between browser and SFU is solid.
+- **Voice (browser)** — Join/leave, mute/deafen, server mute, speaking detection. The SFU correctly renegotiates peers on join/leave. Opus codec matching between browser and SFU is solid. The client rejoins by itself after a WebSocket blip or a failed peer connection, and watches the local mic track for system mute/end (`specs/features/voice-resilience.md`).
 
 - **Voice (desktop)** — Rust cpal capture → Opus encode → RTP, and RTP → Opus decode → cpal output with multi-track mixing. Resampler handles 44100↔48000 correctly. Speaking detection ported from JS matches behavior.
 
@@ -110,7 +110,7 @@ Format: `{ op: string, d: any }`
 | Chat | `message_create`, `message_update`, `message_delete`, `reaction_add`, `reaction_remove`, `typing_start`, `notification_create` |
 | Channels | `channel_create`, `channel_delete`, `channel_reorder`, `channel_update` |
 | Voice | `voice_state_update`, `webrtc_offer`, `webrtc_ice` |
-| Screen | `webrtc_screen_offer`, `webrtc_screen_ice`, `screen_share_started`, `screen_share_stopped`, `screen_share_error` |
+| Screen | `webrtc_screen_offer`, `webrtc_screen_ice`, `screen_share_started`, `screen_share_stopped`, `screen_share_viewers`, `screen_share_error` |
 | Media | `media_playback`, `media_item_added` |
 | Radio | `radio_station_create`, `radio_station_update`, `radio_station_delete`, `radio_playlist_created`, `radio_playlist_deleted`, `radio_playlist_tracks`, `radio_playback`, `radio_listeners` |
 
