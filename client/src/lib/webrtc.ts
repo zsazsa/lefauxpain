@@ -45,14 +45,40 @@ let micMuteTimer: number | null = null;
 const MIC_NOT_DELIVERING = "Mic is not delivering audio";
 const MIC_FALLBACK = "Saved mic not found, using default";
 const MIC_LOST = "Mic was lost";
+const MIC_RETRYING = "Mic was lost, retrying…";
+
+// --- Mic recovery state (spec: voice-resilience, mic recovery amendment) ---
+// Recovery is a state, not a single call: it starts when the mic track ends
+// or when the sender stops moving bytes, retries with backoff for as long as
+// the user stays in voice, and ends when bytes flow again.
+let micRecovering = false;
+let micAttemptInFlight = false;
+let micRetryTimer: number | null = null;
+let micRetryAttempt = 0;
+let micRecoveryFellBack = false;
+let micStallPolls = 0;
+const MIC_RETRY_DELAYS_MS = [2000, 4000, 8000];
+const MIC_RETRY_PERIOD_MS = 15000;
+const MIC_STALL_POLLS = 3; // consecutive 2 s stats polls with no bytes sent
+const MIC_FATAL_ERRORS = new Set(["NotAllowedError", "SecurityError"]);
+
+function errorName(err: unknown): string {
+  return (err as DOMException)?.name || "Error";
+}
 
 function startStatsPolling() {
   stopStatsPolling();
   prevBytesSent = 0;
   prevTimestamp = 0;
+  micStallPolls = 0;
   statsInterval = window.setInterval(async () => {
     if (!peerConnection) return;
-    const stats = await peerConnection.getStats();
+    const pc = peerConnection;
+    const [stats, micStats] = await Promise.all([
+      pc.getStats(),
+      micSender ? micSender.getStats().catch(() => null) : Promise.resolve(null),
+    ]);
+    if (pc !== peerConnection) return; // torn down while we were waiting
     let rtt = 0;
     let jitter = 0;
     let packetsLost = 0;
@@ -70,12 +96,17 @@ function startStatsPolling() {
         jitter = (report.jitter || 0) * 1000;
         packetsLost = report.packetsLost || 0;
       }
+    });
+    // Outbound fields come from the mic sender itself so an active audio
+    // share (a second outbound audio stream) cannot mask a silent mic.
+    (micStats ?? stats).forEach((report) => {
       if (report.type === "outbound-rtp" && report.kind === "audio") {
         bytesSent = report.bytesSent || 0;
         timestamp = report.timestamp || 0;
         packetsSent = report.packetsSent || 0;
       }
     });
+    const bytesAdvanced = bytesSent > prevBytesSent;
 
     let bitrate = 0;
     if (prevTimestamp > 0 && timestamp > prevTimestamp) {
@@ -99,6 +130,8 @@ function startStatsPolling() {
       codec,
       packetsSent,
     });
+
+    checkMicFlow(pc, bytesAdvanced);
   }, 2000);
 }
 
@@ -116,9 +149,10 @@ function stopStatsPolling() {
 
 /**
  * Get the microphone with the saved device, falling back to the default
- * device (and warning the user) when the saved one is gone.
+ * device when the saved one is gone. `fellBack` tells the caller to show
+ * the fallback warning.
  */
-async function acquireMic(): Promise<MediaStream> {
+async function acquireMic(): Promise<{ stream: MediaStream; fellBack: boolean }> {
   const s = settings();
   const audioConstraints: MediaTrackConstraints = {
     echoCancellation: true,
@@ -131,15 +165,15 @@ async function acquireMic(): Promise<MediaStream> {
   }
   console.log("[voice] getUserMedia constraints:", JSON.stringify(audioConstraints));
   try {
-    return await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    return { stream, fellBack: false };
   } catch (err) {
     const name = (err as DOMException)?.name;
     if (audioConstraints.deviceId && (name === "OverconstrainedError" || name === "NotFoundError")) {
       console.warn("[voice] Saved device not found, falling back to default mic");
       delete audioConstraints.deviceId;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-      setMicWarning(MIC_FALLBACK);
-      return stream;
+      return { stream, fellBack: true };
     }
     throw err;
   }
@@ -165,7 +199,7 @@ function attachMicTrackHandlers(track: MediaStreamTrack) {
     if (micMuteTimer !== null) return;
     micMuteTimer = window.setTimeout(() => {
       micMuteTimer = null;
-      if (track.muted && track.readyState === "live") {
+      if (track.muted && track.readyState === "live" && !micRecovering) {
         setMicWarning(MIC_NOT_DELIVERING);
       }
     }, 1000);
@@ -176,27 +210,37 @@ function attachMicTrackHandlers(track: MediaStreamTrack) {
     if (micWarning() === MIC_NOT_DELIVERING) setMicWarning(null);
   };
   track.onended = () => {
-    console.warn("[voice] local mic track ended, re-acquiring");
+    // A track we already swapped out is not our concern any more.
+    if (localStream?.getAudioTracks()[0] !== track) return;
+    console.warn("[voice] local mic track ended");
     clearMicMuteTimer();
-    if (!localStream) return;
-    reacquireMic().catch((err) => {
-      console.error("[voice] re-acquire after track end failed:", err);
-      setMicWarning(MIC_LOST);
-    });
+    if (micRecovering) {
+      // The replacement died too; do not wait out the stall window.
+      if (!micAttemptInFlight && micRetryTimer === null) {
+        scheduleNextMicAttempt("replacement track ended");
+      }
+      return;
+    }
+    startMicRecovery("track ended");
   };
 }
 
 /**
- * Re-acquire the microphone and swap it into the live sender. Used
- * automatically when the track ends and by the [RETRY MIC] button.
+ * Re-acquire the microphone and swap it into the live sender. Resolves to
+ * whether the acquire fell back to the default device, or null when voice
+ * was left while the browser was still opening the device. Throws when the
+ * device cannot be opened; the mic in use is left untouched in that case.
  */
-export async function reacquireMic(): Promise<void> {
-  if (isDesktop || !localStream) return;
+async function swapInFreshMic(): Promise<boolean | null> {
   const old = localStream;
+  if (!old) return null;
   const wasEnabled = old.getAudioTracks()[0]?.enabled ?? !selfMute();
 
-  setMicWarning(null);
-  const newStream = await acquireMic();
+  const { stream: newStream, fellBack } = await acquireMic();
+  if (localStream !== old) {
+    newStream.getTracks().forEach((t) => t.stop());
+    return null;
+  }
   const newTrack = newStream.getAudioTracks()[0];
   newTrack.enabled = wasEnabled;
   attachMicTrackHandlers(newTrack);
@@ -205,12 +249,170 @@ export async function reacquireMic(): Promise<void> {
     await micSender.replaceTrack(newTrack);
   }
 
-  old.getTracks().forEach((t) => t.stop());
+  old.getTracks().forEach((t) => {
+    t.onended = null;
+    t.stop();
+  });
   localStream = newStream;
 
   stopSpeakingDetection();
   startSpeakingDetection(localStream);
-  console.log("[voice] mic re-acquired:", newTrack.label);
+  console.log("[voice] mic re-acquired:", newTrack.label, fellBack ? "(fallback)" : "");
+  return fellBack;
+}
+
+/** Begin a recovery: banner up, first attempt right away. */
+function startMicRecovery(reason: string) {
+  if (isDesktop || !localStream || micRecovering) return;
+  console.warn("[voice] mic recovery started:", reason);
+  micRecovering = true;
+  micRetryAttempt = 0;
+  micStallPolls = 0;
+  micRecoveryFellBack = micWarning() === MIC_FALLBACK;
+  clearMicMuteTimer();
+  setMicWarning(MIC_RETRYING);
+  void attemptMicRecovery();
+}
+
+function stopMicRecovery() {
+  micRecovering = false;
+  micRetryAttempt = 0;
+  micStallPolls = 0;
+  if (micRetryTimer !== null) {
+    clearTimeout(micRetryTimer);
+    micRetryTimer = null;
+  }
+}
+
+/** Called by the stats poll once bytes are moving again. */
+function finishMicRecovery() {
+  console.log("[voice] mic recovery finished: audio is flowing");
+  stopMicRecovery();
+  setMicWarning(micRecoveryFellBack ? MIC_FALLBACK : null);
+}
+
+/** Backoff: 2 s, 4 s, 8 s, then every 15 s while the user stays in voice. */
+function scheduleNextMicAttempt(reason: string) {
+  const delay =
+    micRetryAttempt < MIC_RETRY_DELAYS_MS.length
+      ? MIC_RETRY_DELAYS_MS[micRetryAttempt]
+      : MIC_RETRY_PERIOD_MS;
+  micRetryAttempt++;
+  console.warn(`[voice] mic recovery: ${reason}; next attempt in ${delay}ms`);
+  if (micRetryTimer !== null) clearTimeout(micRetryTimer);
+  micRetryTimer = window.setTimeout(() => {
+    micRetryTimer = null;
+    void attemptMicRecovery();
+  }, delay);
+}
+
+/**
+ * One recovery attempt. A throw schedules the next attempt (or stops on a
+ * permission error). A resolve hands over to the stats poll, which either
+ * finishes the recovery when bytes flow or schedules the next attempt when
+ * the new track is silent too.
+ */
+async function attemptMicRecovery(): Promise<void> {
+  if (micAttemptInFlight) return;
+  if (micRetryTimer !== null) {
+    clearTimeout(micRetryTimer);
+    micRetryTimer = null;
+  }
+  if (!micRecovering || !localStream) return;
+  micAttemptInFlight = true;
+  try {
+    const fellBack = await swapInFreshMic();
+    if (fellBack === null || !micRecovering) return;
+    micRecoveryFellBack = fellBack;
+    micStallPolls = 0;
+    console.log("[voice] mic recovery: new track in place, waiting for audio to flow");
+  } catch (err) {
+    if (!micRecovering) return;
+    const name = errorName(err);
+    if (MIC_FATAL_ERRORS.has(name)) {
+      console.error("[voice] mic recovery stopped:", name, err);
+      stopMicRecovery();
+      setMicWarning(`${MIC_LOST} (${name})`);
+      return;
+    }
+    console.warn("[voice] mic recovery attempt failed:", name, err);
+    setMicWarning(`${MIC_RETRYING} (${name})`);
+    scheduleNextMicAttempt(name);
+  } finally {
+    micAttemptInFlight = false;
+  }
+}
+
+/**
+ * Watchdog fed by the stats poll every 2 s. A connected peer whose live,
+ * enabled mic track has not moved bytesSent for MIC_STALL_POLLS polls is
+ * treated like an ended track. Bytes flowing again is what ends a recovery.
+ */
+function checkMicFlow(pc: RTCPeerConnection, bytesAdvanced: boolean) {
+  if (isDesktop) return;
+  if (micRecovering) {
+    if (micAttemptInFlight) return;
+    if (bytesAdvanced) {
+      finishMicRecovery();
+    } else if (micRetryTimer === null) {
+      // Verifying a swapped-in track: still silent after the stall window.
+      micStallPolls++;
+      if (micStallPolls >= MIC_STALL_POLLS) {
+        micStallPolls = 0;
+        scheduleNextMicAttempt("new track is silent");
+      }
+    }
+    return;
+  }
+  const track = micSender?.track;
+  if (
+    pc.connectionState !== "connected" ||
+    !track ||
+    !track.enabled ||
+    track.readyState !== "live"
+  ) {
+    micStallPolls = 0;
+    return;
+  }
+  if (bytesAdvanced) {
+    micStallPolls = 0;
+    return;
+  }
+  micStallPolls++;
+  if (micStallPolls >= MIC_STALL_POLLS) {
+    micStallPolls = 0;
+    startMicRecovery(`no audio sent for ${MIC_STALL_POLLS * 2} s`);
+  }
+}
+
+/** A device appeared or vanished: if we are waiting to retry, retry now. */
+function onDeviceChange() {
+  if (!micRecovering || micAttemptInFlight) return;
+  console.log("[voice] devices changed during mic recovery; retrying now");
+  void attemptMicRecovery();
+}
+
+/**
+ * [RETRY MIC]. During a recovery it cancels the pending timer and attempts
+ * now. Outside one (fallback or not-delivering banner) it tries the saved
+ * device once and keeps the mic in use, and the banner, on failure.
+ */
+export async function reacquireMic(): Promise<void> {
+  if (isDesktop || !localStream || micAttemptInFlight) return;
+  if (micRecovering) {
+    await attemptMicRecovery();
+    return;
+  }
+  try {
+    const fellBack = await swapInFreshMic();
+    if (fellBack === null) return;
+    setMicWarning(fellBack ? MIC_FALLBACK : null);
+  } catch (err) {
+    const name = errorName(err);
+    console.warn("[voice] retry mic failed:", name, err);
+    const track = localStream?.getAudioTracks()[0];
+    if (track && track.readyState !== "live") setMicWarning(`${MIC_LOST} (${name})`);
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -261,7 +463,10 @@ async function startVoiceSession(channelId: string, opts: { quiet: boolean }) {
 
   // Browser: existing WebRTC path
   try {
-    localStream = await acquireMic();
+    const { stream, fellBack } = await acquireMic();
+    localStream = stream;
+    if (fellBack) setMicWarning(MIC_FALLBACK);
+    navigator.mediaDevices?.addEventListener?.("devicechange", onDeviceChange);
     const tracks = localStream.getAudioTracks();
     console.log("[voice] getUserMedia succeeded, tracks:", tracks.map(t => ({
       label: t.label,
@@ -349,6 +554,8 @@ function teardownBrowserMedia() {
   stopSpeakingDetection();
   stopStatsPolling();
   clearMicMuteTimer();
+  stopMicRecovery();
+  navigator.mediaDevices?.removeEventListener?.("devicechange", onDeviceChange);
 
   if (peerConnection) {
     peerConnection.onconnectionstatechange = null;
@@ -746,9 +953,14 @@ export async function switchMicrophone(deviceId: string) {
   }
 
   // Stop old track
-  localStream.getAudioTracks().forEach((t) => t.stop());
+  localStream.getAudioTracks().forEach((t) => {
+    t.onended = null;
+    t.stop();
+  });
   localStream = newStream;
-  if (micWarning() === MIC_FALLBACK || micWarning() === MIC_NOT_DELIVERING) setMicWarning(null);
+  // The user picked a mic that opened: any mic banner or recovery is stale.
+  stopMicRecovery();
+  setMicWarning(null);
 
   // Restart speaking detection with new stream
   stopSpeakingDetection();

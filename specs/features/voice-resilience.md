@@ -108,3 +108,69 @@ the sending side and in recovery, not in signaling.
   the other side hears audio again. Block UDP for 35 s: the panel shows
   "Reconnecting voice…" and recovers. Unplug the mic: the panel shows the mic
   warning, replug: audio resumes.
+
+## Amendment (Nov 2026): microphone recovery retries
+
+### Observed
+
+Production, Oct 17 to Nov 8 2026, one browser user on Windows: the SFU's
+30-second counters show his mic falling to 0 packets for 30 s to 14 min,
+several times per session, while every other publisher stays at 1500 per
+window and his peer connection stays `connected`. Three consecutive joins on
+Nov 5 never delivered a single packet. The panel showed "Mic was lost" and he
+quit and rejoined to recover. Server and network are not involved.
+
+### Current Behavior
+
+- `ended` triggers exactly one re-acquire, immediately. A device that is
+  re-enumerating, changing format, or held by another application refuses
+  that attempt; nothing tries again, so the user sends silence until he
+  clicks `[RETRY MIC]` or rejoins.
+- `[RETRY MIC]` clears the warning before it tries and only logs on failure,
+  so a failed retry leaves no banner while the mic is still dead.
+- A capture that stalls without ending the track (a live, enabled track whose
+  sender stops sending bytes) is not detected at all.
+- Nothing tells us why the re-acquire failed.
+
+### New Behavior (browser only)
+
+- Mic recovery is a state, not a single call. It starts when the local track
+  ends, or when the stats poll sees the mic sender's `bytesSent` unchanged
+  for 3 consecutive polls (6 s) while the peer connection is `connected` and
+  the track is live and enabled (not self-muted).
+- While recovering the banner reads "Mic was lost, retrying…". Each attempt
+  re-acquires with the current settings (the existing default-device
+  fallback applies) and swaps the new track in with `replaceTrack`.
+- An attempt that throws schedules the next one: 2 s, 4 s, 8 s, then every
+  15 s for as long as the user stays in voice. The banner carries the error
+  name, e.g. "Mic was lost, retrying… (NotReadableError)".
+- An attempt that resolves but whose track is still silent after the stall
+  window counts as a failure and follows the same schedule.
+- `NotAllowedError` and `SecurityError` stop the schedule: the banner reads
+  "Mic was lost (NotAllowedError)" and only `[RETRY MIC]` remains.
+- A `devicechange` event during recovery runs the next attempt at once.
+- Recovery ends when the stats poll sees `bytesSent` increase again, whether
+  from the swapped-in track or because the device recovered on its own. The
+  banner then clears, or shows "Saved mic not found, using default" when the
+  last successful acquire fell back.
+- `[RETRY MIC]` during recovery cancels the pending timer and attempts now.
+  Outside recovery (fallback or not-delivering banners) it attempts once; on
+  failure the mic in use is untouched and the banner stays, gaining the error
+  name only if the current track has ended.
+- The stats row's outbound fields (`bitrate`, `packets sent`) come from the
+  mic sender's own stats, so an active audio share cannot mask a silent mic.
+- Leaving voice, rejoining, or a successful mic switch in Settings cancels
+  any recovery in progress.
+- The "Mic is not delivering audio" mute warning is not raised while
+  recovery is active.
+
+### Validation
+
+- `make validate` stays green; no scenario is modified.
+- Manual: in voice in a browser, open the mic in exclusive mode from another
+  application, or unplug a USB mic. Within a few seconds the banner shows
+  "Mic was lost, retrying… (NotReadableError)" (or NotFoundError). Release
+  the device: audio resumes within 15 s without clicking anything and the
+  banner clears. Revoke mic permission in the site settings instead: the
+  banner reads "Mic was lost (NotAllowedError)" and stays until
+  `[RETRY MIC]` or a rejoin.
