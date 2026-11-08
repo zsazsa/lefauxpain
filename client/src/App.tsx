@@ -27,6 +27,7 @@ import RadioPlayer from "./components/RadioPlayer/RadioPlayer";
 import Lightbox from "./components/Lightbox";
 import { isMobile, sidebarOpen, setSidebarOpen, initResponsive } from "./stores/responsive";
 import { startUpdateChecker } from "./stores/updateChecker";
+import DesktopUpdateBanner from "./components/DesktopUpdateBanner";
 import { t, applyTheme } from "./stores/theme";
 
 function App() {
@@ -176,6 +177,7 @@ function App() {
         }}
 
         <div style={{ flex: "1", display: "flex", "flex-direction": "column", "min-width": "0" }}>
+          <DesktopUpdateBanner />
           <Show when={staleVersion()}>
             <div style={{
               display: "flex",

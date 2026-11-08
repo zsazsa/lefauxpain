@@ -93,3 +93,26 @@ export function startUpdateChecker() {
     checkForUpdates();
   }, TWO_HOURS);
 }
+
+// --- Top-of-app banner (spec: desktop-update-prompt) ---
+
+const [updateDismissed, setUpdateDismissed] = createSignal(false);
+export { updateDismissed };
+
+/** [LATER]: hide the banner for this session. Sidebar and Settings still show the update. */
+export function dismissUpdateBanner() {
+  setUpdateDismissed(true);
+}
+
+/** Linux package installs are not auto-updated; they get the release page instead. */
+export const isLinuxDesktop = isTauri && navigator.platform.toLowerCase().includes("linux");
+
+export async function openReleasePage() {
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  const v = updateVersion();
+  await openUrl(
+    v
+      ? `https://github.com/zsazsa/lefauxpain/releases/tag/v${v}`
+      : "https://github.com/zsazsa/lefauxpain/releases/latest",
+  );
+}
